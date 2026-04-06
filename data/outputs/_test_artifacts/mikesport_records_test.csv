@@ -1,0 +1,2 @@
+retailer_name,product_name,style_code,sku_id,competitor_name,competitor_price,competitor_sale_price,is_on_sale,discount_pct,availability,currency,colorway,category,gender_target,sizes_available,source_url,scraped_at,data_valid,raw_price_text,raw_availability_text,error_message
+mikesport_lb,Adidas Trefoil Essentials Men Original T-Shirt Black,JW0971,,MikeSport Lebanon,54.0,,False,,in_stock,USD,Black,t-shirt,men,"[""L"", ""M"", ""S"", ""XL""]",https://lb.mikesport.com/products/adidas-trefoil-essentials-men-original-t-shirt-black,2026-04-04T00:00:00Z,True,$ 54,only,
