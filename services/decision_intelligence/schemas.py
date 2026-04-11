@@ -49,6 +49,13 @@ class CompetitorSignals(BaseModel):
     fallback_used: bool = False
     fallback_reason: Optional[str] = None
 
+    @field_validator("fallback_reason")
+    @classmethod
+    def fallback_reason_required_if_fallback(cls, v, info):
+        if info.data.get("fallback_used") and not v:
+            raise ValueError("fallback_reason is required when fallback_used is True")
+        return v
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
@@ -171,15 +178,15 @@ class RecommendationRequest(BaseModel):
     category: str
 
     # Current state
-    retail_price_usd: float = Field(gt=0)
-    cost_price_usd: float = Field(gt=0)
-    current_stock: int = Field(ge=0)
-    days_since_launch: int = Field(ge=0, default=180)
-    initial_stock: int = Field(ge=1, default=1)
+    retail_price_usd: float = Field(gt=0, le=10_000)
+    cost_price_usd: float = Field(gt=0, le=10_000)
+    current_stock: int = Field(ge=0, le=100_000)
+    days_since_launch: int = Field(ge=0, le=3650, default=180)
+    initial_stock: int = Field(ge=1, le=100_000, default=1)
 
     # Optional — v2 when POS data is available
-    days_since_last_discount: int = 999
-    days_at_current_price: int = 30
+    days_since_last_discount: int = Field(default=999, ge=0, le=3650)
+    days_at_current_price: int = Field(default=30, ge=0, le=3650)
 
     # Competitor signals from IE1
     competitor_signals: Optional[CompetitorSignals] = None

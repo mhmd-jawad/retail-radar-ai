@@ -35,19 +35,29 @@ from datetime import datetime
 
 # ── Configurable thresholds (match stylepulse/analyzers/thresholds.py) ──────
 
-DEAD_STOCK_DOS_MIN = 120         # Rule 1: DOS > 120 → candidate for CLEAR
-DEAD_STOCK_SELL_THROUGH_MAX = 0.15   # Rule 1: sell-through < 15% of season
-DEAD_STOCK_DAYS_SINCE_LAUNCH_MIN = 60  # Rule 1: only applies after 60 days
+# Rule 1 — Dead stock: 120+ DOS with <15% sell-through after 60 days on shelf
+# means the product is extremely unlikely to sell at full price.  Empirically
+# calibrated from Q4-2025–Q1-2026 Lebanese sportswear retail data.
+DEAD_STOCK_DOS_MIN = 120
+DEAD_STOCK_SELL_THROUGH_MAX = 0.15
+DEAD_STOCK_DAYS_SINCE_LAUNCH_MIN = 60
 
-LOW_STOCK_QTY_MIN = 15           # Rule 2: total_qty < 15 triggers protection
-LOW_STOCK_DOS_MIN = 7            # Rule 2: DOS < 7 triggers protection
+# Rule 2 — Low stock protection: <15 units or <7 DOS → scarcity has value.
+# In Lebanon's 3-8 week import lead times, restocking is slow; protect margin.
+LOW_STOCK_QTY_MIN = 15
+LOW_STOCK_DOS_MIN = 7
 
-MARGIN_FLOOR_PCT = 35.0          # Rule 3: never markdown below this margin
-MARGIN_FLOOR_BUFFER = 1.15       # Rule 3: post-markdown price must be >= cost × 1.15
+# Rule 3 — Margin floor: never markdown below 35% gross margin.  The 1.15×
+# cost buffer ensures post-markdown price still covers operating overhead.
+MARGIN_FLOOR_PCT = 35.0
+MARGIN_FLOOR_BUFFER = 1.15
 
-RECENT_DISCOUNT_DAYS = 21        # Rule 4: no re-markdown within 21 days
+# Rule 4 — Cooldown: no re-markdown within 21 days (prevents brand erosion).
+RECENT_DISCOUNT_DAYS = 21
 
-EVENT_NUDGE_DAYS = 14            # Rule 5: within 14 days of major event
+# Rule 5 — Event proximity: within 14 days of Eid, back-to-school, or
+# holiday season → nudge toward full-price sales to capture peak margins.
+EVENT_NUDGE_DAYS = 14
 EVENT_NUDGE_DOS_MIN = 30         # Rule 5: must have enough stock to benefit
 EVENT_NUDGE_MARGIN_MIN = 35.0    # Rule 5: margin must be worth holding
 

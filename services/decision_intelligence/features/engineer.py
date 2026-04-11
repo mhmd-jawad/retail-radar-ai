@@ -36,6 +36,14 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = ROOT / "data" / "real"
 DEFAULT_OUTPUT = ROOT / "data" / "features" / "features.csv"
 
+# ── Sentinel / fallback constants ────────────────────────────────────────────
+SENTINEL_DAYS_NO_DISCOUNT = 999   # no recent discount data available
+SENTINEL_DAYS_AT_PRICE = 30       # assumed stable price (v2: from POS logs)
+DEFAULT_DAYS_SINCE_LAUNCH = 180   # conservative: assume mid-season product
+DEFAULT_INVENTORY_INTENSITY = 0.70  # typical for multi-brand retail stores
+DEFAULT_INVENTORY_AT_COST = 176_000  # fallback when financial_profile is incomplete
+DEFAULT_TOTAL_ASSETS = 214_000      # fallback when financial_profile is incomplete
+
 
 # ── Category velocity multipliers (calibrated from demand model) ──────────────
 CATEGORY_VELOCITY = {
@@ -106,6 +114,8 @@ def _get_seasonal_multiplier(month: int, category: str | None = None) -> float:
 def _estimate_daily_demand(units_on_hand: float, category: str,
                            num_competitors: int, retail_price: float) -> float:
     """Estimate daily demand using stock-based calibration (same logic as inventory.py)."""
+    if units_on_hand <= 0:
+        return 0.02  # minimum floor: near-zero stock → minimal demand signal
     base_daily = units_on_hand / 65.0
     velocity_adj = CATEGORY_VELOCITY.get(category, 1.0)
 
@@ -153,7 +163,7 @@ def compute_competitor_features(sku_id: str, our_price: float,
             "competitors_out_of_stock": 0,
             "num_competitors": 0,
             "market_position": "at_market",
-            "competitor_confidence": 0.2,  # low — no data
+            "competitor_confidence": 0.0,  # zero — no competitor data available
         }
 
     valid_prices = []
@@ -230,9 +240,9 @@ def compute_sku_features(prod: dict, inv_row: dict, competitor_index: dict,
     margin_pct = round((1 - cost_price / retail_price) * 100, 2) if retail_price > 0 else 0.0
     # v2: discount_depth_last_30d, days_since_last_discount, days_at_current_price
     # require transaction history — not available yet; set to safe defaults
-    discount_depth_last_30d = 0.0          # v2: requires sales history
-    days_since_last_discount = 999         # v2: requires sales history — high = no recent discount
-    days_at_current_price = 30             # v2: requires price change log — assume stable
+    discount_depth_last_30d = 0.0
+    days_since_last_discount = SENTINEL_DAYS_NO_DISCOUNT
+    days_at_current_price = SENTINEL_DAYS_AT_PRICE
 
     # ── Inventory (5 features) ────────────────────────────────────────────────
     comp_feats = compute_competitor_features(sku_id, retail_price, competitor_index)
@@ -259,7 +269,7 @@ def compute_sku_features(prod: dict, inv_row: dict, competitor_index: dict,
         except ValueError:
             days_since_launch = 180
     else:
-        days_since_launch = 180  # conservative default: assume mid-life
+        days_since_launch = DEFAULT_DAYS_SINCE_LAUNCH
 
     # season_sell_through_pct: no actual sales data yet
     # Estimated as 1 - (current_stock / assumed_opening_stock)
@@ -281,9 +291,9 @@ def compute_sku_features(prod: dict, inv_row: dict, competitor_index: dict,
     # ── Financial (3 features) ────────────────────────────────────────────────
     cash_runway = financial_profile.get("cashflow_summary", {}).get("cash_runway_months", 3.0)
     cash_tight = 1 if cash_runway < 2.5 else 0
-    inventory_at_cost = financial_profile.get("inventory_summary", {}).get("total_cost_usd", 176000)
-    total_assets = financial_profile.get("balance_sheet_summary", {}).get("total_assets_usd", 214000)
-    inventory_intensity = round(inventory_at_cost / total_assets, 4) if total_assets > 0 else 0.7
+    inventory_at_cost = financial_profile.get("inventory_summary", {}).get("total_cost_usd", DEFAULT_INVENTORY_AT_COST)
+    total_assets = financial_profile.get("balance_sheet_summary", {}).get("total_assets_usd", DEFAULT_TOTAL_ASSETS)
+    inventory_intensity = round(inventory_at_cost / total_assets, 4) if total_assets > 0 else DEFAULT_INVENTORY_INTENSITY
 
     return {
         # Identity (not features — used for joining)

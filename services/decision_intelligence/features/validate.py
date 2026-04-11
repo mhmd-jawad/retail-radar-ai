@@ -27,15 +27,15 @@ DEFAULT_FEATURES_PATH = ROOT / "data" / "features" / "features.csv"
 
 # Feature range definitions: {column: (min, max)}
 FEATURE_RANGES = {
-    "days_of_supply": (0, 10000),
+    "days_of_supply": (0, 730),        # max ~2 years; above that is clearly stale data
     "stock_coverage_ratio": (0, 400),
     "stockout_risk": (0, 1),
     "total_qty": (0, 10000),
     "inventory_vs_median": (0, 50),
     "current_margin_pct": (-100, 100),
     "discount_depth_last_30d": (0, 1),
-    "days_since_last_discount": (0, 9999),
-    "days_at_current_price": (0, 9999),
+    "days_since_last_discount": (0, 3650),   # sentinel 999 fits within 10y
+    "days_at_current_price": (0, 3650),
     "retail_price_usd": (0, 10000),
     "price_gap_pct": (-2, 2),
     "competitors_on_sale": (0, 20),

@@ -22,6 +22,7 @@ import random
 import re
 import statistics
 import sys
+from collections import Counter
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
@@ -30,7 +31,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRAPED_CSV = ROOT / "scraping" / "data" / "output" / "combined" / "all_shops_full_records.csv"
 OUT_DIR = ROOT / "data" / "real"
 
-FX_RATE_LBP_USD = 90_000  # April 2026 market rate
+FX_RATE_LBP_USD = 90_000  # April 2026 market rate (last verified: 2026-04-11)
+
+# ── Price filtering bounds (for outlier detection in scraped data) ────────────
+MIN_VALID_PRICE_USD = 5
+MAX_VALID_PRICE_USD = 5_000
 
 # ── Category mapping ───────────────────────────────────────────────────────
 # Maps raw scraped category strings → normalized system categories.
@@ -158,6 +163,9 @@ BRAND_COST_RATIOS = {
 }
 DEFAULT_COST_RATIO = 0.52  # conservative for unknown brands
 
+# ── Tier B exclusive pricing ───────────────────────────────────────────────────
+TIER_B_COMMISSION = 1.11  # 11% commission on MSRP for exclusive global brands
+
 # ── Stock depth model ──────────────────────────────────────────────────────
 # Units per SKU for opening inventory. Based on category sell-through norms
 # and Lebanon's import lead times (3-8 weeks). Deeper stock on staples.
@@ -209,7 +217,7 @@ def normalize_price_usd(row):
 
     if row.get("currency") == "LBP":
         price = round(price / FX_RATE_LBP_USD, 2)
-        if sale:
+        if sale is not None:
             sale = round(sale / FX_RATE_LBP_USD, 2)
 
     return price, sale
@@ -301,10 +309,10 @@ def build_product_catalogue(groups):
         all_prices = []
         for r in records:
             p, sp = normalize_price_usd(r)
-            effective = sp if sp and sp > 0 else p
+            effective = sp if (sp is not None and sp > 0) else p
 
             # Filter outlier prices (likely data errors)
-            if effective < 1 or effective > 2000:
+            if effective < MIN_VALID_PRICE_USD or effective > MAX_VALID_PRICE_USD:
                 continue
 
             all_prices.append(effective)
@@ -379,6 +387,7 @@ def build_product_catalogue(groups):
         try:
             sizes = json.loads(sizes_record.get("sizes_available", "[]"))
         except (json.JSONDecodeError, TypeError):
+            print(f"  WARNING: Failed to parse sizes for {name} ({key}), defaulting to []")
             sizes = []
         num_sizes = max(len(sizes), 1)
 
@@ -580,7 +589,6 @@ def print_summary(products, inventory):
     total_retail_value = sum(i["inventory_value_at_retail"] for i in inventory)
 
     # Category breakdown
-    from collections import Counter
     cat_counts = Counter(p["system_category"] for p in products)
     brand_counts = Counter(p["brand"] for p in products)
 
@@ -630,6 +638,11 @@ def build_tier_b_skus():
 
     These are priced at MSRP × 1.11 (11% commission) with zero local competitors.
     They bypass the curation scoring and are appended directly to the store catalogue.
+
+    Margin note: Tier B cost is computed on the commission-inflated retail price
+    (retail = MSRP × 1.11, cost = retail × brand_ratio).  This is intentional —
+    exclusive brands with zero local competition command a premium margin compared
+    to scraped (Tier A) products, where cost is derived from market median price.
     """
     TIER_B_SPECS = [
         # (brand, product_name, style_code, system_category, gender, msrp_usd, sizes_eu, units_per_size)
@@ -695,7 +708,7 @@ def build_tier_b_skus():
         ("Dr. Martens", "Dr. Martens 1460 Kids", "15382001", "kids", "kids", 100, (28, 35), 5),
     ]
 
-    COMMISSION = 1.11  # 11% on MSRP
+    COMMISSION = TIER_B_COMMISSION
     products = []
 
     for brand, name, style_code, sys_cat, gender, msrp, size_range, units_per_size in TIER_B_SPECS:
@@ -722,8 +735,8 @@ def build_tier_b_skus():
             "cost_price_usd": cost_price,
             "gross_margin_pct": margin_pct,
             "market_median_price_usd": retail_price,
-            "market_min_price_usd": round(msrp * 0.90, 2),
-            "market_max_price_usd": round(msrp * 1.15, 2),
+            "market_min_price_usd": "",   # no competitor data for Tier B exclusives
+            "market_max_price_usd": "",   # no competitor data for Tier B exclusives
             "num_competitors": 0,
             "competitors": "",
             "num_sizes": num_sizes,

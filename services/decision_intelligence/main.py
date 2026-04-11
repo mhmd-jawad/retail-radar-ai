@@ -18,12 +18,15 @@ Run:
     uvicorn services.decision_intelligence.main:app --port 8002 --reload
 """
 
+import os
+import secrets
 import time
 from datetime import date as _date, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
 from .schemas import (
@@ -60,6 +63,21 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# ── API key authentication ─────────────────────────────────────────────────────
+# Set IE2_API_KEY env var in production.  Falls back to a random key (dev mode).
+_API_KEY = os.environ.get("IE2_API_KEY", "")
+if not _API_KEY:
+    _API_KEY = secrets.token_urlsafe(32)
+    print(f"WARNING: IE2_API_KEY not set — using ephemeral dev key: {_API_KEY}")
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def _verify_api_key(key: str | None = Security(_api_key_header)):
+    if not key or not secrets.compare_digest(key, _API_KEY):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
+
 
 # Prometheus metrics
 metrics_app = make_asgi_app()
@@ -432,14 +450,14 @@ def health():
             "model_version": MODEL_VERSION, "timestamp": datetime.now().isoformat()}
 
 
-@app.post("/recommend", response_model=RecommendationResult)
+@app.post("/recommend", response_model=RecommendationResult, dependencies=[Depends(_verify_api_key)])
 def recommend(req: RecommendationRequest):
     """Single SKU recommendation."""
     with REQUEST_LATENCY.labels(endpoint="/recommend").time():
         return _recommend_single(req)
 
 
-@app.post("/recommend/batch", response_model=list[RecommendationResult])
+@app.post("/recommend/batch", response_model=list[RecommendationResult], dependencies=[Depends(_verify_api_key)])
 def recommend_batch(req: BatchRecommendationRequest):
     """Batch recommendation for up to 50 SKUs."""
     with REQUEST_LATENCY.labels(endpoint="/recommend/batch").time():

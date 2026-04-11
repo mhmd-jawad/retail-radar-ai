@@ -38,7 +38,11 @@ def main() -> int:
         print(f"Scraping {shop} with max_products={max_products if max_products is not None else 'FULL'}")
         try:
             records = scrape_shop(shop, max_products=max_products, max_pages=args.max_pages)
+        except KeyboardInterrupt:
+            raise
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             failures[shop] = f"{type(exc).__name__}: {exc}"
             print(f"  failed: {failures[shop]}")
             continue
