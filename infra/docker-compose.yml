@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  ie2_decision_intelligence:
+    build:
+      context: .
+      dockerfile: services/decision_intelligence/Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data/real:/app/data/real:ro
+      - ie2_models:/app/services/decision_intelligence/models
+      - ie2_features:/app/services/decision_intelligence/data/features
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  # IE1 — Market Intelligence (Mohammad Jawad)
+  # ie1_market_intelligence:
+  #   build:
+  #     context: .
+  #     dockerfile: services/market_intelligence/Dockerfile
+  #   ports:
+  #     - "8001:8001"
+
+  # IE3 — Campaign Creative (Mohammad Farhat)
+  # ie3_campaign_creative:
+  #   build:
+  #     context: .
+  #     dockerfile: services/campaign_creative/Dockerfile
+  #   ports:
+  #     - "8003:8003"
+
+  # EEP — Executive Platform (Mohammad Farhat)
+  # eep:
+  #   build:
+  #     context: .
+  #     dockerfile: eep/Dockerfile
+  #   ports:
+  #     - "8000:8000"
+
+volumes:
+  ie2_models:
+  ie2_features:
