@@ -1,0 +1,11 @@
+{
+  "shop": "marka_store",
+  "source_csv": "data\\outputs\\marka_store\\20260410T235051Z_marka_store_records.csv",
+  "source_json": "data\\outputs\\marka_store\\20260410T235051Z_marka_store_records.json",
+  "stable_csv": "data\\output\\marka_store\\records.csv",
+  "stable_json": "data\\output\\marka_store\\records.json",
+  "row_count": 381,
+  "valid_count": 381,
+  "style_code_count": 42,
+  "brand_present_count": 306
+}

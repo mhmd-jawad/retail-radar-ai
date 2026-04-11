@@ -1,0 +1,2 @@
+"""Marka Store scraper adapter."""
+

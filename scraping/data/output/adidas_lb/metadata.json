@@ -1,0 +1,11 @@
+{
+  "shop": "adidas_lb",
+  "source_csv": "data\\outputs\\adidas_lb\\20260410T142514Z_adidas_lb_records.csv",
+  "source_json": "data\\outputs\\adidas_lb\\20260410T142514Z_adidas_lb_records.json",
+  "stable_csv": "data\\output\\adidas_lb\\records.csv",
+  "stable_json": "data\\output\\adidas_lb\\records.json",
+  "row_count": 5022,
+  "valid_count": 5010,
+  "style_code_count": 5022,
+  "brand_present_count": 5022
+}

@@ -1,0 +1,11 @@
+{
+  "shop": "kix",
+  "source_csv": "data\\outputs\\kix\\20260410T151220Z_kix_records.csv",
+  "source_json": "data\\outputs\\kix\\20260410T151220Z_kix_records.json",
+  "stable_csv": "data\\output\\kix\\records.csv",
+  "stable_json": "data\\output\\kix\\records.json",
+  "row_count": 1391,
+  "valid_count": 1391,
+  "style_code_count": 0,
+  "brand_present_count": 1348
+}
