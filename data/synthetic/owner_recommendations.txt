@@ -1,0 +1,33 @@
+======================================================================
+OWNER RECOMMENDATIONS — SportEdge 2026
+======================================================================
+
+[CASH POSITION]
+The business remains cash-positive on a management basis. Keep
+replenishment tied to demand signals, not fixed calendar habits.
+
+[DEAD STOCK]
+Dead stock is 15.6% of year-end inventory value.
+Bundle or clear these items to unlock working capital.
+
+[STOCKOUT RISK]
+18.2% of eligible SKUs stocked out. Raise reorder
+sensitivity on top-velocity items and use faster replenishment
+for core lines.
+
+[COMPETITION]
+Premium-priced matched SKUs: 33.0%.
+Value-priced matched SKUs: 8.0%.
+Use markdowns selectively where price gaps and weak velocity overlap.
+
+[CATEGORY FOCUS]
+Top revenue categories: lifestyle_sneakers, football_boots.
+Bias future buying toward higher-turn, higher-margin categories
+and reduce breadth in weak tail items.
+
+[FINANCE NOTE]
+The cashflow output is a management cash summary, not a formal
+audited statement of cash flows. The balance sheet is a simplified
+management view using retained earnings proxy logic.
+
+======================================================================
