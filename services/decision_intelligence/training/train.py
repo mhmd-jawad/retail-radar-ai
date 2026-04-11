@@ -26,9 +26,10 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-ROOT = Path(__file__).parent.parent
+# Resolve to repo root (retail-radar-ai/)
+ROOT = Path(__file__).resolve().parents[3]
 FEATURES_PATH = ROOT / "data" / "features" / "features.csv"
-MODELS_DIR = ROOT / "models" / "catboost_decision"
+MODELS_DIR = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision"
 LABELS_PATH = ROOT / "data" / "features" / "labels.csv"
 
 CATEGORICAL_FEATURES = ["category", "brand", "market_position", "brand_tier"]
@@ -105,7 +106,7 @@ def train(
 
     # ── Build feature matrix ──────────────────────────────────────────────────
     feature_cols = [c for c in df.columns if c not in {
-        "sku_id", "product_name", "brand", "category", "label",
+        "sku_id", "product_name", "label",
         "approved_action", "rules_label",
     }]
 
@@ -116,7 +117,12 @@ def train(
     X = df[feature_cols].fillna(-1)
     y = df["label"].astype(int)
 
-    # ── Train / eval split ────────────────────────────────────────────────────
+    # ── Shuffle + Train / eval split ───────────────────────────────────────────
+    df_shuffled = pd.DataFrame({"X": X.values.tolist(), "y": y.values}).sample(
+        frac=1, random_state=42
+    ).reset_index(drop=True)
+    X = pd.DataFrame(df_shuffled["X"].tolist(), columns=feature_cols)
+    y = df_shuffled["y"].astype(int)
     split = int(len(X) * 0.80)
     X_train, X_val = X.iloc[:split], X.iloc[split:]
     y_train, y_val = y.iloc[:split], y.iloc[split:]

@@ -21,12 +21,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError as _e:
+    raise SystemExit(
+        f"Missing dependency: {_e}\nRun: pip install pandas"
+    ) from _e
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-ROOT = Path(__file__).parent.parent
+# Resolve to repo root (retail-radar-ai/)
+ROOT = Path(__file__).resolve().parents[3]
 FEATURES_PATH = ROOT / "data" / "features" / "features.csv"
 LABELS_PATH   = ROOT / "data" / "features" / "labels.csv"
 

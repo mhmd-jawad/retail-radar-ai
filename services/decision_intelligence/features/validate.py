@@ -22,7 +22,7 @@ except ImportError:
     PANDERA_AVAILABLE = False
 
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FEATURES_PATH = ROOT / "data" / "features" / "features.csv"
 
 # Feature range definitions: {column: (min, max)}
@@ -44,10 +44,10 @@ FEATURE_RANGES = {
     "days_since_launch": (0, 3650),
     "season_sell_through_pct": (0, 1),
     "cost_price_usd": (0, 10000),
-    "seasonality_score": (0.5, 2.0),
+    "seasonality_score": (0.5, 3.0),
     "category_seasonal_boost": (0, 1),
     "event_proximity_score": (0, 1),
-    "next_month_seasonality": (0.5, 2.0),
+    "next_month_seasonality": (0.5, 3.0),
     "cash_runway_months": (0, 120),
     "cash_tight": (0, 1),
     "inventory_intensity": (0, 1),

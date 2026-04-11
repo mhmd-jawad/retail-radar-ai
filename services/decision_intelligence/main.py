@@ -19,9 +19,8 @@ Run:
 """
 
 import time
-from datetime import datetime
+from datetime import date as _date, datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,10 +32,14 @@ from .schemas import (
     RecommendationResult,
     RuleOverride,
     SHAPFeature,
-    SKUFeatures,
 )
 from .rules.engine import run_rules
-from .features.engineer import build_features, compute_sku_features
+from .features.engineer import (
+    _estimate_daily_demand,
+    _get_seasonal_multiplier,
+    CATEGORY_VELOCITY,
+    EVENT_WINDOWS,
+)
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -46,9 +49,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
+ALLOWED_ORIGINS = [
+    "http://localhost:8000",   # EEP dashboard (local dev)
+    "http://localhost:3000",   # frontend dev server
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -322,15 +330,12 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         "suggested_discount_pct": 0,     # no pending suggestion at this step
     }
 
-    # Import seasonality for this SKU
-    from datetime import date as _date
-    from .features.engineer import _get_seasonal_multiplier, EVENT_WINDOWS
+    # Seasonality for this SKU
     today_month = _date.today().month
     features["seasonality_score"] = _get_seasonal_multiplier(today_month, req.category)
     features["event_proximity_score"] = EVENT_WINDOWS.get(today_month, ("none", 0.0))[1]
 
     # DOS estimate
-    from .features.engineer import _estimate_daily_demand, CATEGORY_VELOCITY
     num_comp = comp_oos  # crude proxy
     avg_daily = _estimate_daily_demand(
         req.current_stock, req.category, num_comp, req.retail_price_usd
@@ -343,6 +348,7 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
     rule_result = run_rules(features)
 
     rule_override = None
+    _fallback_used = False
     if rule_result["hard_override"]:
         decision = rule_result["forced_action"]
         confidence = 1.0 if rule_result["rule_override"] == "DEAD_STOCK_CLEAR" else 0.90
@@ -354,7 +360,8 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
                 direction="increases_probability",
                 explanation=rule_result["rules_fired"][0]["reason"],
             )
-        ] * 5
+            for _ in range(5)
+        ]
         fired = rule_result["rules_fired"][0]
         rule_override = RuleOverride(
             rule_id=fired["rule_id"],
@@ -371,15 +378,18 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         if confidence < CONFIDENCE_THRESHOLD:
             decision = "HOLD"
             confidence = 0.40
+            _fallback_used = True
             FALLBACK_COUNTER.inc()
 
     # Markdown price calculation
     suggested_price = None
+    suggested_discount = None
     margin_after = None
     if decision == "MARKDOWN":
         from stylepulse.analyzers.thresholds import get_markdown_recommendation
         md = get_markdown_recommendation(features["days_of_supply"])
         disc_pct = md["discount_pct"] if md else 15
+        suggested_discount = disc_pct
         suggested_price = round(req.retail_price_usd * (1 - disc_pct / 100), 2)
         margin_after = round(
             (suggested_price - req.cost_price_usd) / suggested_price * 100, 1
@@ -405,7 +415,8 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         explanation=explanation,
         shap_top5=shap_top5,
         rule_override=rule_override,
-        fallback_used=(confidence < CONFIDENCE_THRESHOLD and not rule_result["hard_override"]),
+        fallback_used=_fallback_used,
+        suggested_discount_pct=suggested_discount,
         suggested_price_usd=suggested_price,
         margin_after_action_pct=margin_after,
         model_version=MODEL_VERSION,

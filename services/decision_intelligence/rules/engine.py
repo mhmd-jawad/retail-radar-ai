@@ -196,17 +196,17 @@ def rule_recent_discount_protection(features: dict) -> dict:
     }
 
 
-def rule_calendar_event_nudge(features: dict) -> dict:
+def rule_calendar_event_nudge(features: dict, *, today: datetime | None = None) -> dict:
     """
     Rule 5 — CALENDAR EVENT NUDGE (soft — influences, does not override).
 
-    If a major retail event is within 14 days and stock/margin are healthy,
-    nudge toward PROMOTE or HOLD rather than MARKDOWN. This captures full-
-    price demand during the most valuable selling window.
+    If a major retail event is within EVENT_NUDGE_DAYS and stock/margin are
+    healthy, nudge toward PROMOTE or HOLD rather than MARKDOWN. This captures
+    full-price demand during the most valuable selling window.
 
     Override strength: SOFT — adds a signal, does not force a decision.
     """
-    current_month = datetime.now().month
+    current_month = (today or datetime.now()).month
     dos = features.get("days_of_supply", 0)
     margin_pct = features.get("current_margin_pct", 0)
 

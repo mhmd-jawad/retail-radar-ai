@@ -32,7 +32,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = ROOT / "data" / "real"
 DEFAULT_OUTPUT = ROOT / "data" / "features" / "features.csv"
 

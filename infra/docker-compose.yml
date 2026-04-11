@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ie2_decision_intelligence:
     build:
