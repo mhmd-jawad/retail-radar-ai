@@ -1,13 +1,13 @@
 section,line_item,amount_usd
 ASSETS,Cash — Fresh Dollars (operating),10500
 ASSETS,"Cash — Lollar (bank-trapped, real value)",1800.0
-ASSETS,Inventory — Active Stock (at cost),176848.67
+ASSETS,Inventory — Active Stock (at cost),301496.96
 ASSETS,Security Deposits,3300
 ASSETS,Store Fit-Out & Equipment (net of depreciation),21690.0
-ASSETS,TOTAL ASSETS,214138.67
-LIABILITIES,Accounts Payable — Suppliers (30-day terms),26527.3
-LIABILITIES,TOTAL LIABILITIES,26527.3
-EQUITY,Owner's Equity (total capital invested),187611.37
+ASSETS,TOTAL ASSETS,338786.96
+LIABILITIES,Accounts Payable — Suppliers (30-day terms),45224.54
+LIABILITIES,TOTAL LIABILITIES,45224.54
+EQUITY,Owner's Equity (total capital invested),293562.42
 EQUITY,Retained Earnings,0.0
-EQUITY,TOTAL EQUITY,187611.37
+EQUITY,TOTAL EQUITY,293562.42
 CHECK,Assets − (Liabilities + Equity),0.0

@@ -7,27 +7,27 @@
     "date_generated": "2026-04-11"
   },
   "inventory_summary": {
-    "total_skus": 350,
-    "total_units": 4277,
-    "value_at_cost_usd": 176848.67,
-    "value_at_retail_usd": 387633.91,
-    "blended_margin_pct": 54.4,
-    "brands_carried": 16
+    "total_skus": 400,
+    "total_units": 6483,
+    "value_at_cost_usd": 301496.96,
+    "value_at_retail_usd": 637256.33,
+    "blended_margin_pct": 52.7,
+    "brands_carried": 27
   },
   "balance_sheet_summary": {
-    "total_assets_usd": 214138.67,
-    "total_liabilities_usd": 26527.3,
-    "total_equity_usd": 187611.37,
-    "current_ratio": 8.07,
-    "inventory_pct_of_assets": 82.6
+    "total_assets_usd": 338786.96,
+    "total_liabilities_usd": 45224.54,
+    "total_equity_usd": 293562.42,
+    "current_ratio": 7.49,
+    "inventory_pct_of_assets": 89.0
   },
   "cashflow_summary": {
-    "annual_revenue_projected_usd": 1237940.7,
-    "annual_cogs_projected_usd": 618970.35,
+    "annual_revenue_projected_usd": 2110478.72,
+    "annual_cogs_projected_usd": 1055239.36,
     "monthly_fixed_opex_usd": 3500,
     "annual_fixed_opex_usd": 42000,
     "cash_runway_months": 3.0,
-    "breakeven_monthly_revenue_usd": 6436.19
+    "breakeven_monthly_revenue_usd": 6642.63
   },
   "lebanon_context": {
     "lollar_balance_usd": 12000,

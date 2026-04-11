@@ -143,6 +143,18 @@ BRAND_COST_RATIOS = {
     "Head": 0.48,
     "Billabong": 0.50,
     "Trek": 0.52,
+    # ── Tier B global brands (zero Lebanese presence) ──
+    "Mizuno": 0.50,
+    "K-Swiss": 0.52,
+    "La Sportiva": 0.46,
+    "Keen": 0.48,
+    "Columbia": 0.50,
+    "Teva": 0.55,
+    "Birkenstock": 0.48,
+    "Hey Dude": 0.55,
+    "Vans": 0.55,
+    "Ellesse": 0.55,
+    "Dr. Martens": 0.48,
 }
 DEFAULT_COST_RATIO = 0.52  # conservative for unknown brands
 
@@ -613,6 +625,118 @@ def print_summary(products, inventory):
     print("=" * 60)
 
 
+def build_tier_b_skus():
+    """Build 50 exclusive global-brand SKUs absent from all Lebanese scraped stores.
+
+    These are priced at MSRP × 1.11 (11% commission) with zero local competitors.
+    They bypass the curation scoring and are appended directly to the store catalogue.
+    """
+    TIER_B_SPECS = [
+        # (brand, product_name, style_code, system_category, gender, msrp_usd, sizes_eu, units_per_size)
+        # ── Volleyball / Indoor ──
+        ("Mizuno", "Mizuno Wave Lightning Z8", "V1GA2400", "footwear", "men", 120, (40, 47), 8),
+        ("Mizuno", "Mizuno Wave Lightning Z8 W", "V1GC2400", "footwear", "women", 120, (36, 42), 8),
+        ("Mizuno", "Mizuno Wave Momentum 3", "V1GA2412", "footwear", "men", 110, (40, 47), 6),
+        ("K-Swiss", "K-Swiss Hypercourt Express 2 W", "96613", "footwear", "women", 100, (36, 42), 6),
+        # ── Road Running Men ──
+        ("Mizuno", "Mizuno Wave Rider 28", "J1GC2403", "footwear", "men", 140, (40, 47), 6),
+        ("Mizuno", "Mizuno Wave Inspire 21", "J1GC2544", "footwear", "men", 140, (40, 46), 6),
+        ("La Sportiva", "La Sportiva Kaptiva 2", "56B", "footwear", "men", 140, (40, 46), 5),
+        ("La Sportiva", "La Sportiva Jackal II", "56J", "footwear", "men", 155, (40, 46), 4),
+        ("Columbia", "Columbia Facet 75 Outdry", "BM4524", "footwear", "men", 150, (40, 47), 5),
+        # ── Road Running Women ──
+        ("Mizuno", "Mizuno Wave Rider 28 W", "J1GD2403", "footwear", "women", 140, (36, 42), 6),
+        ("Mizuno", "Mizuno Wave Sky 8", "J1GD2402", "footwear", "women", 150, (36, 42), 5),
+        ("La Sportiva", "La Sportiva Wildcat 3.0 W", "26Z", "footwear", "women", 135, (36, 42), 4),
+        ("Columbia", "Columbia Peakfreak II OutDry W", "BL7027", "footwear", "women", 110, (36, 42), 5),
+        # ── Trail / Hiking Men ──
+        ("La Sportiva", "La Sportiva Bushido III", "46S", "footwear", "men", 150, (40, 46), 4),
+        ("Keen", "Keen Targhee IV Mid WP", "1028987", "footwear", "men", 165, (40, 47), 5),
+        ("Keen", "Keen Venture Mid WP", "1024864", "footwear", "men", 140, (40, 47), 5),
+        ("Keen", "Keen Jasper Vent", "1028060", "footwear", "men", 100, (39, 46), 6),
+        ("Columbia", "Columbia Newton Ridge Plus 2 WP", "BM3970", "footwear", "men", 100, (40, 47), 6),
+        # ── Trail / Hiking Women ──
+        ("Keen", "Keen Targhee IV WP Low W", "1028992", "footwear", "women", 135, (36, 42), 5),
+        ("Keen", "Keen Terradora Flex WP W", "1028730", "footwear", "women", 135, (36, 42), 5),
+        ("Columbia", "Columbia Newton Ridge Plus W", "BL4550", "footwear", "women", 90, (36, 42), 6),
+        ("La Sportiva", "La Sportiva Bushido III W", "46U", "footwear", "women", 145, (36, 42), 4),
+        # ── Kids Outdoor ──
+        ("Keen", "Keen Newport H2 Kids", "1025071", "kids", "kids", 70, (28, 38), 5),
+        ("Columbia", "Columbia Trailstorm Mid WP Kids", "BY5959", "kids", "kids", 70, (28, 38), 5),
+        ("Keen", "Keen Targhee Sport Kids", "1024742", "kids", "kids", 75, (32, 38), 5),
+        # ── Sandals ──
+        ("Teva", "Teva Original Universal M", "1004006", "footwear", "men", 60, (40, 47), 8),
+        ("Teva", "Teva Original Universal W", "1003987", "footwear", "women", 60, (36, 42), 8),
+        ("Teva", "Teva Hurricane XLT2 M", "1019234", "footwear", "men", 70, (39, 46), 6),
+        ("Teva", "Teva Tirra W", "4266", "footwear", "women", 70, (36, 42), 6),
+        ("Keen", "Keen Newport H2 Sandal M", "1001907", "footwear", "men", 110, (40, 47), 5),
+        ("Keen", "Keen Howser III Slide", "1028585", "footwear", "unisex", 80, (37, 46), 5),
+        # ── Comfort / Senior ──
+        ("Birkenstock", "Birkenstock Arizona Birko-Flor W", "051731", "footwear", "women", 100, (36, 43), 5),
+        ("Birkenstock", "Birkenstock Boston Clog M", "060401", "footwear", "men", 150, (40, 46), 4),
+        ("Birkenstock", "Birkenstock Gizeh Toe Post W", "043731", "footwear", "women", 105, (36, 42), 5),
+        ("Hey Dude", "Hey Dude Wally Slip-On M", "40001", "footwear", "men", 70, (40, 47), 6),
+        ("Hey Dude", "Hey Dude Wendy Slip-On W", "41001", "footwear", "women", 70, (36, 42), 6),
+        ("Birkenstock", "Birkenstock Arizona Kids", "555123", "kids", "kids", 75, (28, 35), 5),
+        # ── Skate / Street Teen ──
+        ("Vans", "Vans Old Skool Black/White", "VN000D3HY28", "lifestyle", "unisex", 70, (36, 46), 8),
+        ("Vans", "Vans Old Skool White", "VN0A38G1ODJ", "lifestyle", "unisex", 70, (36, 46), 8),
+        ("Vans", "Vans SK8-Hi Black", "VN000D5IB8C", "lifestyle", "unisex", 85, (36, 46), 6),
+        ("Vans", "Vans Authentic White", "VN000EE3W00", "lifestyle", "unisex", 65, (35, 46), 8),
+        ("Vans", "Vans Old Skool Kids", "VN000W9TENR", "kids", "kids", 50, (28, 35), 6),
+        ("Ellesse", "Ellesse Raptor Lo M", "SHPF0637", "lifestyle", "men", 75, (40, 46), 5),
+        ("Ellesse", "Ellesse Massimo Club W", "SHPF0640", "lifestyle", "women", 75, (36, 42), 5),
+        ("K-Swiss", "K-Swiss Classic 66 M", "06042", "lifestyle", "men", 70, (40, 46), 5),
+        # ── Fashion Boots ──
+        ("Dr. Martens", "Dr. Martens 1460 Boot Black M", "11822006", "footwear", "men", 170, (40, 46), 4),
+        ("Dr. Martens", "Dr. Martens 1460 Boot Black W", "11821006", "footwear", "women", 170, (36, 42), 4),
+        ("Dr. Martens", "Dr. Martens 1460 Cherry Red W", "11821600", "footwear", "women", 185, (36, 42), 4),
+        ("Dr. Martens", "Dr. Martens 1461 Oxford Black M", "11838002", "footwear", "men", 135, (40, 46), 4),
+        ("Dr. Martens", "Dr. Martens 1460 Kids", "15382001", "kids", "kids", 100, (28, 35), 5),
+    ]
+
+    COMMISSION = 1.11  # 11% on MSRP
+    products = []
+
+    for brand, name, style_code, sys_cat, gender, msrp, size_range, units_per_size in TIER_B_SPECS:
+        retail_price = round(msrp * COMMISSION, 2)
+        cost_ratio = BRAND_COST_RATIOS.get(brand, DEFAULT_COST_RATIO)
+        cost_price = round(retail_price * cost_ratio, 2)
+        margin_pct = round((1 - cost_price / retail_price) * 100, 1)
+
+        num_sizes = size_range[1] - size_range[0] + 1
+        initial_stock = num_sizes * units_per_size
+
+        product_key = f"{brand.upper()}|{style_code}"
+        sku_id = hashlib.md5(product_key.encode()).hexdigest()[:10].upper()
+
+        products.append({
+            "sku_id": f"SP-{sku_id}",
+            "product_key": product_key,
+            "style_code": style_code,
+            "brand": brand,
+            "product_name": name,
+            "system_category": sys_cat,
+            "gender": gender,
+            "retail_price_usd": retail_price,
+            "cost_price_usd": cost_price,
+            "gross_margin_pct": margin_pct,
+            "market_median_price_usd": retail_price,
+            "market_min_price_usd": round(msrp * 0.90, 2),
+            "market_max_price_usd": round(msrp * 1.15, 2),
+            "num_competitors": 0,
+            "competitors": "",
+            "num_sizes": num_sizes,
+            "initial_stock": initial_stock,
+            "availability_ratio": 1.0,
+            "collection_type": "exclusive",
+            "fx_rate_used": 0,
+        })
+
+    print(f"Built {len(products)} Tier B exclusive SKUs (global brands, zero Lebanese presence)")
+    return products
+
+
 def main():
     if not SCRAPED_CSV.exists():
         print(f"ERROR: Scraped data not found at {SCRAPED_CSV}")
@@ -632,6 +756,10 @@ def main():
 
     # Step 4: Curate realistic store assortment (300-500 SKUs)
     store_products = curate_store_catalogue(all_products, target_skus=350)
+
+    # Step 4b: Append Tier B exclusive global-brand SKUs
+    tier_b = build_tier_b_skus()
+    store_products.extend(tier_b)
 
     # Step 5: Build opening inventory
     inventory = build_opening_inventory(store_products)
