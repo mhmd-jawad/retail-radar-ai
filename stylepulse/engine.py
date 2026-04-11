@@ -22,12 +22,16 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data" / "reports"
 
 def load_csv(path):
     """Load a CSV file as a list of dicts."""
+    if not path.exists():
+        raise FileNotFoundError(f"Required data file not found: {path}")
     with open(path, encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
 def load_json(path):
     """Load a JSON file."""
+    if not path.exists():
+        raise FileNotFoundError(f"Required data file not found: {path}")
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 

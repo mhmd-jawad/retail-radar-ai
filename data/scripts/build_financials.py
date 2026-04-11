@@ -27,6 +27,7 @@ Usage:
 import csv
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -246,11 +247,11 @@ def build_cashflow_template(inventory_at_cost):
         11: 0.070, 12: 0.075,
     }
 
-    # Annual revenue target: 3.5× inventory turn at retail
-    annual_revenue_target = round(inventory_at_cost * 3.5 / 0.48, 2)
-    # That gives us revenue derived from cost × turn × (1/avg_cost_ratio)
+    assert abs(sum(MONTHLY_REVENUE_SHARE.values()) - 1.0) < 0.001, (
+        f"MONTHLY_REVENUE_SHARE sums to {sum(MONTHLY_REVENUE_SHARE.values())}, expected 1.0"
+    )
 
-    # Actually simpler: use inventory at retail × expected sell-through
+    # Annual revenue: 3.5× inventory turn at cost, then convert through margin
     # A 3.5× turn on cost means annual COGS = 3.5 × inventory_at_cost
     annual_cogs = round(inventory_at_cost * 3.5, 2)
     avg_margin = 0.50  # from our blended margin
@@ -309,6 +310,7 @@ def build_financial_profile(products, balance_sheet_rows, cashflow_rows,
                              annual_revenue, annual_cogs, fresh_buffer):
     """Build JSON profile summarizing the full financial picture."""
     monthly_fixed = compute_monthly_fixed_opex()
+    avg_margin = round(1 - (inventory_at_cost / inventory_at_retail), 4) if inventory_at_retail > 0 else 0.50
 
     profile = {
         "store_profile": {
@@ -316,7 +318,7 @@ def build_financial_profile(products, balance_sheet_rows, cashflow_rows,
             "location": "Lebanon (Beirut suburb or secondary city)",
             "currency": "fresh USD",
             "fx_rate_lbp_usd": 90000,
-            "date_generated": "2026-04-11",
+            "date_generated": date.today().isoformat(),
         },
         "inventory_summary": {
             "total_skus": len(products),
@@ -330,7 +332,7 @@ def build_financial_profile(products, balance_sheet_rows, cashflow_rows,
             "total_assets_usd": total_assets,
             "total_liabilities_usd": supplier_payable,
             "total_equity_usd": owner_equity,
-            "current_ratio": round(total_assets / supplier_payable, 2) if supplier_payable > 0 else 999,
+            "current_ratio": round(total_assets / supplier_payable, 2) if supplier_payable > 0 else None,
             "inventory_pct_of_assets": round((inventory_at_cost / total_assets) * 100, 1),
         },
         "cashflow_summary": {
@@ -339,7 +341,7 @@ def build_financial_profile(products, balance_sheet_rows, cashflow_rows,
             "monthly_fixed_opex_usd": monthly_fixed,
             "annual_fixed_opex_usd": monthly_fixed * 12,
             "cash_runway_months": round(fresh_buffer / monthly_fixed, 1),
-            "breakeven_monthly_revenue_usd": round(monthly_fixed / 0.45, 2),
+            "breakeven_monthly_revenue_usd": round(monthly_fixed / avg_margin, 2),
         },
         "lebanon_context": {
             "lollar_balance_usd": LOLLAR_BALANCE,

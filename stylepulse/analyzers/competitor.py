@@ -6,6 +6,8 @@ to determine market positioning, pricing opportunities, and risks.
 """
 
 import statistics
+from collections import Counter
+
 from . import thresholds as T
 
 
@@ -165,7 +167,6 @@ def analyze(products, competitor_prices, inventory_results):
     # Brand summary
     brand_summary = {}
     for brand, data in brand_agg.items():
-        from collections import Counter
         pos_dist = Counter(data["positions"])
         brand_summary[brand] = {
             "sku_count": data["count"],
@@ -178,7 +179,6 @@ def analyze(products, competitor_prices, inventory_results):
     # Category summary
     category_comp_summary = {}
     for cat, data in category_agg.items():
-        from collections import Counter
         pos_dist = Counter(data["positions"])
         category_comp_summary[cat] = {
             "sku_count": data["count"],
@@ -188,7 +188,6 @@ def analyze(products, competitor_prices, inventory_results):
 
     # Market overview
     all_gaps = [s["price_gap_pct"] for s in sku_positioning]
-    from collections import Counter
     all_positions = Counter(s["position"] for s in sku_positioning)
 
     market_overview = {

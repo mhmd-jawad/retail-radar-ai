@@ -6,6 +6,8 @@ based on inventory health, competitive position, seasonality, and cash flow.
 """
 
 from datetime import datetime
+import calendar
+
 from . import thresholds as T
 
 
@@ -59,7 +61,7 @@ def analyze(products, inventory_results, competitor_results, financial_results):
         cat_seasonal = T.get_seasonal_multiplier(current_month, category)
 
         # ── CLEARANCE: dead stock, cash recovery ──
-        if dos_status == "dead" or (dos > T.DOS_DEAD and margin_pct > T.MARGIN_CLEARANCE):
+        if dos_status == "dead" or (dos > T.DOS_DEAD and margin_pct < T.MARGIN_FLOOR):
             value_at_cost = inv.get("value_at_cost_usd", 0)
             clearance.append({
                 "sku_id": sku_id,
@@ -190,12 +192,10 @@ def _build_seasonal_actions(current_month, inventory_results, cash_tight):
     actions = []
 
     next_3_months = [(current_month + i - 1) % 12 + 1 for i in range(1, 4)]
-    month_names = ["", "January", "February", "March", "April", "May", "June",
-                   "July", "August", "September", "October", "November", "December"]
 
     for m in next_3_months:
         mult = T.get_seasonal_multiplier(m)
-        name = month_names[m]
+        name = calendar.month_name[m]
 
         if mult >= 1.15:
             actions.append({

@@ -74,7 +74,7 @@ MARKDOWN_SCHEDULE = [
     {"dos_min": 90, "dos_max": 120, "discount_pct": 15, "label": "light_markdown"},
     {"dos_min": 120, "dos_max": 150, "discount_pct": 25, "label": "moderate_markdown"},
     {"dos_min": 150, "dos_max": 180, "discount_pct": 35, "label": "deep_markdown"},
-    {"dos_min": 180, "dos_max": 9999, "discount_pct": 50, "label": "clearance"},
+    {"dos_min": 180, "dos_max": 99999, "discount_pct": 50, "label": "clearance"},
 ]
 
 # ── Seasonal Calendar (Lebanon) ────────────────────────────────────────────
@@ -146,11 +146,3 @@ def get_seasonal_multiplier(month, category=None):
         boost = CATEGORY_SEASONAL_BOOST[category].get(month, 0)
         return base + boost
     return base
-
-
-def compute_reorder_point(avg_daily_demand, lead_time_type="regional"):
-    """Compute reorder point for Lebanon lead times."""
-    lead_days = LEAD_TIME_DAYS.get(lead_time_type, 35)
-    safety_stock = avg_daily_demand * SAFETY_FACTOR * (lead_days ** 0.5)
-    rop = (avg_daily_demand * lead_days) + safety_stock
-    return round(rop), round(safety_stock)

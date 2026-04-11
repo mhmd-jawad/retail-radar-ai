@@ -27,7 +27,9 @@ def analyze(financial_profile, balance_sheet, cashflow, inventory_results):
     total_assets = bs_summary.get("total_assets_usd", 0)
     total_liabilities = bs_summary.get("total_liabilities_usd", 0)
     total_equity = bs_summary.get("total_equity_usd", 0)
-    current_ratio = bs_summary.get("current_ratio", 0)
+    current_ratio = bs_summary.get("current_ratio")
+    if current_ratio is None:
+        current_ratio = 0
     inventory_pct = bs_summary.get("inventory_pct_of_assets", 0)
 
     inv_metrics = inventory_results.get("metrics", {})

@@ -8,26 +8,26 @@
   },
   "inventory_summary": {
     "total_skus": 350,
-    "total_units": 4275,
-    "value_at_cost_usd": 176875.19,
-    "value_at_retail_usd": 390501.41,
-    "blended_margin_pct": 54.7,
+    "total_units": 4277,
+    "value_at_cost_usd": 176848.67,
+    "value_at_retail_usd": 387633.91,
+    "blended_margin_pct": 54.4,
     "brands_carried": 16
   },
   "balance_sheet_summary": {
-    "total_assets_usd": 214165.19,
-    "total_liabilities_usd": 26531.28,
-    "total_equity_usd": 187633.91,
+    "total_assets_usd": 214138.67,
+    "total_liabilities_usd": 26527.3,
+    "total_equity_usd": 187611.37,
     "current_ratio": 8.07,
     "inventory_pct_of_assets": 82.6
   },
   "cashflow_summary": {
-    "annual_revenue_projected_usd": 1238126.34,
-    "annual_cogs_projected_usd": 619063.17,
+    "annual_revenue_projected_usd": 1237940.7,
+    "annual_cogs_projected_usd": 618970.35,
     "monthly_fixed_opex_usd": 3500,
     "annual_fixed_opex_usd": 42000,
     "cash_runway_months": 3.0,
-    "breakeven_monthly_revenue_usd": 7777.78
+    "breakeven_monthly_revenue_usd": 6436.19
   },
   "lebanon_context": {
     "lollar_balance_usd": 12000,

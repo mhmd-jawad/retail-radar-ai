@@ -18,6 +18,7 @@ import csv
 import hashlib
 import json
 import os
+import random
 import re
 import statistics
 import sys
@@ -165,17 +166,27 @@ STOCK_DEPTH = {
 def load_scraped_data():
     """Load and validate all scraped records."""
     rows = []
+    skipped = 0
     with open(SCRAPED_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r.get("data_valid") != "True":
+                skipped += 1
                 continue
             if not r.get("product_name") or not r.get("competitor_price"):
+                skipped += 1
                 continue
-            price = float(r["competitor_price"])
+            try:
+                price = float(r["competitor_price"])
+            except (ValueError, TypeError):
+                skipped += 1
+                continue
             if price <= 0:
+                skipped += 1
                 continue
             rows.append(r)
     print(f"Loaded {len(rows)} valid scraped records from {SCRAPED_CSV.name}")
+    if skipped:
+        print(f"  (skipped {skipped} invalid/incomplete rows)")
     return rows
 
 
@@ -319,26 +330,25 @@ def build_product_catalogue(groups):
         # Retail price: store pricing strategy (not exactly at median)
         # A new Lebanese store mixes: premium on exclusives/accessories,
         # competitive on core, aggressive on traffic-drivers
-        import random
-        random.seed(hash(key) & 0xFFFFFFFF)  # deterministic per product
+        rng = random.Random(hash(key) & 0xFFFFFFFF)  # deterministic per product
 
         # Generate a base adjustment using brand positioning
-        tier = random.random()  # 0-1 uniform
+        tier = rng.random()  # 0-1 uniform
         if tier < 0.15:
             # 15% of SKUs: traffic drivers — priced below market
-            price_adj = random.uniform(0.86, 0.95)
+            price_adj = rng.uniform(0.86, 0.95)
         elif tier < 0.35:
             # 20% of SKUs: competitive — at or slightly below market
-            price_adj = random.uniform(0.95, 1.02)
+            price_adj = rng.uniform(0.95, 1.02)
         elif tier < 0.70:
             # 35% of SKUs: core — moderate markup
-            price_adj = random.uniform(1.02, 1.10)
+            price_adj = rng.uniform(1.02, 1.10)
         elif tier < 0.90:
             # 20% of SKUs: premium positioning
-            price_adj = random.uniform(1.10, 1.18)
+            price_adj = rng.uniform(1.10, 1.18)
         else:
             # 10% of SKUs: exclusive / high-service premium
-            price_adj = random.uniform(1.18, 1.30)
+            price_adj = rng.uniform(1.18, 1.30)
 
         # Category nudge
         if sys_cat == "accessories":
@@ -419,8 +429,7 @@ def curate_store_catalogue(all_products, target_skus=350):
       3. Balanced category mix (footwear 30%, apparel 35%, accessories 15%, other 20%)
       4. Healthy margins (skip items where cost ≈ retail)
     """
-    import random
-    random.seed(42)  # reproducible
+    rng = random.Random(42)  # reproducible
 
     # Target category allocation (% of target_skus)
     CATEGORY_ALLOC = {
