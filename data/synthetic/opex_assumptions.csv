@@ -1,0 +1,8 @@
+item,type,value
+rent_usd,fixed_monthly_usd,1288.81
+salaries_usd,fixed_monthly_usd,1330.51
+utilities_usd,fixed_monthly_usd,103.5
+misc_opex_usd,fixed_monthly_usd,114.98
+payment_processing_pct,variable_rate,0.0211
+marketing_pct,variable_rate,0.0393
+logistics_pct_of_cogs,variable_rate,0.0188
