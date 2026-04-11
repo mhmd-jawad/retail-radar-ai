@@ -1,2 +1,4 @@
 data/outputs/
 scraping_new/
+__pycache__/
+*.pyc

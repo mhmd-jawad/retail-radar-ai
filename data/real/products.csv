@@ -1,0 +1,351 @@
+sku_id,product_key,style_code,brand,product_name,system_category,gender,retail_price_usd,cost_price_usd,gross_margin_pct,market_median_price_usd,market_min_price_usd,market_max_price_usd,num_competitors,competitors,num_sizes,initial_stock,availability_ratio,collection_type,fx_rate_used
+SP-6A627AE57E,ADIDAS|ID8764,ID8764,Adidas,Adidas Galaxy 7 Women Running Shoes Black,footwear,women,82.78,38.4,53.6,80.0,80.0,80.0,2,"adidas_lb,mikesport",7,12,1.0,core,90000
+SP-EA1A90B4B8,ADIDAS|HQ6041,HQ6041,Adidas,Adidas Stan Smith Millencon Lifestyle Women,footwear,women,92.88,35.76,61.5,74.5,61.0,88.0,2,"adidas_lb,tchooz",3,10,1.0,core,90000
+SP-C7EF6CC8AF,ADIDAS|ID8840,ID8840,Adidas,Adidas Ultraboost 5 Women Running Shoes White/Grey/Pink,footwear,women,171.42,70.56,58.8,147.0,144.0,150.0,2,"adidas_lb,mikesport",2,9,1.0,core,90000
+SP-26E1DF3914,ADIDAS|IG9166,IG9166,Adidas,"Advantage 2.0 Shoes, White",footwear,men,135.84,60.48,55.5,126.0,126.0,126.0,2,"adidas_lb,tchooz",16,14,1.0,core,90000
+SP-265659CA96,ADIDAS|IG9175,IG9175,Adidas,"Advantage 2.0 Shoes, White",footwear,women,136.67,60.48,55.7,126.0,126.0,126.0,2,"adidas_lb,tchooz",8,13,1.0,core,90000
+SP-C328DB5C58,ADIDAS|IG9184,IG9184,Adidas,"Advantage Base 2.0 Shoes, Black",footwear,men,102.01,45.84,55.1,95.5,95.0,96.0,2,"adidas_lb,tchooz",4,10,1.0,core,90000
+SP-1A5E48962B,ADIDAS|JI2316,JI2316,Adidas,"Barreda Decode Shoes, Black",footwear,men,110.69,60.48,45.4,126.0,126.0,126.0,2,"adidas_lb,tchooz",3,10,1.0,core,90000
+SP-C1FA92617F,ADIDAS|JI2318,JI2318,Adidas,"Barreda Decode Shoes, Green",footwear,men,138.23,60.48,56.2,126.0,126.0,126.0,2,"adidas_lb,tchooz",9,13,1.0,core,90000
+SP-A2D46F25B1,ADIDAS|JI2321,JI2321,Adidas,"Barreda Decode Shoes, White",footwear,women,122.66,60.48,50.7,126.0,126.0,126.0,2,"adidas_lb,tchooz",8,13,1.0,core,90000
+SP-C5A9CE6C8D,ADIDAS|JI2306,JI2306,Adidas,"Barreda Shoes, White",footwear,men,93.56,45.84,51.0,95.5,95.0,96.0,2,"adidas_lb,tchooz",11,14,1.0,core,90000
+SP-8C2C7BFBA1,ADIDAS|IH1478,IH1478,Adidas,"Grand Court 3.0 Shoes, White",footwear,men,133.71,60.48,54.8,126.0,126.0,126.0,2,"adidas_lb,tchooz",11,14,1.0,core,90000
+SP-CF5BCC0FE2,ADIDAS|JI4632,JI4632,Adidas,"Response Super Shoes, White",footwear,unisex,60.64,33.12,45.4,69.0,69.0,69.0,2,"adidas_lb,tchooz",7,12,1.0,core,90000
+SP-20E084F9D9,NEW BALANCE|BB550,BB550,New Balance,New Balance Bb550 Men Lifestyle Shoes Sea Salt/Blue/Angora,footwear,men,111.9,56.35,49.6,115.0,95.0,139.0,2,"mikesport,tchooz",11,14,0.55,seasonal,90000
+SP-48A96BB634,ADIDAS|IG8986,IG8986,Adidas,"4DFWD 3 Running Shoes, Black",footwear,men,229.13,99.36,56.6,207.0,207.0,207.0,1,adidas_lb,1,9,1.0,core,90000
+SP-3B493D0895,ADIDAS|IE5863,IE5863,Adidas,"4DFWD 4 Running Shoes, White",footwear,men,157.24,76.32,51.5,159.0,159.0,159.0,1,adidas_lb,1,9,1.0,core,90000
+SP-28A4947B98,ADIDAS|ID3489,ID3489,Adidas,"4Dfwd 3 Running Shoes, Beige",footwear,men,204.49,99.36,51.4,207.0,207.0,207.0,1,adidas_lb,1,9,1.0,core,90000
+SP-6C4030E8BF,ADIDAS|ID3499,ID3499,Adidas,"4Dfwd 3 Running Shoes, Beige",footwear,women,247.56,99.36,59.9,207.0,207.0,207.0,1,adidas_lb,3,10,1.0,core,90000
+SP-73E4C8CC61,ADIDAS|ID3488,ID3488,Adidas,"4Dfwd 3 Running Shoes, Black",footwear,men,166.17,76.32,54.1,159.0,159.0,159.0,1,adidas_lb,1,9,1.0,core,90000
+SP-DEECA186E7,ADIDAS|ID3491,ID3491,Adidas,"4Dfwd 3 Running Shoes, Black",footwear,men,155.45,60.96,60.8,127.0,127.0,127.0,1,adidas_lb,1,9,1.0,core,90000
+SP-745B1972AB,ADIDAS|IG8995,IG8995,Adidas,"4Dfwd 3 Running Shoes, Black",footwear,women,223.6,99.36,55.6,207.0,207.0,207.0,1,adidas_lb,5,11,1.0,core,90000
+SP-485BDE7E2C,ADIDAS|IG8996,IG8996,Adidas,"4Dfwd 3 Running Shoes, Black",footwear,women,233.2,99.36,57.4,207.0,207.0,207.0,1,adidas_lb,1,9,1.0,core,90000
+SP-545229B88B,ADIDAS|IG8980,IG8980,Adidas,"4Dfwd 3 Running Shoes, Grey",footwear,men,153.07,76.32,50.1,159.0,159.0,159.0,1,adidas_lb,5,11,1.0,core,90000
+SP-BEDB9977CB,ADIDAS|ID8882,ID8882,Adidas,"4Dfwd 4 Running Shoes, Black",footwear,women,152.38,76.32,49.9,159.0,159.0,159.0,1,adidas_lb,6,12,1.0,core,90000
+SP-0D8F9A9ADA,ADIDAS|ID8311,ID8311,Adidas,"4Dfwd 4 Running Shoes, White",footwear,women,218.0,99.36,54.4,207.0,207.0,207.0,1,adidas_lb,3,10,1.0,core,90000
+SP-9DB6B598F6,ADIDAS|ID8887,ID8887,Adidas,"4Dfwd 4 Running Shoes, White",footwear,men,121.31,60.96,49.7,127.0,127.0,127.0,1,adidas_lb,6,12,1.0,core,90000
+SP-F272E0B3EC,CROCS|IN236717,IN236717,Crocs,Crocs All Day Men Lifestyle Slippers Black,footwear,men,37.4,18.72,49.9,36.0,36.0,36.0,1,mikesport,6,12,1.0,core,90000
+SP-26CA5937C8,CROCS|IN236719,IN236719,Crocs,Crocs All Day Men Lifestyle Slippers Navy,footwear,men,36.95,18.72,49.3,36.0,36.0,36.0,1,mikesport,6,12,1.0,core,90000
+SP-CA4D78ABDF,CROCS|IN236714,IN236714,Crocs,Crocs All Day Women Lifestyle Slippers Black,footwear,women,40.69,18.72,54.0,36.0,36.0,36.0,1,mikesport,4,10,1.0,core,90000
+SP-0A0C5718B8,CROCS|IN236716,IN236716,Crocs,Crocs All Day Women Lifestyle Slippers Powder Pink,footwear,women,37.31,18.72,49.8,36.0,36.0,36.0,1,mikesport,1,9,1.0,core,90000
+SP-1DE83EF0B0,CROCS|IN236715,IN236715,Crocs,Crocs All Day Women Lifestyle Slippers White,footwear,women,35.65,18.72,47.5,36.0,36.0,36.0,1,mikesport,4,10,1.0,core,90000
+SP-22ED3EE46C,CROCS|IN206521,IN206521,Crocs,Crocs All Terrain Kids Lifestyle Sandals Storm,footwear,kids,32.7,15.08,53.9,29.0,29.0,29.0,1,mikesport,1,9,1.0,core,90000
+SP-1EFF62AD3C,CROCS|IN164432,IN164432,Crocs,Crocs Bae Clog Women Lifestyle Black,footwear,women,89.95,43.68,51.4,84.0,84.0,84.0,1,mikesport,4,10,1.0,core,90000
+SP-B3F68BA4E6,CROCS|IN221082,IN221082,Crocs,Crocs Bae Clog Women Lifestyle Dragon Fruit,footwear,women,107.92,43.68,59.5,84.0,84.0,84.0,1,mikesport,3,10,1.0,core,90000
+SP-579FCCF26F,CROCS|IN221081,IN221081,Crocs,Crocs Bae Clog Women Lifestyle Kiwi,footwear,women,93.5,43.68,53.3,84.0,84.0,84.0,1,mikesport,3,10,1.0,core,90000
+SP-9EF0AF0731,CROCS|IN221083,IN221083,Crocs,Crocs Bae Clog Women Lifestyle Orangesicle,footwear,women,102.88,43.68,57.5,84.0,84.0,84.0,1,mikesport,3,10,1.0,core,90000
+SP-4922B84AAD,CROCS|IN221080,IN221080,Crocs,Crocs Bae Clog Women Lifestyle White,footwear,women,89.88,43.68,51.4,84.0,84.0,84.0,1,mikesport,2,9,1.0,core,90000
+SP-1B705F3CD9,CROCS|IN227558,IN227558,Crocs,Crocs Bae Glitter Clog Women Lifestyle Clog Pink Milk,footwear,women,95.5,46.8,51.0,90.0,90.0,90.0,1,mikesport,2,9,1.0,core,90000
+SP-0AA1FDD34E,CROCS|IN227557,IN227557,Crocs,Crocs Bae Glitter Women Lifestyle Clog Black,footwear,women,102.44,46.8,54.3,90.0,90.0,90.0,1,mikesport,1,9,1.0,core,90000
+SP-6F212837EF,CROCS|IN231583,IN231583,Crocs,Crocs Bae Lined Women Lifestyle Clog Black,footwear,women,65.23,34.84,46.6,67.0,67.0,67.0,1,mikesport,1,9,1.0,core,90000
+SP-63D1F944FA,CROCS|IN236746,IN236746,Crocs,Crocs Bae Pinnacle Embellished Women Lifestyle Clog Frappe,footwear,women,156.65,87.36,44.2,168.0,168.0,168.0,1,mikesport,1,9,1.0,core,90000
+SP-7C595F60D7,CROCS|IN236684,IN236684,Crocs,Crocs Bae Women Lifestyle Clog Mauve Mist,footwear,women,105.22,43.68,58.5,84.0,84.0,84.0,1,mikesport,4,10,1.0,core,90000
+SP-5FCBB664AF,CROCS|IN224595,IN224595,Crocs,Crocs Bae Women Lifestyle Clog Milk Chocolate,footwear,women,82.37,43.68,47.0,84.0,84.0,84.0,1,mikesport,1,9,1.0,core,90000
+SP-57E4E0DDE1,CROCS|IN236685,IN236685,Crocs,Crocs Bae Women Lifestyle Clog Quartz,footwear,women,83.42,43.68,47.6,84.0,84.0,84.0,1,mikesport,4,10,1.0,core,90000
+SP-CE1996B0E0,CROCS|IN227545,IN227545,Crocs,Crocs Bae Women Lifestyle Clog Starfish,footwear,women,107.81,43.68,59.5,84.0,84.0,84.0,1,mikesport,1,9,1.0,core,90000
+SP-12E813D427,CROCS|IN227544,IN227544,Crocs,Crocs Bae Women Lifestyle Clog Taupe,footwear,women,81.92,43.68,46.7,84.0,84.0,84.0,1,mikesport,3,10,1.0,core,90000
+SP-D62159F18D,CROCS|IN238068,IN238068,Crocs,Crocs Barbie Classic Infant Lifestyle Clog Multi,footwear,kids,52.98,31.2,41.1,60.0,60.0,60.0,1,mikesport,3,10,1.0,core,90000
+SP-ABDA020E90,CROCS|IN238067,IN238067,Crocs,Crocs Barbie Classic Kids Lifestyle Clog Multi,footwear,kids,62.94,34.32,45.5,66.0,66.0,66.0,1,mikesport,4,10,1.0,core,90000
+SP-CC5CDA3953,CROCS|IN073617,IN073617,Crocs,Crocs Bistro Slip Resistant Work Clog Unisex lifestyle Slippers Black,footwear,unisex,48.23,21.84,54.7,42.0,42.0,42.0,1,mikesport,2,9,1.0,core,90000
+SP-8909E63A20,CROCS|IN073618,IN073618,Crocs,Crocs Bistro Slip Resistant Work Clog Unisex lifestyle Slippers Navy,footwear,unisex,44.1,21.84,50.5,42.0,42.0,42.0,1,mikesport,4,10,1.0,core,90000
+SP-B6194DA390,NEW BALANCE|NB9060,NB9060,New Balance,Joe Freshgoods x New Balance NB9060,footwear,unisex,71.73,39.2,45.4,80.0,80.0,80.0,1,shoesworld,12,14,1.0,core,90000
+SP-AA3A19B5B7,NEW BALANCE|IN234813,IN234813,New Balance,New Balance 1000 Women Lifestyle Shoes Silver Metallic,footwear,women,213.57,112.21,47.5,229.0,229.0,229.0,1,mikesport,3,10,1.0,core,90000
+SP-1119C7A992,NEW BALANCE|IN217981,IN217981,New Balance,New Balance 1080 Men Running Shoes Black/Magnet/Linen,footwear,men,203.27,98.98,51.3,202.0,202.0,202.0,1,mikesport,3,10,1.0,core,90000
+SP-24B46A527F,NEW BALANCE|IN219772,IN219772,New Balance,New Balance 1080 Women Running Shoes Black/Phantom,footwear,women,224.61,98.98,55.9,202.0,202.0,202.0,1,mikesport,1,9,1.0,core,90000
+SP-D066E902D0,NEW BALANCE|IN234716,IN234716,New Balance,New Balance 1080V15 Men Running Shoes Afterglow,footwear,men,321.86,134.75,58.1,275.0,275.0,275.0,1,mikesport,6,12,1.0,core,90000
+SP-DB450DEC3B,NEW BALANCE|IN234715,IN234715,New Balance,New Balance 1080V15 Men Running Shoes Black,footwear,men,298.0,134.75,54.8,275.0,275.0,275.0,1,mikesport,7,12,1.0,core,90000
+SP-928176DAC9,NEW BALANCE|IN232938,IN232938,New Balance,New Balance 1440 Men Running Shoes Black,footwear,men,104.86,53.41,49.1,109.0,109.0,109.0,1,mikesport,4,10,1.0,core,90000
+SP-A5571E2645,NEW BALANCE|IN209953,IN209953,New Balance,New Balance 1906 Men Lifestyle Shoes Silver/Black,footwear,unisex,283.54,134.75,52.5,275.0,275.0,275.0,1,mikesport,6,12,1.0,core,90000
+SP-B2BF00C26E,NEW BALANCE|IN226798,IN226798,New Balance,New Balance 1906R Unisex Lifestyle Shoes Harbor Grey,footwear,unisex,321.34,134.75,58.1,275.0,275.0,275.0,1,mikesport,7,12,1.0,core,90000
+SP-9E192AAE8B,NEW BALANCE|IN223598,IN223598,New Balance,New Balance 1906R Women Lifestyle Shoes Silver Metalic,footwear,women,218.49,98.98,54.7,202.0,202.0,202.0,1,mikesport,7,12,1.0,core,90000
+SP-16070A4590,NEW BALANCE|IN202153,IN202153,New Balance,New Balance 2002R Unisex Lifestyle Shoes Bone/ Light Aluminum,footwear,unisex,125.46,62.72,50.0,128.0,128.0,128.0,1,mikesport,1,9,1.0,core,90000
+SP-5142DAE261,NEW BALANCE|IN234835,IN234835,New Balance,New Balance 204L Women Lifestyle Shoes Grey,footwear,women,169.86,82.81,51.2,169.0,169.0,169.0,1,mikesport,7,12,1.0,core,90000
+SP-FB406DA2F5,NEW BALANCE|IN226994,IN226994,New Balance,New Balance 237 Women Lifestyle Shoes Sea Salt,footwear,women,117.85,49.98,57.6,102.0,102.0,102.0,1,mikesport,2,9,1.0,core,90000
+SP-A0C279D81B,NEW BALANCE|IN209467,IN209467,New Balance,New Balance 327 Men Lifestyle Shoes Black/White,footwear,men,165.45,82.81,49.9,169.0,169.0,169.0,1,mikesport,8,13,1.0,core,90000
+SP-3B47C73D99,NEW BALANCE|IN234838,IN234838,New Balance,New Balance 327 Men Lifestyle Shoes Brown,footwear,men,180.67,82.81,54.2,169.0,169.0,169.0,1,mikesport,11,14,1.0,core,90000
+SP-C48AE249D6,NEW BALANCE|IN192327,IN192327,New Balance,New Balance 327 Men Lifestyle Shoes Grey/ White,footwear,men,133.24,57.82,56.6,118.0,118.0,118.0,1,mikesport,3,10,1.0,core,90000
+SP-B2EA9F6428,NEW BALANCE|IN234837,IN234837,New Balance,New Balance 327 Men Lifestyle Shoes Tornado,footwear,men,175.23,82.81,52.7,169.0,169.0,169.0,1,mikesport,10,14,1.0,core,90000
+SP-5F9B088137,NEW BALANCE|IN226903,IN226903,New Balance,New Balance 327 Ps-Boys Lifestyle Shoes Black/White,footwear,kids,87.29,37.24,57.3,76.0,76.0,76.0,1,mikesport,4,10,1.0,core,90000
+SP-3346E77C8D,NEW BALANCE|IN226904,IN226904,New Balance,New Balance 327 Ps-Boys Lifestyle Shoes Silver Birch,footwear,kids,73.81,37.24,49.5,76.0,76.0,76.0,1,mikesport,3,10,1.0,core,90000
+SP-112F8642D1,NEW BALANCE|IN234839,IN234839,New Balance,New Balance 327 Women Lifestyle Shoes Black,footwear,women,175.06,90.65,48.2,185.0,185.0,185.0,1,mikesport,10,14,1.0,core,90000
+SP-7B8C3CDB88,NEW BALANCE|IN234908,IN234908,New Balance,New Balance 327 Women Lifestyle Shoes Black/Sea Salt,footwear,women,182.35,82.81,54.6,169.0,169.0,169.0,1,mikesport,1,9,1.0,core,90000
+SP-4BFC3223D5,NEW BALANCE|IN218014,IN218014,New Balance,New Balance 327 Women Lifestyle Shoes Moonbeam,footwear,women,184.72,82.81,55.2,169.0,169.0,169.0,1,mikesport,4,10,1.0,core,90000
+SP-EED5158BD6,NEW BALANCE|IN219806,IN219806,New Balance,New Balance 327 Women Lifestyle Shoes Moonbeam/Stone Pink,footwear,women,184.96,82.81,55.2,169.0,169.0,169.0,1,mikesport,9,13,1.0,core,90000
+SP-A09457D613,NIKE|IN235324,IN235324,Nike,Nike Air Force 1 '07 Next Nature Women Lifestyle Shoes White/Linen,footwear,women,209.37,97.29,53.5,207.0,207.0,207.0,1,mikesport,7,12,1.0,core,90000
+SP-74302C346B,NIKE|IN232337,IN232337,Nike,Nike Air Force 1 '07 Women Lifestyle Shoes Burgundy Crush,footwear,women,182.47,79.43,56.5,169.0,169.0,169.0,1,mikesport,1,9,1.0,core,90000
+SP-23392C79BE,NIKE|IN237338,IN237338,Nike,Nike Air Force 1 '07 Women Lifestyle Shoes Midnight Navy/Black,footwear,women,256.88,105.75,58.8,225.0,225.0,225.0,1,mikesport,1,9,1.0,core,90000
+SP-DC2D1E2F28,NIKE|IN232278,IN232278,Nike,Nike Air Force 1 07 Gtx Men Lifestyle Shoes Fauna Brown/Black,footwear,men,203.74,91.18,55.2,194.0,194.0,194.0,1,mikesport,4,10,1.0,core,90000
+SP-7DAC8BE0F9,NIKE|IN237517,IN237517,Nike,Nike Air Force 1 07 Lv8 Men Lifestyle Shoes Anthracite/Grey,footwear,men,232.5,105.75,54.5,225.0,225.0,225.0,1,mikesport,4,10,1.0,core,90000
+SP-A4B321429E,NIKE|IN232104,IN232104,Nike,Nike Air Force 1 07 Lv8 Men Lifestyle Shoes Black/Wolf Grey,footwear,men,134.33,72.85,45.8,155.0,155.0,155.0,1,mikesport,9,13,1.0,core,90000
+SP-DCBF4E8148,NIKE|IN171152,IN171152,Nike,Nike Air Force 1 07 Men Lifestyle Shoes White/Black,footwear,men,219.82,97.29,55.7,207.0,207.0,207.0,1,mikesport,9,13,1.0,core,90000
+SP-672C269E79,NIKE|IN227178,IN227178,Nike,Nike Air Force 1 07 Next Nature Women Lifestyle Shoes White/Silver,footwear,women,158.38,72.85,54.0,155.0,155.0,155.0,1,mikesport,3,10,1.0,core,90000
+SP-5B19015206,NIKE|IN237354,IN237354,Nike,Nike Air Force 1 07 Premium Flowers Women Lifestyle Shoes Black/White/Gold,footwear,women,233.82,105.75,54.8,225.0,225.0,225.0,1,mikesport,4,10,1.0,core,90000
+SP-F32E6859B7,NIKE|IN232335,IN232335,Nike,Nike Air Force 1 07 Vintage Women Lifestyle Shoes Burgundy/Silvr/White,footwear,women,191.82,79.43,58.6,169.0,169.0,169.0,1,mikesport,6,12,1.0,core,90000
+SP-DB0AA24C01,NIKE|IN199973,IN199973,Nike,Nike Air Force 1 07 Wb Men Lifestyle Shoes Flax/Gum/Black,footwear,men,164.85,72.85,55.8,155.0,155.0,155.0,1,mikesport,7,12,1.0,core,90000
+SP-754C50418D,NIKE|IN232277,IN232277,Nike,Nike Air Force 1 07 Wb Men Lifestyle Shoes Wolf Grey/Black,footwear,men,153.52,72.85,52.5,155.0,155.0,155.0,1,mikesport,1,9,1.0,core,90000
+SP-882C75963E,NIKE|IN230472,IN230472,Nike,Nike Air Force 1 07 Women Lifestyle Shoes Summit White,footwear,women,142.58,69.56,51.2,148.0,148.0,148.0,1,mikesport,1,9,1.0,core,90000
+SP-B677F147CF,NIKE|IN160787,IN160787,Nike,Nike Air Force 1 07 Women Lifestyle Shoes White,footwear,women,264.64,97.29,63.2,207.0,207.0,207.0,1,mikesport,8,13,1.0,core,90000
+SP-A766A3D4CB,NIKE|IN230183,IN230183,Nike,Nike Air Force 1 Gs-Girls Lifestyle Shoes White/Pink,footwear,kids,116.72,53.58,54.1,114.0,114.0,114.0,1,mikesport,1,9,1.0,core,90000
+SP-EF3A3CE8FD,NIKE|IN237225,IN237225,Nike,Nike Air Force 1 Le Gs-Boys Lifestyle Shoes Black,footwear,kids,181.87,81.78,55.0,174.0,174.0,174.0,1,mikesport,6,12,1.0,core,90000
+SP-75279CED6C,NIKE|IN222488,IN222488,Nike,Nike Air Force Men Lifestyle Shoes Summit White,footwear,men,151.41,69.56,54.1,148.0,148.0,148.0,1,mikesport,2,9,1.0,core,90000
+SP-20E0FF4DDC,NIKE|IN237212,IN237212,Nike,Nike Air Jordan 1 Low Gs-Girls Lifestyle Shoes Black/White/Pink,footwear,kids,148.75,77.08,48.2,164.0,164.0,164.0,1,mikesport,2,9,1.0,core,90000
+SP-76A23C6634,NIKE|IN232091,IN232091,Nike,Nike Air Jordan 1 Low Men Lifestyle Shoes Black/White,footwear,men,167.17,79.43,52.5,169.0,169.0,169.0,1,mikesport,4,10,1.0,core,90000
+SP-7286ED76D8,NIKE|IN235315,IN235315,Nike,Nike Air Jordan 1 Low Men Lifestyle Shoes Gym Red/White/Black,footwear,men,289.78,105.75,63.5,225.0,225.0,225.0,1,mikesport,2,9,1.0,core,90000
+SP-B49F9A44F0,NIKE|IN230334,IN230334,Nike,Nike Air Jordan 1 Low Se Women Lifestyle Shoes Anthracite,footwear,women,170.41,74.73,56.1,159.0,159.0,159.0,1,mikesport,1,9,1.0,core,90000
+SP-8F8A2E507A,NIKE|IN232094,IN232094,Nike,Nike Air Jordan 1 Low Women Lifestyle Shoes Mystic Hibiscus,footwear,women,161.85,79.43,50.9,169.0,169.0,169.0,1,mikesport,5,11,1.0,core,90000
+SP-8DEF4856DC,NIKE|IN232276,IN232276,Nike,Nike Air Jordan 1 Men Lifestyle Shoes Sail/Blue/Lava/White,footwear,men,174.19,79.43,54.4,169.0,169.0,169.0,1,mikesport,4,10,1.0,core,90000
+SP-5D4B96E09C,NIKE|IN222373,IN222373,Nike,Nike Air Jordan 1 Men Lifestyle Sneakers Black/White/Red,footwear,men,201.58,74.73,62.9,159.0,159.0,159.0,1,mikesport,1,9,1.0,core,90000
+SP-B461EE0286,ON|IN227404,IN227404,ON,On Cloudboom Max 1 Men Running Shoes White/Black,footwear,men,324.66,128.34,60.5,279.0,279.0,279.0,1,mikesport,9,13,1.0,core,90000
+SP-64DAAC38A4,ON|IN227416,IN227416,ON,On Cloudboom Max 1 Women Running Shoes Honeydrew/Lilac,footwear,women,192.29,102.58,46.7,223.0,223.0,223.0,1,mikesport,1,9,1.0,core,90000
+SP-749D462018,ADIDAS|HE4146,HE4146,Adidas,"Studio Lounge Rib Jumpsuit, Green",football_boots,women,20.77,10.08,51.5,21.0,21.0,21.0,1,adidas_lb,2,6,1.0,core,90000
+SP-B508115FF9,ON|IN233463,IN233463,ON,On Studio 7/8 Training High Waist Plain Mineral,football_boots,women,172.23,66.7,61.3,145.0,145.0,145.0,1,mikesport,4,7,1.0,core,90000
+SP-CA2B45C970,ON|IN233464,IN233464,ON,On Studio 7/8 Women Training 7/8 Tight Navy,football_boots,women,151.56,66.7,56.0,145.0,145.0,145.0,1,mikesport,3,6,1.0,core,90000
+SP-238EEC1D13,ON|IN233433,IN233433,ON,On Studio Crop Top Women Training Long Sleeve Heron,football_boots,women,90.8,34.5,62.0,75.0,75.0,75.0,1,mikesport,4,7,1.0,core,90000
+SP-966ED5B129,ON|IN233465,IN233465,ON,On Studio High Waist Women Training 7/8 Tight Black,football_boots,women,139.45,66.7,52.2,145.0,145.0,145.0,1,mikesport,4,7,1.0,core,90000
+SP-09E55BAC3E,Adidas|NAME:2024 COPA GLORO2,,Adidas,2024 Copa Gloro2,football_boots,unisex,75.32,33.6,55.4,70.0,70.0,70.0,1,shoesworld,7,8,1.0,core,90000
+SP-79E8A2816E,Adidas|NAME:2024 COPA GLORO2 FG 39-45,,Adidas,2024 Copa Gloro2 FG 39-45,football_boots,unisex,86.78,36.0,58.5,75.0,75.0,75.0,1,shoesworld,7,8,1.0,core,90000
+SP-3350E7D69E,Adidas|NAME:ADIDAS COPA PURE II+ FG BOOTS39+45,,Adidas,ADIDAS COPA PURE II+ FG BOOTS39+45,football_boots,unisex,93.43,36.0,61.5,75.0,75.0,75.0,1,shoesworld,7,8,1.0,core,90000
+SP-404E26F96A,Nike|NAME:35-45 NIKE AIR ZOOM MERCURIAL SUPERFLY IX ELITE FG,,Nike,35-45 Nike Air Zoom Mercurial Superfly IX Elite FG,football_boots,unisex,66.65,31.02,53.5,66.0,66.0,66.0,1,shoesworld,11,10,1.0,core,90000
+SP-7BE0A2526A,Nike|NAME:35-45 NIKE AIR ZOOM MERCURIAL SUPERFLY IX ELITE FG6,,Nike,35-45 Nike Air Zoom Mercurial Superfly IX Elite FG6,football_boots,unisex,80.51,32.9,59.1,70.0,70.0,70.0,1,shoesworld,11,10,1.0,core,90000
+SP-4129A11BDA,Nike|NAME:35-45 NIKE AIR ZOOM MERCURIAL VAPOR XV ELITE TF,,Nike,35-45 Nike Air Zoom Mercurial Vapor XV Elite TF,football_boots,unisex,69.39,31.02,55.3,66.0,66.0,66.0,1,shoesworld,11,10,1.0,core,90000
+SP-AF96283080,Nike|NAME:35-45） NIKE AIR ZOOM MERCURIAL SUPERFLY IX ELITE FG,,Nike,35-45） Nike Air Zoom Mercurial Superfly IX Elite FG,football_boots,unisex,77.41,31.49,59.3,66.99,66.99,66.99,1,shoesworld,11,10,1.0,core,90000
+SP-435247DC0F,Puma|NAME:2024 NEW PUMA MG STUDS FOOTBALL SHOES PUMA FUTURE 2024 39-45,,Puma,2024 new Puma Mg studs football shoes PUMA FUTURE 2024 39-45,football_boots,unisex,72.97,35.0,52.0,70.0,70.0,70.0,1,shoesworld,7,8,1.0,core,90000
+SP-A2F2F1E782,Puma|NAME:FUTURE 7 ULTIMATE FG36-45,,Puma,FUTURE 7 ULTIMATE FG36-45,football_boots,unisex,72.15,37.5,48.0,75.0,75.0,75.0,1,shoesworld,10,10,1.0,core,90000
+SP-5ECECDA788,Puma|NAME:FUTURE 7 ULTIMATE MG,,Puma,FUTURE 7 ULTIMATE MG,football_boots,unisex,71.62,35.0,51.1,70.0,70.0,70.0,1,shoesworld,7,8,1.0,core,90000
+SP-BCCE453E4E,Puma|NAME:PUMA FUTURE 2024,,Puma,PUMA FUTURE 2024,football_boots,unisex,73.81,33.0,55.3,66.0,65.0,75.0,1,shoesworld,7,8,1.0,core,90000
+SP-46BE11CF40,TOPTEN ACCESSORIES|IN208899,IN208899,Topten Accessories,Topten Accessories The Ultimate Soccer Backpack Unisex Back To School Bag Blue/White,football_boots,unisex,14.24,7.28,48.9,14.0,14.0,14.0,1,mikesport,1,6,1.0,core,90000
+SP-8DA54A884E,ADIDAS|IX1248,IX1248,Adidas,Adidas All Szn Men Sportswear Hoody Black,apparel,men,103.0,45.84,55.5,95.5,95.0,96.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-236F78ABB2,ADIDAS|JV5079,JV5079,Adidas,Adidas Camo Graphic Kids-Boys Sportswear T-Shirt Black,apparel,kids,31.46,13.68,56.5,28.5,28.0,29.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-511FC63A1A,ADIDAS|JE5682,JE5682,Adidas,Adidas D4T 3 Stripes Men Training Short Black,apparel,men,84.4,36.72,56.5,76.5,76.0,77.0,2,"adidas_lb,mikesport",5,14,1.0,core,90000
+SP-275CC88728,ADIDAS|JE8943,JE8943,Adidas,Adidas Essentials Big Logo Men Sportswear T-Shirt White/Black,apparel,men,45.03,21.36,52.6,44.5,44.0,45.0,2,"adidas_lb,mikesport",5,14,1.0,core,90000
+SP-DB6E685B51,ADIDAS|JJ2137,JJ2137,Adidas,Adidas Fc Bayern 25/26 Home Jersey Men Football T-Shirt Red,apparel,men,195.06,76.32,60.9,159.0,159.0,159.0,2,"adidas_lb,mikesport",5,14,1.0,core,90000
+SP-CC132CEF52,ADIDAS|JM6459,JM6459,Adidas,Adidas Food Grilled Cheese Graphic Men Sportswear T-Shirt Off White,apparel,men,48.76,21.36,56.2,44.5,44.0,45.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-42DCF92EB8,ADIDAS|JN5237,JN5237,Adidas,Adidas Juventus 25/26 Home Jersey Kids-Unisex Football T-Shirt White/Black,apparel,unisex,114.48,56.16,50.9,117.0,117.0,117.0,2,"adidas_lb,mikesport",5,14,1.0,core,90000
+SP-DE8799B8CD,ADIDAS|JJ4320,JJ4320,Adidas,Adidas Juventus 25/26 Home Jersey Men Football T-Shirt White/Black,apparel,men,171.44,73.2,57.3,152.5,152.0,153.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-DB14195D44,ADIDAS|JJ4182,JJ4182,Adidas,Adidas Real Madrid 25/26 Away Jersey Men Football T-Shirt Legend Ink,apparel,men,137.66,73.2,46.8,152.5,152.0,153.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-DA8CC184C9,ADIDAS|JN8887,JN8887,Adidas,Adidas Real Madrid 25/26 Home Jersey Kids-Unisex Football T-Shirt White,apparel,unisex,137.63,56.16,59.2,117.0,117.0,117.0,2,"adidas_lb,mikesport",5,14,1.0,core,90000
+SP-56FCC8F98B,ADIDAS|JJ1931,JJ1931,Adidas,Adidas Real Madrid 25/26 Home Jersey Men Football T-Shirt White,apparel,men,152.23,73.2,51.9,152.5,152.0,153.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-709D55A450,ADIDAS|JN8878,JN8878,Adidas,Adidas Real Madrid 25/26 Home Kids-Unisex Football Short White,apparel,unisex,65.18,29.28,55.1,61.0,61.0,61.0,2,"adidas_lb,mikesport",3,14,1.0,core,90000
+SP-351A270268,ADIDAS|JJ1926,JJ1926,Adidas,Adidas Real Madrid 25/26 Home Men Football Short White,apparel,men,76.23,32.16,57.8,67.0,67.0,67.0,2,"adidas_lb,mikesport",3,14,1.0,core,90000
+SP-0246864EFD,ADIDAS|JL5081,JL5081,Adidas,Adidas Workout Essentials Woven Women Training Pant Black,apparel,women,78.73,36.72,53.4,76.5,76.0,77.0,2,"adidas_lb,mikesport",4,14,1.0,core,90000
+SP-DA4EFC860B,ADIDAS|KD7968,KD7968,Adidas,"3 Stripes Bralett, Black",apparel,women,52.24,25.92,50.4,54.0,54.0,54.0,1,adidas_lb,5,14,1.0,core,90000
+SP-154D0C8A2D,ADIDAS|GL0723,GL0723,Adidas,"3 Stripes Leggings, Black",apparel,women,32.11,16.8,47.7,35.0,35.0,35.0,1,adidas_lb,4,14,1.0,core,90000
+SP-33F5CF243E,ADIDAS|IM2848,IM2848,Adidas,"3 Stripes Leggings, Turquoise",apparel,women,16.09,6.72,58.2,14.0,14.0,14.0,1,adidas_lb,1,14,1.0,core,90000
+SP-FF9B4B4F9C,ADIDAS|KD7980,KD7980,Adidas,"3 Stripes Slim T-Shirt, Black",apparel,women,63.23,25.92,59.0,54.0,54.0,54.0,1,adidas_lb,5,14,1.0,core,90000
+SP-7F6612273E,ADIDAS|KD3683,KD3683,Adidas,"3 Stripes Slim T-Shirt, White",apparel,women,61.96,25.92,58.2,54.0,54.0,54.0,1,adidas_lb,4,14,1.0,core,90000
+SP-625A952A40,ADIDAS|IU2415,IU2415,Adidas,"3-Stripes Bra Long-Sleeve Top, Multicolour",apparel,women,22.83,10.56,53.7,22.0,22.0,22.0,1,adidas_lb,1,14,1.0,core,90000
+SP-753874965B,ADIDAS|HT4369,HT4369,Adidas,"3-Stripes Clx Very-Short-Length Swim Shorts, Blue",apparel,men,35.25,14.88,57.8,31.0,31.0,31.0,1,adidas_lb,2,14,1.0,core,90000
+SP-80442AC9A2,ADIDAS|IY2155,IY2155,Adidas,"3-Stripes French Terry Shorts, Purple",apparel,women,26.75,11.52,56.9,24.0,24.0,24.0,1,adidas_lb,1,14,1.0,core,90000
+SP-154D3E9BB1,ADIDAS|IU2522,IU2522,Adidas,"3-Stripes Leggings, Black",apparel,women,35.3,16.32,53.8,34.0,34.0,34.0,1,adidas_lb,2,14,1.0,core,90000
+SP-E7F43FB6BA,ADIDAS|JD4982,JD4982,Adidas,"3-Stripes Leggings, Brown",apparel,women,44.74,20.64,53.9,43.0,43.0,43.0,1,adidas_lb,3,14,1.0,core,90000
+SP-E0B825C9D5,ADIDAS|IP2970,IP2970,Adidas,"3-Stripes Leggings, Green",apparel,women,23.03,10.56,54.1,22.0,22.0,22.0,1,adidas_lb,3,14,1.0,core,90000
+SP-AA14E90547,ADIDAS|IP2968,IP2968,Adidas,"3-Stripes Leggings, Multicolour",apparel,women,23.59,12.96,45.1,27.0,27.0,27.0,1,adidas_lb,2,14,1.0,core,90000
+SP-E20D71253B,NEW BALANCE|IN234886,IN234886,New Balance,New Balance 25 Inches Essential High-Rise Women Performance 7/8 Tight Black,apparel,women,60.49,28.91,52.2,59.0,59.0,59.0,1,mikesport,4,14,1.0,core,90000
+SP-7CDB28E0F3,NEW BALANCE|IN192321,IN192321,New Balance,New Balance Accelerate 7 Inch Men Performanc Short Ice Blue,apparel,men,26.23,13.23,49.6,27.0,27.0,27.0,1,mikesport,1,14,1.0,core,90000
+SP-8B54A344D5,NEW BALANCE|IN205073,IN205073,New Balance,New Balance Archive Men Lifestyle Sweatshirt Athletic Grey,apparel,men,74.78,35.28,52.8,72.0,72.0,72.0,1,mikesport,1,14,1.0,core,90000
+SP-264C0F6E4D,NEW BALANCE|IN205134,IN205134,New Balance,New Balance Athletic Jersey Women Lifestyle T-Shirt Black,apparel,women,47.78,24.01,49.7,49.0,49.0,49.0,1,mikesport,4,14,1.0,core,90000
+SP-016FA5F172,NEW BALANCE|IN234925,IN234925,New Balance,New Balance Athletic Premium Logo Relaxed Women Lifestyle Sweatshirt Big Teal,apparel,women,68.06,36.75,46.0,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-4C55644A29,NEW BALANCE|IN219845,IN219845,New Balance,New Balance Athletics Flower Women Lifestyle T-Shirt Clay Ash,apparel,women,37.89,18.62,50.9,38.0,38.0,38.0,1,mikesport,1,14,1.0,core,90000
+SP-8EDF34B77B,NEW BALANCE|IN226849,IN226849,New Balance,New Balance Athletics French Terry Logo Men Lifestyle Hoody Black,apparel,men,93.6,43.12,53.9,88.0,88.0,88.0,1,mikesport,1,14,1.0,core,90000
+SP-F557DDEAE8,NEW BALANCE|IN219643,IN219643,New Balance,New Balance Athletics French Terry Men Lifestyle Hoody Dusk Shower,apparel,men,101.77,39.2,61.5,80.0,80.0,80.0,1,mikesport,2,14,1.0,core,90000
+SP-6477693F65,NEW BALANCE|IN234751,IN234751,New Balance,New Balance Athletics French Terry Men Lifestyle Pant Black,apparel,men,107.64,48.51,54.9,99.0,99.0,99.0,1,mikesport,4,14,1.0,core,90000
+SP-C2A32D9C08,NEW BALANCE|IN234746,IN234746,New Balance,New Balance Athletics French Terry Men Lifestyle Pant Pumpernickel,apparel,men,114.07,51.45,54.9,105.0,105.0,105.0,1,mikesport,2,14,1.0,core,90000
+SP-E859AD8963,NEW BALANCE|IN219793,IN219793,New Balance,New Balance Athletics French Terry Women Lifestyle Pant Linen,apparel,women,74.82,36.26,51.5,74.0,74.0,74.0,1,mikesport,2,14,1.0,core,90000
+SP-E8BBCA75D7,NEW BALANCE|IN226998,IN226998,New Balance,New Balance Athletics French Terry Women Lifestyle Short Linen,apparel,women,58.43,26.95,53.9,55.0,55.0,55.0,1,mikesport,3,14,1.0,core,90000
+SP-ABD0B6080A,NEW BALANCE|IN227021,IN227021,New Balance,New Balance Athletics Gradient Shoes Women Lifestyle T-Shirt Linen,apparel,women,35.73,16.66,53.4,34.0,34.0,34.0,1,mikesport,2,14,1.0,core,90000
+SP-02EF4F091B,NEW BALANCE|IN238166,IN238166,New Balance,New Balance Athletics Graffiti Graphic Kids-Girls Lifestyle T-Shirt Caviar/Pink,apparel,kids,41.23,17.15,58.4,35.0,35.0,35.0,1,mikesport,3,14,1.0,core,90000
+SP-9DE0BC17BB,NEW BALANCE|IN226859,IN226859,New Balance,New Balance Athletics Graphic Men Performanc T-Shirt Black,apparel,men,41.55,19.11,54.0,39.0,39.0,39.0,1,mikesport,2,14,1.0,core,90000
+SP-BA949A0923,NEW BALANCE|IN226860,IN226860,New Balance,New Balance Athletics Graphic Men Performance T-Shirt Lab Green,apparel,men,26.76,13.72,48.7,28.0,28.0,28.0,1,mikesport,4,14,1.0,core,90000
+SP-B87306A6F9,NEW BALANCE|IN234918,IN234918,New Balance,New Balance Athletics Jersey Women Lifestyle T-Shirt Daybreak,apparel,women,52.51,24.01,54.3,49.0,49.0,49.0,1,mikesport,2,14,1.0,core,90000
+SP-BB4CF55CF1,NEW BALANCE|IN238153,IN238153,New Balance,New Balance Athletics Kids-Boys Performanc Short Caviar,apparel,kids,46.29,19.11,58.7,39.0,39.0,39.0,1,mikesport,5,14,1.0,core,90000
+SP-AA4107C9BC,NEW BALANCE|IN219653,IN219653,New Balance,New Balance Athletics Logo Men Lifestyle T-Shirt Dream State,apparel,men,36.19,16.66,54.0,34.0,34.0,34.0,1,mikesport,1,14,1.0,core,90000
+SP-8CE19B7B41,NEW BALANCE|IN205049,IN205049,New Balance,New Balance Athletics Men Lifestyle Pant Ash Heather,apparel,men,68.07,36.26,46.7,74.0,74.0,74.0,1,mikesport,1,14,1.0,core,90000
+SP-F37123B899,NEW BALANCE|IN205050,IN205050,New Balance,New Balance Athletics Men Lifestyle Pant Black,apparel,men,111.59,51.45,53.9,105.0,105.0,105.0,1,mikesport,4,14,1.0,core,90000
+SP-5A822EBD49,NEW BALANCE|IN205068,IN205068,New Balance,New Balance Athletics Men Lifestyle Short Black,apparel,men,63.77,26.95,57.7,55.0,55.0,55.0,1,mikesport,1,14,1.0,core,90000
+SP-9E98D31333,NEW BALANCE|IN202162,IN202162,New Balance,New Balance Athletics Men Lifestyle T-Shirt Ash Heather,apparel,men,44.92,24.01,46.5,49.0,49.0,49.0,1,mikesport,4,14,1.0,core,90000
+SP-7C71C82AFB,NEW BALANCE|IN202164,IN202164,New Balance,New Balance Athletics Men Lifestyle T-Shirt Navy,apparel,men,49.69,24.01,51.7,49.0,49.0,49.0,1,mikesport,3,14,1.0,core,90000
+SP-BC8BFD0C2A,NEW BALANCE|IN226834,IN226834,New Balance,New Balance Athletics Men Performanc T-Shirt Blue Gemstone,apparel,men,38.01,16.66,56.2,34.0,34.0,34.0,1,mikesport,3,14,1.0,core,90000
+SP-0D038F16ED,NEW BALANCE|IN226835,IN226835,New Balance,New Balance Athletics Men Performanc T-Shirt Navy Heather,apparel,men,35.35,16.66,52.9,34.0,34.0,34.0,1,mikesport,1,14,1.0,core,90000
+SP-FD095E04D0,NIKE|IN232284,IN232284,Nike,Nike Air Boys Lifestyle Pant Seaweed/Black/White,apparel,kids,83.0,33.84,59.2,72.0,72.0,72.0,1,mikesport,4,14,1.0,core,90000
+SP-4D19290060,NIKE|IN232285,IN232285,Nike,Nike Air Fleece Boys Lifestyle Hoody Black/White,apparel,kids,88.96,33.84,62.0,72.0,72.0,72.0,1,mikesport,2,14,1.0,core,90000
+SP-71B70A7334,NIKE|IN232283,IN232283,Nike,Nike Air Fleece Boys Lifestyle Pant Black/White,apparel,kids,79.4,33.84,57.4,72.0,72.0,72.0,1,mikesport,4,14,1.0,core,90000
+SP-3E61C2F87F,NIKE|IN230459,IN230459,Nike,Nike Air Max Pk Full-Zip Men Lifestyle Hoody Blue/Black,apparel,men,96.42,47.0,51.3,100.0,100.0,100.0,1,mikesport,1,14,1.0,core,90000
+SP-C3739F5327,NIKE|IN232348,IN232348,Nike,Nike Air Men Lifestyle Pant Black/White,apparel,men,150.23,67.21,55.3,143.0,143.0,143.0,1,mikesport,3,14,1.0,core,90000
+SP-AC11618B60,NIKE|IN203565,IN203565,Nike,Nike Challenger Men Running Pant Black,apparel,men,100.06,52.64,47.4,112.0,112.0,112.0,1,mikesport,5,14,1.0,core,90000
+SP-16107603B2,NIKE|IN204722,IN204722,Nike,Nike Challenger Men Running Pant Smoke Grey/Black,apparel,men,104.21,52.64,49.5,112.0,112.0,112.0,1,mikesport,4,14,1.0,core,90000
+SP-5C52EEBFCD,NIKE|IN237334,IN237334,Nike,Nike Challenger Winterized 12.5Cm Men Running Short Blue,apparel,men,70.35,37.6,46.6,80.0,80.0,80.0,1,mikesport,4,14,1.0,core,90000
+SP-6F021B8DA6,NIKE|IN237333,IN237333,Nike,Nike Challenger Winterized 12.5Cm Men Running Short Pure Platinum,apparel,men,86.77,37.6,56.7,80.0,80.0,80.0,1,mikesport,4,14,1.0,core,90000
+SP-58C9C3FB4F,NIKE|IN204651,IN204651,Nike,Nike Chill Knit Women Lifestyle T-Shirt Black/Sail,apparel,women,99.05,37.6,62.0,80.0,80.0,80.0,1,mikesport,4,14,1.0,core,90000
+SP-B656BCF67E,NIKE|IN235361,IN235361,Nike,Nike Club Alumni French Terry Men Lifestyle Short Blue/White,apparel,men,75.98,33.84,55.5,72.0,72.0,72.0,1,mikesport,4,14,1.0,core,90000
+SP-5BABA5198D,NIKE|IN220664,IN220664,Nike,Nike Club Alumni Men Lifestyle Short Black/White,apparel,men,70.52,31.49,55.3,67.0,67.0,67.0,1,mikesport,2,14,1.0,core,90000
+SP-88DFC2BCBD,NIKE|IN203470,IN203470,Nike,Nike Club Boys Lifestyle Short Black/White,apparel,kids,53.36,26.32,50.7,56.0,56.0,56.0,1,mikesport,4,14,1.0,core,90000
+SP-0EC65E75A7,NIKE|IN205755,IN205755,Nike,Nike Club Flow Men Lifestyle Short Black/White,apparel,men,55.45,20.21,63.6,43.0,43.0,43.0,1,mikesport,1,14,1.0,core,90000
+SP-75B1A246DD,NIKE|IN222447,IN222447,Nike,Nike Club French Terry Alumni Men Lifestyle Short Grey/White,apparel,men,76.96,31.49,59.1,67.0,67.0,67.0,1,mikesport,3,14,1.0,core,90000
+SP-A4A12CC268,NIKE|IN221359,IN221359,Nike,Nike Club French Terry Men Lifestyle Hoody Black/White,apparel,men,115.46,52.64,54.4,112.0,112.0,112.0,1,mikesport,3,14,1.0,core,90000
+SP-678BBA12C3,NIKE|IN227224,IN227224,Nike,Nike Club French Terry Men Lifestyle Hoody Blue/White,apparel,men,65.4,32.43,50.4,69.0,69.0,69.0,1,mikesport,1,14,1.0,core,90000
+SP-EC9AF8E301,NIKE|IN237263,IN237263,Nike,Nike Club French Terry Men Lifestyle Pant Grey/White,apparel,men,100.25,41.83,58.3,89.0,89.0,89.0,1,mikesport,4,14,1.0,core,90000
+SP-14615F55C9,NIKE|IN237320,IN237320,Nike,Nike Club French Terry Open Hem Men Lifestyle Pant Grey/White,apparel,men,89.04,41.83,53.0,89.0,89.0,89.0,1,mikesport,3,14,1.0,core,90000
+SP-4068E7483B,NIKE|IN230243,IN230243,Nike,Nike Club French Terry Pullover Men Lifestyle Hoody Ghost/White,apparel,men,77.9,32.43,58.4,69.0,69.0,69.0,1,mikesport,1,14,1.0,core,90000
+SP-A39D32F242,NIKE|IN222434,IN222434,Nike,Nike Club Men Lifestyle Hoody Black,apparel,men,71.27,32.43,54.5,69.0,69.0,69.0,1,mikesport,1,14,1.0,core,90000
+SP-F7FAFB8DB4,NIKE|IN227297,IN227297,Nike,Nike Club Men Lifestyle Hoody Black/White,apparel,men,91.64,34.78,62.0,74.0,74.0,74.0,1,mikesport,2,14,1.0,core,90000
+SP-6BB19DF665,NIKE|IN227227,IN227227,Nike,Nike Club Men Lifestyle Long Sleeve Black/White,apparel,men,65.91,29.61,55.1,63.0,63.0,63.0,1,mikesport,1,14,1.0,core,90000
+SP-C11BA696DF,NIKE|IN227223,IN227223,Nike,Nike Club Men Lifestyle Pant Black/White,apparel,men,63.25,31.02,51.0,66.0,66.0,66.0,1,mikesport,1,14,1.0,core,90000
+SP-6186950F73,NIKE|IN220714,IN220714,Nike,Nike Club Men Lifestyle Pant Black/White,apparel,men,81.99,41.83,49.0,89.0,89.0,89.0,1,mikesport,4,14,1.0,core,90000
+SP-853172544A,NIKE|IN220655,IN220655,Nike,Nike Club Men Lifestyle Pant Black/White,apparel,men,96.92,41.83,56.8,89.0,89.0,89.0,1,mikesport,5,14,1.0,core,90000
+SP-2732E00DB0,ON|1ME10031756,1ME10031756,ON,1Me10031756 Club Hoodie Crater,apparel,men,180.23,73.14,59.4,159.0,159.0,159.0,1,mikesport,2,14,1.0,core,90000
+SP-805D3F1EDC,ON|IN233371,IN233371,ON,ON Men Trail-T Running Tee Reef,apparel,men,82.41,34.5,58.1,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-EA820C1A13,ON|IN233369,IN233369,ON,ON Trail-T Men Trail Running Shirt Desert,apparel,men,85.88,34.5,59.8,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-5643A090B0,ON|IN233425,IN233425,ON,On 3 Inch Core Women Running Short Black,apparel,women,81.91,34.5,57.9,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-D0A64208B9,ON|IN233426,IN233426,ON,On 3 Inch Core Women Running Short Heron,apparel,women,80.4,34.5,57.1,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-946B9D03B0,ON|IN233454,IN233454,ON,On 3 Inch Court 2 In 1 Women Tennis Short White,apparel,women,95.96,45.54,52.5,99.0,99.0,99.0,1,mikesport,4,14,1.0,core,90000
+SP-20A699F44B,ON|IN233447,IN233447,ON,On 3 Inch Performance Women Running Short Black,apparel,women,83.18,39.1,53.0,85.0,85.0,85.0,1,mikesport,4,14,1.0,core,90000
+SP-A5BA957315,ON|IN233448,IN233448,ON,On 3 Inch Performance Women Running Short Sailor,apparel,women,84.28,39.1,53.6,85.0,85.0,85.0,1,mikesport,4,14,1.0,core,90000
+SP-63A3151A45,ON|IN233446,IN233446,ON,On 30 Inch Studio Flared Women Training Tight Black,apparel,women,170.71,66.7,60.9,145.0,145.0,145.0,1,mikesport,2,14,1.0,core,90000
+SP-9109C66E8F,ON|IN233376,IN233376,ON,On 5 Inch Core Men Running Short Midnight,apparel,men,75.99,34.5,54.6,75.0,75.0,75.0,1,mikesport,3,14,1.0,core,90000
+SP-33D4752389,ON|IN226216,IN226216,ON,"On 5"" Performance Men Running Short Black",apparel,men,103.48,45.54,56.0,99.0,99.0,99.0,1,mikesport,4,14,1.0,core,90000
+SP-D38DD30CF0,ON|IN226223,IN226223,ON,"On 5"" Performance Women Running Short Black",apparel,women,104.83,45.54,56.6,99.0,99.0,99.0,1,mikesport,2,14,1.0,core,90000
+SP-BF5626A1D8,ON|IN226210,IN226210,ON,"On 5""Core Men Running Short Black",apparel,men,77.33,34.5,55.4,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-B7A8557FF6,ON|IN233381,IN233381,ON,On 7 Inch Core Men Running Short Desert,apparel,men,76.67,34.5,55.0,75.0,75.0,75.0,1,mikesport,4,14,1.0,core,90000
+SP-DF88997BEE,ON|IN233396,IN233396,ON,On 7 Inch Court Tennis 7 Inch Tide,apparel,men,104.14,45.54,56.3,99.0,99.0,99.0,1,mikesport,4,14,1.0,core,90000
+SP-B7529301C1,ON|IN233395,IN233395,ON,On 7 Inch Court Tennis 7 Inch White,apparel,men,105.68,45.54,56.9,99.0,99.0,99.0,1,mikesport,4,14,1.0,core,90000
+SP-98266B6693,ON|IN219864,IN219864,ON,On All-Day Joggers Men Lifestyle Pant Black,apparel,men,171.33,82.34,51.9,179.0,179.0,179.0,1,mikesport,2,14,1.0,core,90000
+SP-09354499DD,ON|IN218636,IN218636,ON,On Boxy Club Women Lifestyle T-Shirt White,apparel,women,61.92,29.9,51.7,65.0,65.0,65.0,1,mikesport,2,14,1.0,core,90000
+SP-57AE88CE7F,ON|IN233413,IN233413,ON,On Climate Full Zip Women Running Hoody White,apparel,women,150.16,73.14,51.3,159.0,159.0,159.0,1,mikesport,4,14,1.0,core,90000
+SP-402F2C3335,ON|IN205159,IN205159,ON,On Climate Men Running Hoody Black,apparel,men,173.8,73.14,57.9,159.0,159.0,159.0,1,mikesport,1,14,1.0,core,90000
+SP-06A4E41C88,ON|IN213151,IN213151,ON,On Climate Men Running Hoody Denim,apparel,men,98.57,51.06,48.2,111.0,111.0,111.0,1,mikesport,1,14,1.0,core,90000
+SP-48868D2AA6,ON|IN205174,IN205174,ON,On Climate Women Running Hoody Black,apparel,women,157.49,73.14,53.6,159.0,159.0,159.0,1,mikesport,3,14,1.0,core,90000
+SP-FAEA6F848F,ON|IN224959,IN224959,ON,On Club Boxy Women Lifestyle T-Shirt Black,apparel,women,67.55,29.9,55.7,65.0,65.0,65.0,1,mikesport,4,14,1.0,core,90000
+SP-834156AAD3,ON|IN233213,IN233213,ON,On Club Collective Men Lifestyle Pant Black,apparel,men,159.38,66.7,58.2,145.0,145.0,145.0,1,mikesport,1,14,1.0,core,90000
+SP-90BB09D2CD,ON|IN233210,IN233210,ON,On Club Collective Men Lifestyle T-Shirt Black,apparel,men,72.45,36.34,49.8,79.0,79.0,79.0,1,mikesport,1,14,1.0,core,90000
+SP-4F416D339A,ON|IN233209,IN233209,ON,On Club Collective Men Lifestyle T-Shirt White,apparel,men,80.88,36.34,55.1,79.0,79.0,79.0,1,mikesport,1,14,1.0,core,90000
+SP-229CAF275F,PUMA|BF2023,BF2023,Puma,DARE TO Leggings Sportstyle/Prime Women,apparel,women,11.74,6.25,46.8,12.5,5.0,20.0,1,tchooz,1,14,1.0,core,90000
+SP-14F06CB1CC,ADIDAS|IU2430,IU2430,Adidas,"3-Stripes Bodysuit, Black",sportswear,women,36.35,14.4,60.4,30.0,30.0,30.0,1,adidas_lb,1,12,1.0,core,90000
+SP-F067DCDACE,ADIDAS|GK9950,GK9950,Adidas,"AEROREADY Essentials Regular-Fit 3-Stripes Track Suit, Black",sportswear,men,98.33,40.32,59.0,84.0,84.0,84.0,1,adidas_lb,4,12,1.0,core,90000
+SP-F4341B2295,ADIDAS|HE4408,HE4408,Adidas,"AEROREADY Essentials Regular-Fit 3-Stripes Track Suit, Blue",sportswear,men,85.11,40.32,52.6,84.0,84.0,84.0,1,adidas_lb,2,12,1.0,core,90000
+SP-EEC5C6A0BE,ADIDAS|IW5977,IW5977,Adidas,"AEROREADY Sereno Cut 3-Stripes Track Suit, Blue",sportswear,men,115.35,53.28,53.8,111.0,111.0,111.0,1,adidas_lb,2,12,1.0,core,90000
+SP-D7ADEC42DC,ADIDAS|KC5821,KC5821,Adidas,"Adi365 Running Pocket Graphic Medium Support Bra, Black",sportswear,women,95.99,42.24,56.0,88.0,88.0,88.0,1,adidas_lb,4,12,1.0,core,90000
+SP-EB900BB3C2,ADIDAS|KA2796,KA2796,Adidas,"Adi365 Running Pocket Medium Support Bra, Green",sportswear,women,96.16,38.4,60.1,80.0,80.0,80.0,1,adidas_lb,5,12,1.0,core,90000
+SP-E961A24573,ADIDAS|JV7515,JV7515,Adidas,"Adibreak Tracksuit Bottoms, Green",sportswear,women,117.06,58.08,50.4,121.0,121.0,121.0,1,adidas_lb,2,12,1.0,core,90000
+SP-C80777C682,NEW BALANCE|IN234881,IN234881,New Balance,New Balance Essential Train Women Performance Bra Black,sportswear,women,70.52,31.85,54.8,65.0,65.0,65.0,1,mikesport,4,12,1.0,core,90000
+SP-FEA7F5C6A1,NEW BALANCE|IN219784,IN219784,New Balance,New Balance Essential Women Performance Bra Olivine,sportswear,women,54.66,23.52,57.0,48.0,48.0,48.0,1,mikesport,3,12,1.0,core,90000
+SP-FCD511BE4F,NEW BALANCE|IN226965,IN226965,New Balance,New Balance Essential Yoga Women Performance Bra Black,sportswear,women,51.71,28.91,44.1,59.0,59.0,59.0,1,mikesport,4,12,1.0,core,90000
+SP-61E130E733,NEW BALANCE|IN234884,IN234884,New Balance,New Balance Essential Yoga Women Performance Bra Daybreak,sportswear,women,50.81,28.91,43.1,59.0,59.0,59.0,1,mikesport,2,12,1.0,core,90000
+SP-3D39AF9FF6,NEW BALANCE|IN234882,IN234882,New Balance,New Balance Essential Yoga Women Performance Bra Medusa Green,sportswear,women,56.73,28.91,49.0,59.0,59.0,59.0,1,mikesport,4,12,1.0,core,90000
+SP-7542B894A6,NEW BALANCE|IN170907,IN170907,New Balance,New Balance Fuel Women Performance Bra Black,sportswear,women,31.09,15.19,51.1,31.0,31.0,31.0,1,mikesport,1,12,1.0,core,90000
+SP-AEB17209EC,NEW BALANCE|IN226963,IN226963,New Balance,New Balance Harmony Women Performanc Bra Black,sportswear,women,37.65,18.62,50.5,38.0,38.0,38.0,1,mikesport,2,12,1.0,core,90000
+SP-5B7283A238,NIKE|IN209406,IN209406,Nike,Nike Alate Curve Aop Women Training Bra Black,sportswear,women,37.09,17.86,51.8,38.0,38.0,38.0,1,mikesport,1,12,1.0,core,90000
+SP-87CD96F6B8,NIKE|IN238476,IN238476,Nike,Nike Brand Energy Infant-Boys Lifestyle Set Black,sportswear,kids,48.37,19.27,60.2,41.0,41.0,41.0,1,mikesport,3,12,1.0,core,90000
+SP-F3734633B0,NIKE|IN211236,IN211236,Nike,Nike Indy Light-Support Women Training Bra Black/White,sportswear,women,56.85,26.32,53.7,56.0,56.0,56.0,1,mikesport,5,12,1.0,core,90000
+SP-6A8CBD0A6C,NIKE|IN195234,IN195234,Nike,Nike One Girls Training Bra Black/White,sportswear,kids,44.59,17.39,61.0,37.0,37.0,37.0,1,mikesport,4,12,1.0,core,90000
+SP-A544BF76A8,NIKE|IN226441,IN226441,Nike,Nike One Keyhole Women Training Bra Black,sportswear,women,48.29,22.09,54.3,47.0,47.0,47.0,1,mikesport,1,12,1.0,core,90000
+SP-B7486CDFB2,NIKE|IN230333,IN230333,Nike,Nike One Light-Support Padded Women Training Bra Pink/Canyon Rust,sportswear,women,54.31,22.09,59.3,47.0,47.0,47.0,1,mikesport,1,12,1.0,core,90000
+SP-DBF6B755DC,NIKE|IN232383,IN232383,Nike,Nike One Women Training Bra Black/White,sportswear,women,63.23,25.38,59.9,54.0,54.0,54.0,1,mikesport,1,12,1.0,core,90000
+SP-F0B4D9EAF5,ON|IN233453,IN233453,ON,ON Sports Performance Women Running Bra Women Gourami,sportswear,women,99.07,40.94,58.7,89.0,89.0,89.0,1,mikesport,4,12,1.0,core,90000
+SP-06A343CFF5,ON|IN233409,IN233409,ON,On Endurance Women Running Bra Heron,sportswear,women,115.0,48.3,58.0,105.0,105.0,105.0,1,mikesport,3,12,1.0,core,90000
+SP-FC59B5B023,ON|IN233410,IN233410,ON,On Endurance Women Running Bra Iceberg,sportswear,women,98.67,48.3,51.0,105.0,105.0,105.0,1,mikesport,4,12,1.0,core,90000
+SP-1AB356CEBD,ON|IN233452,IN233452,ON,On Performance Women Running Bra Black,sportswear,women,104.47,40.94,60.8,89.0,89.0,89.0,1,mikesport,3,12,1.0,core,90000
+SP-6B6DD9AB71,ON|IN233451,IN233451,ON,On Performance Women Running Bra White,sportswear,women,96.57,40.94,57.6,89.0,89.0,89.0,1,mikesport,3,12,1.0,core,90000
+SP-5EEE00AE58,ON|IN218628,IN218628,ON,On Studio Women Training Bra Black,sportswear,women,88.47,34.5,61.0,75.0,75.0,75.0,1,mikesport,4,12,1.0,core,90000
+SP-2D1656C34E,ON|IN233432,IN233432,ON,On Studio Women Training Bra Heron,sportswear,women,79.84,34.5,56.8,75.0,75.0,75.0,1,mikesport,4,12,1.0,core,90000
+SP-C031FC9456,ADIDAS|HM4975,HM4975,Adidas,Adidas All Court 3.0 Unisex Basketball Ball Wood/Black,accessories,unisex,48.33,19.68,59.3,41.0,41.0,42.0,2,"adidas_lb,mikesport",2,18,1.0,core,90000
+SP-2AE7A078CB,ADIDAS|IS7049,IS7049,Adidas,Adidas Classic 3 Bar Logo Training Backpack Men Dark Blue/White,accessories,unisex,41.61,18.0,56.7,37.5,37.0,38.0,2,"adidas_lb,mikesport",1,18,1.0,core,90000
+SP-EFA218BDF9,ADIDAS|JI8081,JI8081,Adidas,Adidas Classic Training Backpack With Pencil Case Unisex Black/White,accessories,unisex,49.52,22.8,54.0,47.5,47.0,48.0,2,"adidas_lb,mikesport",1,18,1.0,core,90000
+SP-8F64E1FCBD,ADIDAS|JE9741,JE9741,Adidas,Adidas INTER MIAMI IMCF JSY HOME Football Men,accessories,men,65.63,29.28,55.4,61.0,61.0,61.0,2,"adidas_lb,tchooz",3,18,1.0,core,90000
+SP-648D792B8F,ADIDAS|JF8484,JF8484,Adidas,Adidas Lightweight Baseball Unisex Training Cap White,accessories,unisex,30.6,12.48,59.2,26.0,26.0,26.0,2,"adidas_lb,mikesport",1,18,1.0,core,90000
+SP-04B3889425,ADIDAS|FM9931,FM9931,Adidas,Adidas Performance 0.75 Unisex Training Water Bottle Black,accessories,unisex,13.43,6.24,53.5,13.0,13.0,13.0,2,"adidas_lb,mikesport",1,18,1.0,core,90000
+SP-100050E78D,ADIDAS|IX3178,IX3178,Adidas,Adidas Power Vii Unisex Training Bag Alumina/Black,accessories,unisex,56.55,20.64,63.5,43.0,41.0,45.0,2,"adidas_lb,mikesport",1,18,1.0,core,90000
+SP-2F2652299B,ADIDAS|DZ9435,DZ9435,Adidas,Adidas Unisex Training Dz9435 Light Ank 3Pp White/White/White,accessories,unisex,14.6,7.44,49.0,15.5,13.0,18.0,2,"adidas_lb,mikesport",2,18,1.0,core,90000
+SP-984922E582,CROCS|IN221020,IN221020,Crocs,Crocs 3D Beach Umbrella Unisex Lifestyle Jibbitz Charm,accessories,unisex,5.65,3.12,44.8,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-45B7989AB6,CROCS|IN216174,IN216174,Crocs,Crocs 3D Candy Cane Unisex Lifestyle Jibbitz Charm,accessories,unisex,6.75,3.12,53.8,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-ECB50BF5E1,CROCS|IN238046,IN238046,Crocs,Crocs 3D Chilling Frog Unisex Lifestyle Jibbitz Charm,accessories,unisex,7.06,3.12,55.8,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-E5AA98F640,CROCS|IN216172,IN216172,Crocs,Crocs 3D Christmas Tree Unisex Lifestyle Jibbitz Charm,accessories,unisex,7.38,3.12,57.7,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-331574EF21,CROCS|IN236650,IN236650,Crocs,Crocs 3D Coffee Cup Unisex Lifestyle Jibbitz Charm,accessories,unisex,6.17,3.12,49.4,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-2FEAF9AB06,CROCS|IN227539,IN227539,Crocs,Crocs 3D Dino Unisex Lifestyle Jibbitz Charm,accessories,unisex,7.33,3.12,57.4,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-C3B564E9B6,CROCS|IN231539,IN231539,Crocs,Crocs 3D Holiday Beach Umbrella Unisex Lifestyle Jibbitz Charm,accessories,unisex,7.27,3.12,57.1,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-C12CBB627C,CROCS|IN231485,IN231485,Crocs,Crocs 3D Kitty Unisex Lifestyle Jibbitz Charm,accessories,unisex,7.02,3.12,55.6,6.0,6.0,6.0,1,mikesport,1,18,1.0,core,90000
+SP-823EFC5B57,NEW BALANCE|IN234674,IN234674,New Balance,New Balance 47 Brrr Trucker Unisex Performance Cap Black,accessories,unisex,43.53,19.11,56.1,39.0,39.0,39.0,1,mikesport,1,18,1.0,core,90000
+SP-B79D3FAE0C,NEW BALANCE|IN234677,IN234677,New Balance,New Balance 47 Clean Up Canvas 2 Men Lifestyle Cap Linen/Medusa Green,accessories,men,48.3,19.11,60.4,39.0,39.0,39.0,1,mikesport,1,18,1.0,core,90000
+SP-9AA8578AF3,NEW BALANCE|IN234702,IN234702,New Balance,New Balance 47 Clean Up Unisex Lifestyle Cap Black,accessories,unisex,43.05,17.15,60.2,35.0,35.0,35.0,1,mikesport,1,18,1.0,core,90000
+SP-46B0A2E099,NEW BALANCE|IN234705,IN234705,New Balance,New Balance 47 Clean Up Women Lifestyle Cap Grey Matter,accessories,women,41.91,17.15,59.1,35.0,35.0,35.0,1,mikesport,1,18,1.0,core,90000
+SP-5EC0254D0A,NEW BALANCE|IN234703,IN234703,New Balance,New Balance 47 Clean Up Women Lifestyle Cap Linen,accessories,women,44.18,17.15,61.2,35.0,35.0,35.0,1,mikesport,1,18,1.0,core,90000
+SP-A756F33BA2,NEW BALANCE|IN234704,IN234704,New Balance,New Balance 47 Clean Up Women Lifestyle Cap Pink Granite,accessories,women,32.73,17.15,47.6,35.0,35.0,35.0,1,mikesport,1,18,1.0,core,90000
+SP-292F8CAAAC,NEW BALANCE|IN234707,IN234707,New Balance,New Balance 47 Hitch Men Lifestyle Cap Nb Navy,accessories,men,51.92,19.11,63.2,39.0,39.0,39.0,1,mikesport,1,18,1.0,core,90000
+SP-A8890E7A65,NEW BALANCE|IN234708,IN234708,New Balance,New Balance 47 Hitch Men Lifestyle Cap Team Away Grey,accessories,men,38.63,19.11,50.5,39.0,39.0,39.0,1,mikesport,1,18,1.0,core,90000
+SP-E70F8AC18A,NIKE|IN237307,IN237307,Nike,Nike (20L) Boys Lifestyle Backpack Black/Orange/White,accessories,kids,57.48,28.67,50.1,61.0,61.0,61.0,1,mikesport,1,18,1.0,core,90000
+SP-2F91D09AA8,NIKE|IN235390,IN235390,Nike,Nike (20L) Girls Lifestyle Backpack Light Magenta,accessories,kids,68.66,28.67,58.2,61.0,61.0,61.0,1,mikesport,1,18,1.0,core,90000
+SP-F94AB5A280,NIKE|IN233573,IN233573,Nike,Nike 22 Oz Big Mouth 2.0 Unisex Training Bottle Clear/Black,accessories,unisex,10.45,3.76,64.0,8.0,8.0,8.0,1,mikesport,1,18,1.0,core,90000
+SP-2BEE5B126F,NIKE|IN204428,IN204428,Nike,Nike Academy Team L Unisex Training Bags Cases And Luggage Black/White,accessories,unisex,87.25,36.19,58.5,77.0,77.0,77.0,1,mikesport,1,18,1.0,core,90000
+SP-9D3EC934A6,NIKE|IN204429,IN204429,Nike,Nike Academy Team M Unisex Training Bag Black/White,accessories,unisex,90.26,31.49,65.1,67.0,67.0,67.0,1,mikesport,1,18,1.0,core,90000
+SP-77A5EF0131,NIKE|IN204430,IN204430,Nike,Nike Academy Team M Unisex Training Bag Navy/Black/White,accessories,unisex,76.51,31.49,58.8,67.0,67.0,67.0,1,mikesport,1,18,1.0,core,90000
+SP-95F89E6174,NIKE|IN222361,IN222361,Nike,Nike Academy Team S Unisex Training Bags Cases And Luggage Black/White,accessories,unisex,69.13,27.73,59.9,59.0,59.0,59.0,1,mikesport,1,18,1.0,core,90000
+SP-E923EE9DF9,NIKE|IN237220,IN237220,Nike,Nike Academy Team Unisex Football Bag Navy/Black/White,accessories,unisex,77.8,27.73,64.4,59.0,59.0,59.0,1,mikesport,1,18,1.0,core,90000
+SP-7743651252,ON|IN233479,IN233479,ON,On All Day Unisex Lifestyle Cap Black,accessories,unisex,67.03,27.14,59.5,59.0,59.0,59.0,1,mikesport,1,18,1.0,core,90000
+SP-F1BA32F84D,ON|IN233480,IN233480,ON,On All Day Unisex Lifestyle Cap Ivory,accessories,unisex,58.96,27.14,54.0,59.0,59.0,59.0,1,mikesport,1,18,1.0,core,90000
+SP-A2AD690C12,ON|IN233478,IN233478,ON,On All Day Unisex Lifestyle Cap Navy,accessories,unisex,60.19,27.14,54.9,59.0,59.0,59.0,1,mikesport,1,18,1.0,core,90000
+SP-C3695075E8,ADIDAS|HS1747,HS1747,Adidas,"3 Bar Logo Swimsuit, Black",swimwear,unisex,17.16,7.68,55.2,16.0,16.0,16.0,1,adidas_lb,1,9,1.0,core,90000
+SP-24D24979D7,ADIDAS|IB7705,IB7705,Adidas,"3-Stripes Swimsuit, Black",swimwear,women,25.68,11.04,57.0,23.0,23.0,23.0,1,adidas_lb,2,9,1.0,core,90000
+SP-D582D99C4D,ADIDAS|IN160125,IN160125,Adidas,Adidas Classic Solid Men Swim Swim Short Glow Blue,swimwear,men,24.9,10.08,59.5,21.0,21.0,21.0,1,mikesport,1,9,1.0,core,90000
+SP-7418F06482,ALL IN|IN206612,IN206612,All In,ALN Accessories Aqua Dumbbell Swimming Gear Blue/Pink,swimwear,unisex,6.56,3.12,52.4,6.0,6.0,6.0,1,mikesport,1,9,1.0,core,90000
+SP-171E383B23,ALL IN|IN204932,IN204932,All In,ALN Accessories Floating Kickboard Swim Swimming Gear Blue,swimwear,unisex,5.35,2.6,51.4,5.0,5.0,5.0,1,mikesport,1,9,1.0,core,90000
+SP-3C84F40051,ALL IN|IN204933,IN204933,All In,ALN Accessories Floating Kickboard Swim Swimming Gear Pink,swimwear,unisex,4.42,2.6,41.2,5.0,5.0,5.0,1,mikesport,1,9,1.0,core,90000
+SP-A2C7D98A61,BILLABONG|IN224311,IN224311,Billabong,Billabong All Day Layback Boys Beach Swim Short Lemon,swimwear,kids,27.88,12.0,57.0,24.0,24.0,24.0,1,mikesport,3,9,1.0,core,90000
+SP-BB4694C6BC,BILLABONG|IN224310,IN224310,Billabong,Billabong All Day Layback Boys Beach Swim Short Sea Green,swimwear,kids,20.17,12.0,40.5,24.0,24.0,24.0,1,mikesport,3,9,1.0,core,90000
+SP-428F9FE7D9,BILLABONG|IN224291,IN224291,Billabong,Billabong Gone Tropic Women Lifestyle Swim Short Pistachio,swimwear,women,44.27,20.0,54.8,40.0,40.0,40.0,1,mikesport,1,9,1.0,core,90000
+SP-53DDAF3223,BLUE POINT|IN209972,IN209972,Blue Point,Blue Point Men Beach Swim Short White,swimwear,men,41.93,22.36,46.7,43.0,43.0,43.0,1,mikesport,1,9,1.0,core,90000
+SP-30038913CA,BODY GLOVE|IN131719,IN131719,Body Glove,Body Glove Women Beach Monokini Whisper Crissy 1 Piece Storm,swimwear,women,76.7,34.84,54.6,67.0,67.0,67.0,1,mikesport,3,9,1.0,core,90000
+SP-950A524EDF,BOGNER|IN207946,IN207946,Bogner,Bogner Nelson 2 Men Beach Swim Short Black,swimwear,men,99.02,51.48,48.0,99.0,99.0,99.0,1,mikesport,6,9,1.0,core,90000
+SP-E45BDB93ED,BOGNER|IN239500,IN239500,Bogner,Bogner Paul Men Swim Short Black,swimwear,men,162.81,95.16,41.6,183.0,183.0,183.0,1,mikesport,2,9,1.0,core,90000
+SP-A83D634897,BOGNER|IN239502,IN239502,Bogner,Bogner Paul Men Swim Short Navy Blue,swimwear,men,159.53,95.16,40.3,183.0,183.0,183.0,1,mikesport,2,9,1.0,core,90000
+SP-03C17880F4,ADIDAS|JC8403,JC8403,Adidas,3 STRIPES TEE,kids,kids,35.98,16.8,53.3,35.0,35.0,35.0,1,adidas_lb,4,9,1.0,core,90000
+SP-E44D80B7EB,ADIDAS|IN235999,IN235999,Adidas,Adidas Club Pleat Kids-Girls Tennis Skort White,kids,kids,70.54,29.28,58.5,61.0,61.0,61.0,1,mikesport,4,9,1.0,core,90000
+SP-DDAA79AADE,ADIDAS|IN174337,IN174337,Adidas,Adidas Disney Mickey Mouse Summer Baby-Boys Sportswear Suit White/Black,kids,kids,29.03,14.88,48.7,31.0,31.0,31.0,1,mikesport,2,9,1.0,core,90000
+SP-DCD0168711,ADIDAS|IN168591,IN168591,Adidas,Adidas Disney Toy Story Little-Boys Training Suit Royal Blue/Lime,kids,kids,42.66,19.2,55.0,40.0,40.0,40.0,1,mikesport,1,9,1.0,core,90000
+SP-9775ACFE6C,CROCS|IN204251,IN204251,Crocs,Crocs Classic Neo Puff Kids Lifestyle After Ski Navy/Gum,kids,kids,48.16,26.0,46.0,50.0,50.0,50.0,1,mikesport,1,9,1.0,core,90000
+SP-A670A1698B,THE NORTH FACE|IN229217,IN229217,The North Face,The North Face Baby 1996 Retro Nuptse One Piece Boys Hiking Suit Tnf Black,kids,kids,183.75,75.6,58.9,168.0,168.0,168.0,1,mikesport,1,9,1.0,core,90000
+SP-8DB0F3B215,THE NORTH FACE|IN216414,IN216414,The North Face,The North Face Easy Kids Lifestyle Long Sleeve White,kids,kids,27.55,11.25,59.2,25.0,25.0,25.0,1,mikesport,1,9,1.0,core,90000
+SP-24A89F1A48,Puma|NAME:ACTIVE SPORTS GRAPHIC TEE II BOYS,,Puma,ACTIVE SPORTS Graphic Tee II Boys,kids,kids,12.6,5.0,60.3,10.0,10.0,10.0,1,tchooz,1,9,1.0,core,90000
+SP-7EBCBD2E4F,Puma|NAME:CATS CLUB TEE PS BOYS,,Puma,CATS CLUB Tee PS Boys,kids,kids,12.82,5.0,61.0,10.0,10.0,10.0,1,tchooz,3,9,1.0,core,90000
+SP-176380B593,Puma|NAME:FEED YOUR PUMA BACKPACK PRIME GIRLS,,Puma,FEED YOUR PUMA Backpack PRIME Girls,kids,kids,62.88,30.0,52.3,60.0,60.0,60.0,1,tchooz,1,9,1.0,core,90000
+SP-9358D6C153,Puma|NAME:FEED YOUR PUMA BACKPACK PRIME KIDS,,Puma,FEED YOUR PUMA Backpack PRIME Kids,kids,kids,65.55,30.0,54.2,60.0,60.0,60.0,1,tchooz,1,9,1.0,core,90000
+SP-C8FA266EDD,ALL IN|IN204952,IN204952,All In,Aln Accessories The Ultimate School Girl Back To School Case Multicolor,kids,kids,1.94,1.04,46.4,2.0,2.0,2.0,1,mikesport,1,9,1.0,core,90000
+SP-1BEA1A72D1,AQUATAIL|IN094389,IN094389,Aquatail,Aquatail Mermaid Tail Kids Beach Fins Blue,kids,kids,46.78,21.84,53.3,42.0,42.0,42.0,1,mikesport,2,9,1.0,core,90000
+SP-4B36B44C2F,AQUATAIL|IN094156,IN094156,Aquatail,Aquatail Mermaid Tail Kids Beach Fins Green,kids,kids,38.86,21.84,43.8,42.0,42.0,42.0,1,mikesport,1,9,1.0,core,90000
+SP-7DC760B623,BABOLAT|IN235631,IN235631,Babolat,Babolat Nadal Junior 19 Kids Tennis Racquet Black/Yellow,kids,kids,60.91,29.12,52.2,56.0,56.0,56.0,1,mikesport,1,9,1.0,core,90000
+SP-C3AF8C8D07,BABOLAT|IN171671,IN171671,Babolat,Babolat Nadal Junior 23 Strung Grip Kids Tennis Racquet Multi,kids,kids,66.02,34.84,47.2,67.0,67.0,67.0,1,mikesport,1,9,1.0,core,90000
+SP-42A81C708A,BABOLAT|IN235630,IN235630,Babolat,Babolat Pure Drive Junior 25 Gen11 Kids Tennis Racquet Light Blue,kids,kids,180.61,89.96,50.2,173.0,173.0,173.0,1,mikesport,1,9,1.0,core,90000
+SP-4665CFBB2F,ADIDAS|BB5476,BB5476,Adidas,"Gazelle Shoes, Black",lifestyle,men,166.11,76.32,54.1,159.0,159.0,159.0,2,"adidas_lb,tchooz",8,12,1.0,core,90000
+SP-0590004E40,ADIDAS|DB3021,DB3021,Adidas,"Handball Spezial Shoes, Black",lifestyle,men,163.3,76.32,53.3,159.0,159.0,159.0,2,"adidas_lb,tchooz",10,12,1.0,core,90000
+SP-82664C3C8D,ADIDAS|IH6592,IH6592,Adidas,"Handball Spezial Shoes, White",lifestyle,men,144.29,76.32,47.1,159.0,159.0,159.0,2,"adidas_lb,tchooz",14,12,1.0,core,90000
+SP-3FB5CF5912,ADIDAS|ID0478,ID0478,Adidas,"Samba OG Shoes, Beige",lifestyle,women,167.05,76.32,54.3,159.0,159.0,159.0,2,"adidas_lb,tchooz",9,12,1.0,core,90000
+SP-B39CD90660,NIKE|IM5019,IM5019,Nike,NIKE Vomero Plus IM5019,lifestyle,unisex,90.77,39.01,57.0,83.0,83.0,83.0,1,shoesworld,21,12,1.0,core,90000
+SP-7B6BD14F3B,New Balance|NAME:NB 9060 FULL BLACK,,New Balance,NB 9060 full black,lifestyle,unisex,77.8,36.75,52.8,74.99,74.99,74.99,1,shoesworld,10,12,1.0,core,90000
+SP-48CB982454,New Balance|NAME:NEW BALANCE 9060 TRIPLE BLACK,,New Balance,New Balance 9060 Triple Black,lifestyle,unisex,88.02,41.65,52.7,85.0,85.0,85.0,1,shoesworld,1,12,1.0,core,90000
+SP-7DFB8328BE,New Balance|NAME:NEW BALANCE FRESH FOAM X TRAIL MORE V3 BLACK/PINK/YELLOW WOMEN'S TRAIL SHOES,,New Balance,New Balance Fresh Foam X Trail More v3 Black/Pink/Yellow Women's Trail Shoes,lifestyle,women,81.31,41.65,48.8,85.0,85.0,85.0,1,shoesworld,1,12,1.0,core,90000
+SP-86604D5CF7,New Balance|NAME:NEW BALANCE TRAIL FRESH FOAM GRAY/PINK,,New Balance,New balance trail fresh foam gray/pink,lifestyle,unisex,81.16,39.2,51.7,79.99,79.99,79.99,1,shoesworld,11,12,1.0,core,90000
+SP-04A2348ABD,Nike|NAME:AIR ZOOM SUPERFLY ELITE - FG CLEATS,,Nike,Air Zoom Superfly Elite - FG Cleats,lifestyle,unisex,91.19,37.6,58.8,79.99,79.99,79.99,1,shoesworld,10,12,1.0,core,90000
+SP-D73EAC318C,Nike|NAME:AIR ZOOM VAPOR ELITE - FG CLEATS,,Nike,Air Zoom Vapor Elite - FG Cleats,lifestyle,unisex,99.28,37.6,62.1,79.99,79.99,79.99,1,shoesworld,7,12,1.0,core,90000
+SP-3577D415E8,Nike|NAME:KYLIAN MBAPPE X AIR ZOOM SUPERFLY ELITE - FG CLEATS,,Nike,Kylian Mbappe X Air Zoom Superfly Elite - FG Cleats,lifestyle,unisex,83.35,37.6,54.9,79.99,79.99,79.99,1,shoesworld,7,12,1.0,core,90000
+SP-2A3C5C0C82,The North Face|NAME:THE NORTH FACE GLENCLYFFE URBAN BOOTS IN A WHITE DUNE/TNF BLACK COLORWAY,,The North Face,The North Face Glenclyffe Urban Boots in a white dune/tnf black colorway,lifestyle,unisex,78.85,38.25,51.5,85.0,85.0,85.0,1,shoesworld,11,12,1.0,core,90000
+SP-D866E2F245,ASICS|NAME:ASICS PADEL METARISE™ 2,,ASICS,ASICS PADEL METARISE™ 2,lifestyle,unisex,92.66,44.1,52.4,90.0,90.0,90.0,1,shoesworld,1,12,1.0,core,90000
+SP-4EAF56E4BE,ASICS|NAME:ASICS PADEL SKY ELITE FF 3,,ASICS,ASICS PADEL SKY ELITE FF 3,lifestyle,unisex,149.25,68.6,54.0,140.0,140.0,140.0,1,shoesworld,1,12,1.0,core,90000
+SP-27D2D54156,ASICS|NAME:ASICS METARISE 2 PARIS VOLLEYBALL SHOES IN A SAFETY YELLOW AND BLACK,,ASICS,Asics Metarise 2 Paris volleyball shoes in a safety yellow and black,lifestyle,unisex,74.61,41.65,44.2,84.99,84.99,84.99,1,shoesworld,12,12,1.0,core,90000
+SP-2F6F3036F1,ASICS|NAME:HANDBALL SHOES ASICS SKY ELITE FF MT 3,,ASICS,Handball Shoes Asics Sky Elite FF MT 3,lifestyle,unisex,81.3,44.1,45.8,90.0,90.0,90.0,1,shoesworld,1,12,1.0,core,90000
+SP-0F8FD95EB4,ADIDAS|IU2526,IU2526,Adidas,"3-Stripes Skirt, Black",other,women,31.38,12.96,58.7,27.0,27.0,27.0,1,adidas_lb,2,9,1.0,core,90000
+SP-02050B0FD1,ADIDAS|IK7862,IK7862,Adidas,"Adicolor 70S V-Neck Dress, Beige",other,women,48.5,18.24,62.4,38.0,38.0,38.0,1,adidas_lb,1,9,1.0,core,90000
+SP-21EC9D6B2F,ADIDAS|HL9308,HL9308,Adidas,"Adicolor Classics Poplin Skirt, Blue",other,women,27.82,15.36,44.8,32.0,32.0,32.0,1,adidas_lb,2,9,1.0,core,90000
+SP-EE94F7E634,ADIDAS|H37774,H37774,Adidas,"Adicolor Classics Tricot Skirt, Black",other,women,13.2,6.24,52.7,13.0,13.0,13.0,1,adidas_lb,2,9,1.0,core,90000
+SP-FA311BCAB5,NEW BALANCE|IN219826,IN219826,New Balance,New Balance Sport Quarter Zip Women Performanc Long Sleeve Black,other,women,53.98,26.95,50.1,55.0,55.0,55.0,1,mikesport,4,9,1.0,core,90000
+SP-8786A633D5,NEW BALANCE|IN219834,IN219834,New Balance,New Balance Sport Women Performance Long Sleeve Black,other,women,34.87,13.23,62.1,27.0,27.0,27.0,1,mikesport,3,9,1.0,core,90000
+SP-92437D4CE3,NIKE|IN213549,IN213549,Nike,Nike Df Pacer Men Running Long Sleeve Black,other,men,94.85,37.6,60.4,80.0,80.0,80.0,1,mikesport,5,9,1.0,core,90000
+SP-6294EFF394,NIKE|IN217042,IN217042,Nike,Nike Element Men Running Long Sleeve Armor Navy/Grey,other,men,82.79,35.72,56.9,76.0,76.0,76.0,1,mikesport,2,9,1.0,core,90000
+SP-7637E3C2FF,NIKE|IN237500,IN237500,Nike,Nike Fitted Women Training Long Sleeve Black,other,women,93.46,33.84,63.8,72.0,72.0,72.0,1,mikesport,4,9,1.0,core,90000
+SP-AADCC2E724,NIKE|IN239482,IN239482,Nike,Nike Flex Classic 6 Packs Unisex Training Band Multicolor,other,unisex,15.23,6.58,56.8,14.0,14.0,14.0,1,mikesport,1,9,1.0,core,90000
+SP-C7D5ADC445,ON|IN202591,IN202591,ON,On Climate 2 Men Running Long Sleeve Black,other,men,143.37,66.7,53.5,145.0,145.0,145.0,1,mikesport,3,9,1.0,core,90000
+SP-5368149B74,ON|IN213158,IN213158,ON,On Climate 2 Women Running Long Sleeve Black,other,women,157.51,66.7,57.7,145.0,145.0,145.0,1,mikesport,4,9,1.0,core,90000
+SP-8EE0491D9F,ON|IN233416,IN233416,ON,On Climate Women Running Long Sleeve Iceberg,other,women,140.5,66.7,52.5,145.0,145.0,145.0,1,mikesport,3,9,1.0,core,90000
+SP-6094574FE4,ON|IN233212,IN233212,ON,On Club Collective 1/4 Zip Men Lifestyle Long Sleeve Ore,other,men,171.42,73.14,57.3,159.0,159.0,159.0,1,mikesport,3,9,1.0,core,90000
+SP-71A50D913C,THE NORTH FACE|IN176210,IN176210,The North Face,The North Face Base Camp Travel Canister L Unisex Hiking Case Summit Gold/Black,other,unisex,28.6,11.25,60.7,25.0,25.0,25.0,1,mikesport,1,9,1.0,core,90000
+SP-C394BB70B8,THE NORTH FACE|IN200628,IN200628,The North Face,The North Face Base Unisex Lifestyle Band Black,other,unisex,20.03,9.0,55.1,20.0,20.0,20.0,1,mikesport,1,9,1.0,core,90000
+SP-E668E236D6,THE NORTH FACE|IN214605,IN214605,The North Face,The North Face Box Nse Men Lifestyle Long Sleeve Black/White,other,men,43.0,17.1,60.2,38.0,38.0,38.0,1,mikesport,4,9,1.0,core,90000
+SP-E1745BC3E3,ADIDAS|B75807,B75807,Adidas,"Samba OG Shoes, Black",lifestyle,men,157.67,76.32,51.6,159.0,159.0,159.0,2,"adidas_lb,tchooz",18,12,1.0,core,90000
+SP-D2CBD27227,ADIDAS|IH6870,IH6870,Adidas,"Samba OG Shoes, White",lifestyle,men,167.3,76.32,54.4,159.0,159.0,159.0,2,"adidas_lb,tchooz",8,12,1.0,core,90000

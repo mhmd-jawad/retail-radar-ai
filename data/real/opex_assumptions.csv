@@ -1,0 +1,14 @@
+item,type,amount_usd,notes
+rent,fixed_monthly,1100,"60-80 sqm retail space, Beirut suburb or secondary city"
+salaries_owner,fixed_monthly,800,"Owner draw (modest, reinvesting profits)"
+salaries_staff,fixed_monthly,900,2 part-time staff × $450/mo (fresh dollar equivalent)
+generator_fuel,fixed_monthly,220,"Grid ~12h/day, generator for remaining hours. Diesel cost."
+internet_phone,fixed_monthly,150,Business internet + mobile. Lebanese ISP rates.
+utilities_water,fixed_monthly,40,Municipal water + tanker supplement
+insurance,fixed_monthly,80,"Basic store insurance (fire, theft). Annual $960 amortized."
+accounting_legal,fixed_monthly,100,"Part-time accountant. Annual $1,200 amortized."
+miscellaneous,fixed_monthly,110,"Bags, receipts, cleaning, minor repairs"
+payment_processing_pct,variable_revenue,0.015,Low — Lebanon is mostly cash. Only ~15% of sales via card/OMT.
+marketing_pct,variable_revenue,0.035,"Instagram ads, WhatsApp Business, local influencer deals."
+logistics_pct_of_cogs,variable_cogs,0.02,"Local delivery, supplier pickup runs. No major distribution."
+shrinkage_pct,variable_inventory_at_cost,0.008,"Damage, theft, defects. Low for sportswear."
