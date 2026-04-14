@@ -1,0 +1,13 @@
+{
+  "actorSpecification": 1,
+  "name": "retail-radar-shoesworld-scraper",
+  "title": "Retail Radar - ShoesWorld Lebanon Scraper",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "readme": "./README.md",
+  "input": "./INPUT_SCHEMA.json",
+  "environmentVariables": {
+    "STORE_NAME": "shoesworld"
+  }
+}

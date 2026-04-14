@@ -1,0 +1,2 @@
+"""KIX scraper adapter."""
+

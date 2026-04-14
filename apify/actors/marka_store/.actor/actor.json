@@ -1,0 +1,13 @@
+{
+  "actorSpecification": 1,
+  "name": "retail-radar-marka-store-scraper",
+  "title": "Retail Radar - Marka Store Lebanon Scraper",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "readme": "./README.md",
+  "input": "./INPUT_SCHEMA.json",
+  "environmentVariables": {
+    "STORE_NAME": "marka_store"
+  }
+}

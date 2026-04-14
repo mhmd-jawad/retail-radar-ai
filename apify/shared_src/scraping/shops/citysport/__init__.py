@@ -1,0 +1,2 @@
+"""CitySport scraper adapter."""
+

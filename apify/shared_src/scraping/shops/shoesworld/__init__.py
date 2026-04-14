@@ -1,0 +1,2 @@
+"""ShoesWorld scraper adapter."""
+
