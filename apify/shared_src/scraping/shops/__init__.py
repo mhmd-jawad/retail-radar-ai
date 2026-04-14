@@ -1,0 +1,2 @@
+"""Retailer-specific scraper adapters."""
+

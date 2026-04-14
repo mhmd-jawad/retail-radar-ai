@@ -1,0 +1,46 @@
+{
+  "title": "Input schema for Retail Radar - adidas Lebanon Scraper",
+  "description": "Run the adidas_lb scraper from the Retail Radar repo. The underlying store endpoint starts from https://www.adidas.com.lb.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "full": {
+      "title": "Full catalog mode",
+      "type": "boolean",
+      "description": "If true, scrape the full supported catalog. If false, sampleSize is used.",
+      "default": false
+    },
+    "sampleSize": {
+      "title": "Sample size",
+      "type": "integer",
+      "description": "How many products to scrape when full catalog mode is off.",
+      "default": 3,
+      "minimum": 1
+    },
+    "maxPages": {
+      "title": "Max pages",
+      "type": "integer",
+      "description": "Optional adapter page or sitemap cap for debugging.",
+      "minimum": 1,
+      "nullable": true
+    },
+    "saveJsonToKeyValueStore": {
+      "title": "Save JSON file",
+      "type": "boolean",
+      "description": "Save all records into OUTPUT_JSON in the default key-value store.",
+      "default": true
+    },
+    "saveCsvToKeyValueStore": {
+      "title": "Save CSV file",
+      "type": "boolean",
+      "description": "Save all records into OUTPUT_CSV in the default key-value store.",
+      "default": true
+    },
+    "saveSummaryToKeyValueStore": {
+      "title": "Save summary",
+      "type": "boolean",
+      "description": "Save counts and run summary into OUTPUT_SUMMARY in the default key-value store.",
+      "default": true
+    }
+  }
+}
