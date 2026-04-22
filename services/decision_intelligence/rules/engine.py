@@ -1,13 +1,14 @@
 """
 Hard Rules Engine — IE2 Decision Intelligence.
 
-These 5 rules run BEFORE the ML model and can override it completely.
+These 6 rules run BEFORE the ML model and can override it completely.
 Rules protect the business from decisions no ML model should ever make:
   - Never miss dead stock (cash is locked up)
   - Never discount what you barely have (scarcity has value)
   - Never sell at a loss (margin floor)
   - Never double-discount within 3 weeks (brand erosion)
   - Never discount when a peak event is 14 days away (capture full price)
+  - Explicitly nudge markdown when a SKU is clearly overpriced and overstocked
 
 Each rule returns a RuleResult dict:
   {
@@ -60,6 +61,15 @@ RECENT_DISCOUNT_DAYS = 21
 EVENT_NUDGE_DAYS = 14
 EVENT_NUDGE_DOS_MIN = 30         # Rule 5: must have enough stock to benefit
 EVENT_NUDGE_MARGIN_MIN = 35.0    # Rule 5: margin must be worth holding
+
+# Rule 6 - obvious markdown nudge: some SKUs are not rule-forced markdowns,
+# but they are clearly overpriced, carrying too much stock, and facing promo
+# pressure from competitors. Surface that to the model as a soft signal.
+MARKDOWN_NUDGE_PRICE_GAP_MIN = 0.12
+MARKDOWN_NUDGE_DOS_MIN = 45
+MARKDOWN_NUDGE_COMP_ON_SALE_MIN = 2
+MARKDOWN_NUDGE_MARGIN_MIN = 38.0
+MARKDOWN_NUDGE_RECENT_DISCOUNT_MIN_DAYS = 21
 
 # Lebanon retail calendar (month → event name, if within event window)
 LEBANON_EVENTS = {
@@ -245,9 +255,48 @@ def rule_calendar_event_nudge(features: dict, *, today: datetime | None = None) 
     }
 
 
+def rule_obvious_markdown_nudge(features: dict) -> dict:
+    """
+    Rule 6 - OBVIOUS MARKDOWN NUDGE (soft - influences, does not override).
+
+    When a SKU is clearly overpriced versus market, has enough inventory to
+    absorb a markdown, still has healthy margin, and competitors are already
+    discounting, nudge the downstream decision toward MARKDOWN.
+    """
+    dos = features.get("days_of_supply", 0)
+    margin_pct = features.get("current_margin_pct", 0)
+    price_gap = features.get("price_gap_pct", 0.0)
+    comp_on_sale = features.get("competitors_on_sale", 0)
+    days_since_last_discount = features.get("days_since_last_discount", 999)
+    sell_through = features.get("season_sell_through_pct", 1.0)
+
+    fired = (
+        price_gap >= MARKDOWN_NUDGE_PRICE_GAP_MIN
+        and dos >= MARKDOWN_NUDGE_DOS_MIN
+        and margin_pct >= MARKDOWN_NUDGE_MARGIN_MIN
+        and comp_on_sale >= MARKDOWN_NUDGE_COMP_ON_SALE_MIN
+        and days_since_last_discount >= MARKDOWN_NUDGE_RECENT_DISCOUNT_MIN_DAYS
+        and sell_through <= 0.45
+    )
+
+    return {
+        "fired": fired,
+        "rule_id": "OBVIOUS_MARKDOWN_NUDGE",
+        "action": None,
+        "override_strength": "soft",
+        "nudge_toward": ["MARKDOWN"] if fired else [],
+        "reason": (
+            f"SKU is {price_gap:.0%} above market with {dos:.0f} DOS, "
+            f"{comp_on_sale} competitors on sale, and margin at {margin_pct:.0f}%. "
+            f"This is a strong markdown candidate."
+        ) if fired else "",
+        "blocks": [],
+    }
+
+
 def run_rules(features: dict) -> dict:
     """
-    Run all 5 rules in priority order.
+    Run all 6 rules in priority order.
 
     Returns:
         {
@@ -265,6 +314,7 @@ def run_rules(features: dict) -> dict:
         rule_margin_floor_protection(features),
         rule_recent_discount_protection(features),
         rule_calendar_event_nudge(features),
+        rule_obvious_markdown_nudge(features),
     ]
 
     rules_fired = [r for r in results if r["fired"]]

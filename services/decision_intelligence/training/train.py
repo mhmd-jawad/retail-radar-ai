@@ -55,6 +55,11 @@ IDENTIFIER_COLUMNS = {
     "ai_score_promote",
     "ai_score_clear",
     "ai_label_disagrees_with_rules",
+    "data_source",
+    "synthetic_is_augmented",
+    "synthetic_target_label",
+    "synthetic_anchor_state_id",
+    "synthetic_mutation_profile",
 }
 LABEL_MAP = {"HOLD": 0, "MARKDOWN": 1, "PROMOTE": 2, "CLEAR": 3}
 LABEL_INV = {value: key for key, value in LABEL_MAP.items()}
@@ -152,7 +157,11 @@ def _load_training_dataframe(
 
 
 def _build_feature_matrix(df):
-    feature_cols = [column for column in df.columns if column not in IDENTIFIER_COLUMNS]
+    feature_cols = [
+        column
+        for column in df.columns
+        if column not in IDENTIFIER_COLUMNS and not column.startswith("synthetic_")
+    ]
     cat_idxs = [idx for idx, column in enumerate(feature_cols) if column in CATEGORICAL_FEATURES]
     X = df[feature_cols].fillna(-1)
     y = df["label"].astype(int)

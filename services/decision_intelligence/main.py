@@ -25,6 +25,7 @@ import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
+from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
 from .features.engineer import (
@@ -55,6 +56,8 @@ LOCAL_MODEL_EXPORT_DIR = (
     / "mlflow_export"
     / "retail_radar_decision_model_from_trial_017"
 )
+DEFAULT_REGISTERED_MODEL_NAME = "retail_radar_decision_model"
+DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 
 DEFAULT_LOCAL_API_KEY = "ie2-local-postman-key"
 CONFIDENCE_THRESHOLD = 0.45
@@ -131,18 +134,52 @@ def _load_model_meta() -> dict:
     return json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
 
 
+def _resolve_tracking_uri(model_meta: dict) -> str:
+    return (
+        os.environ.get("MLFLOW_TRACKING_URI")
+        or str(model_meta.get("mlflow_tracking_uri") or "").strip()
+        or DEFAULT_MLFLOW_TRACKING_URI
+    )
+
+
+def _resolve_registered_model_name() -> str:
+    return os.environ.get("IE2_REGISTERED_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME).strip()
+
+
+def _find_latest_registered_model_uri(model_name: str, tracking_uri: str) -> tuple[str, str]:
+    client = MlflowClient(tracking_uri=tracking_uri)
+    versions = client.search_model_versions(f"name = '{model_name}'")
+    if not versions:
+        raise ValueError(f"No registered MLflow model versions found for model '{model_name}'.")
+
+    latest = max(versions, key=lambda version: int(version.version))
+    return f"models:/{model_name}/{latest.version}", latest.version
+
+
 MODEL_META = _load_model_meta()
 MODEL_FEATURE_COLUMNS = MODEL_META.get("feature_cols", [])
-MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
-MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
+MODEL_TRACKING_URI = _resolve_tracking_uri(MODEL_META)
+MODEL_NAME = _resolve_registered_model_name()
+MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}"
+MODEL_SOURCE = ""
 MODEL_LOADER_ERROR = None
 REGISTERED_MODEL = None
 
 try:
-    REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
+    mlflow.set_tracking_uri(MODEL_TRACKING_URI)
+    latest_model_uri, latest_version = _find_latest_registered_model_uri(MODEL_NAME, MODEL_TRACKING_URI)
+    REGISTERED_MODEL = mlflow.catboost.load_model(latest_model_uri)
+    MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
+    MODEL_SOURCE = latest_model_uri
 except Exception as exc:  # pragma: no cover
-    MODEL_LOADER_ERROR = str(exc)
-    MODEL_VERSION = "rules_fallback"
+    MODEL_LOADER_ERROR = f"Registry load failed: {exc}"
+    try:
+        REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
+        MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
+        MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
+    except Exception as fallback_exc:  # pragma: no cover
+        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; local export fallback failed: {fallback_exc}"
+        MODEL_VERSION = "rules_fallback"
 
 
 def _normalize_category(category: str | None) -> str:
@@ -338,6 +375,55 @@ def _build_rule_explanations(features: dict, decision: str) -> list[SHAPFeature]
     return explanations[:5]
 
 
+def _apply_soft_rule_nudges(
+    decision: str,
+    confidence: float,
+    rule_result: dict,
+    features: dict,
+) -> tuple[str, float]:
+    nudges = set(rule_result.get("nudges", []))
+    blocked = set(rule_result.get("blocked_actions", []))
+
+    if (
+        "MARKDOWN" in nudges
+        and "MARKDOWN" not in blocked
+        and decision != "MARKDOWN"
+    ):
+        markdown_strength = 0
+        if float(features.get("price_gap_pct", 0.0)) >= 0.12:
+            markdown_strength += 1
+        if float(features.get("days_of_supply", 0.0)) >= 45:
+            markdown_strength += 1
+        if int(features.get("competitors_on_sale", 0)) >= 2:
+            markdown_strength += 1
+        if float(features.get("current_margin_pct", 0.0)) >= 38.0:
+            markdown_strength += 1
+        if float(features.get("season_sell_through_pct", 1.0)) <= 0.45:
+            markdown_strength += 1
+
+        if markdown_strength >= 4 and confidence <= 0.62:
+            return "MARKDOWN", max(confidence, 0.58)
+
+    if (
+        "PROMOTE" in nudges
+        and decision == "HOLD"
+        and "PROMOTE" not in blocked
+        and confidence <= 0.55
+    ):
+        return "PROMOTE", max(confidence, 0.56)
+
+    return decision, confidence
+
+
+def _effective_confidence_threshold(decision: str, rule_result: dict) -> float:
+    nudges = set(rule_result.get("nudges", []))
+    blocked = set(rule_result.get("blocked_actions", []))
+
+    if decision == "MARKDOWN" and "MARKDOWN" in nudges and "MARKDOWN" not in blocked:
+        return 0.40
+    return CONFIDENCE_THRESHOLD
+
+
 def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float, list[SHAPFeature]]:
     blocked = set(rule_result.get("blocked_actions", []))
     nudges = set(rule_result.get("nudges", []))
@@ -443,11 +529,13 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
     else:
         if REGISTERED_MODEL is not None:
             decision, confidence = _predict_with_registered_model(features)
+            decision, confidence = _apply_soft_rule_nudges(decision, confidence, rule_result, features)
             shap_top5 = _build_rule_explanations(features, decision)
         else:
             decision, confidence, shap_top5 = _rules_only_decision(features, rule_result)
 
-        if confidence < CONFIDENCE_THRESHOLD:
+        threshold = _effective_confidence_threshold(decision, rule_result)
+        if confidence < threshold:
             decision = "HOLD"
             confidence = 0.40
             fallback_used = True

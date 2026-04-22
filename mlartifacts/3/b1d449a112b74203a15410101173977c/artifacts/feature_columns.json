@@ -1,0 +1,32 @@
+{
+  "feature_columns": [
+    "brand",
+    "category",
+    "days_of_supply",
+    "stock_coverage_ratio",
+    "stockout_risk",
+    "total_qty",
+    "inventory_vs_median",
+    "current_margin_pct",
+    "discount_depth_last_30d",
+    "days_since_last_discount",
+    "days_at_current_price",
+    "retail_price_usd",
+    "price_gap_pct",
+    "competitors_on_sale",
+    "competitors_out_of_stock",
+    "num_competitors",
+    "market_position",
+    "days_since_launch",
+    "season_sell_through_pct",
+    "brand_tier",
+    "cost_price_usd",
+    "seasonality_score",
+    "category_seasonal_boost",
+    "event_proximity_score",
+    "next_month_seasonality",
+    "cash_runway_months",
+    "cash_tight",
+    "inventory_intensity"
+  ]
+}

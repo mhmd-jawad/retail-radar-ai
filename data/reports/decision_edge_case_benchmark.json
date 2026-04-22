@@ -12,16 +12,16 @@
       "CLEAR": 5
     },
     "predicted_distribution": {
-      "HOLD": 7,
+      "HOLD": 5,
       "PROMOTE": 6,
-      "MARKDOWN": 2,
+      "MARKDOWN": 4,
       "CLEAR": 5
     },
-    "fallback_cases": 3,
+    "fallback_cases": 1,
     "overall_metrics": {
-      "accuracy": 0.8,
-      "macro_f1": 0.7868,
-      "weighted_f1": 0.7868
+      "accuracy": 0.9,
+      "macro_f1": 0.8995,
+      "weighted_f1": 0.8995
     },
     "subset_metrics": {
       "hard_rule_cases": {
@@ -32,22 +32,22 @@
       },
       "model_routed_cases": {
         "count": 13,
-        "accuracy": 0.6923,
-        "macro_f1": 0.6602,
-        "weighted_f1": 0.6848
+        "accuracy": 0.8462,
+        "macro_f1": 0.8215,
+        "weighted_f1": 0.8454
       }
     },
     "per_class_metrics": {
       "HOLD": {
-        "precision": 0.5714,
+        "precision": 0.8,
         "recall": 0.8,
-        "f1": 0.6667,
+        "f1": 0.8,
         "support": 5
       },
       "MARKDOWN": {
         "precision": 1.0,
-        "recall": 0.4,
-        "f1": 0.5714,
+        "recall": 0.8,
+        "f1": 0.8889,
         "support": 5
       },
       "PROMOTE": {
@@ -78,8 +78,8 @@
           0
         ],
         [
-          3,
-          2,
+          1,
+          4,
           0,
           0
         ],
@@ -354,12 +354,12 @@
       "description": "Lifestyle sneaker with elevated stock cover, heavy sale pressure, and a large premium to market.",
       "label_rationale": "The SKU is overpriced versus market while inventory is still piling up, so markdown is warranted.",
       "expected_label": "MARKDOWN",
-      "predicted_label": "HOLD",
-      "correct": false,
-      "confidence": 0.4,
+      "predicted_label": "MARKDOWN",
+      "correct": true,
+      "confidence": 0.4488,
       "decision_source": "model",
       "rule_id": null,
-      "fallback_used": true,
+      "fallback_used": false,
       "model_version": "mlflow_export:retail_radar_decision_model_from_trial_017",
       "is_exact_feature_match_in_training_data": false,
       "request": {
@@ -404,12 +404,12 @@
       "description": "Sportswear top facing intense discounting from many competitors.",
       "label_rationale": "The competitive landscape is hostile and the product is materially overpriced, so markdown is the safer move.",
       "expected_label": "MARKDOWN",
-      "predicted_label": "HOLD",
-      "correct": false,
-      "confidence": 0.4,
+      "predicted_label": "MARKDOWN",
+      "correct": true,
+      "confidence": 0.437,
       "decision_source": "model",
       "rule_id": null,
-      "fallback_used": true,
+      "fallback_used": false,
       "model_version": "mlflow_export:retail_radar_decision_model_from_trial_017",
       "is_exact_feature_match_in_training_data": false,
       "request": {

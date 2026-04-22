@@ -1,0 +1,94 @@
+{
+  "input_training_dataset": "C:\\Users\\USER\\Desktop\\AI in Industry\\Project\\retail-radar-ai\\data\\features\\training_dataset.csv",
+  "output_training_dataset": "C:\\Users\\USER\\Desktop\\AI in Industry\\Project\\retail-radar-ai\\data\\features\\training_dataset_augmented.csv",
+  "output_ai_labeled_dataset": "C:\\Users\\USER\\Desktop\\AI in Industry\\Project\\retail-radar-ai\\data\\features\\ai_labeled_dataset_augmented.csv",
+  "seed": 42,
+  "max_copies_per_anchor": 3,
+  "original_row_count": 6400,
+  "synthetic_row_count": 780,
+  "augmented_row_count": 7180,
+  "original_rules_distribution": {
+    "HOLD": 4773,
+    "MARKDOWN": 924,
+    "CLEAR": 511,
+    "PROMOTE": 192
+  },
+  "augmented_rules_distribution": {
+    "HOLD": 4828,
+    "MARKDOWN": 1184,
+    "CLEAR": 756,
+    "PROMOTE": 412
+  },
+  "original_ai_distribution": {
+    "HOLD": 4802,
+    "MARKDOWN": 1231,
+    "PROMOTE": 354,
+    "CLEAR": 13
+  },
+  "augmented_ai_distribution": {
+    "HOLD": 4802,
+    "MARKDOWN": 1471,
+    "PROMOTE": 574,
+    "CLEAR": 333
+  },
+  "synthetic_target_distribution": {
+    "CLEAR": 320,
+    "MARKDOWN": 240,
+    "PROMOTE": 220
+  },
+  "synthetic_category_distribution": {
+    "footwear": 335,
+    "apparel": 152,
+    "lifestyle": 87,
+    "sportswear": 52,
+    "other": 41,
+    "accessories": 32,
+    "kids": 32,
+    "football_boots": 26,
+    "swimwear": 23
+  },
+  "generation_summaries": [
+    {
+      "target_label": "CLEAR",
+      "requested_rows": 320,
+      "generated_rows": 320,
+      "attempts": 14655,
+      "unique_anchor_rows_used": 245,
+      "top_anchor_categories": {
+        "footwear": 196,
+        "lifestyle": 59,
+        "other": 27,
+        "football_boots": 11,
+        "sportswear": 10
+      }
+    },
+    {
+      "target_label": "PROMOTE",
+      "requested_rows": 220,
+      "generated_rows": 220,
+      "attempts": 220,
+      "unique_anchor_rows_used": 172,
+      "top_anchor_categories": {
+        "apparel": 100,
+        "accessories": 32,
+        "footwear": 21,
+        "sportswear": 17,
+        "lifestyle": 17
+      }
+    },
+    {
+      "target_label": "MARKDOWN",
+      "requested_rows": 240,
+      "generated_rows": 240,
+      "attempts": 277,
+      "unique_anchor_rows_used": 226,
+      "top_anchor_categories": {
+        "footwear": 118,
+        "apparel": 43,
+        "sportswear": 25,
+        "swimwear": 18,
+        "lifestyle": 11
+      }
+    }
+  ]
+}
