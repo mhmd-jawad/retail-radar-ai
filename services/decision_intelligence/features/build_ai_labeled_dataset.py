@@ -156,6 +156,25 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
         score_hold += 0.06
         score_promote += 0.03
 
+    # Make markdown easier to win when multiple commercial signals line up.
+    obvious_markdown_pressure = clamp(
+        market_overpricing * 0.38
+        + sale_pressure * 0.22
+        + inventory_pressure * 0.18
+        + stale_pressure * 0.10
+        + markdown_ready_margin * 0.12
+        + clamp(1.0 - recent_discount_penalty) * 0.08
+    )
+    if obvious_markdown_pressure >= 0.33:
+        score_markdown += 0.10
+    if market_overpricing >= 0.18 and sale_pressure >= 0.35:
+        score_markdown += 0.08
+    if market_overpricing >= 0.16 and inventory_pressure >= 0.16 and markdown_ready_margin >= 0.28:
+        score_markdown += 0.08
+    if season_strength >= 0.55 and event_score >= 0.70 and market_overpricing < 0.10:
+        score_markdown -= 0.06
+        score_promote += 0.04
+
     scores = {
         "HOLD": round(max(score_hold, 0.0), 4),
         "MARKDOWN": round(max(score_markdown, 0.0), 4),
@@ -193,11 +212,16 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
         best_score = scores["PROMOTE"]
         second_score = max(scores["HOLD"], scores["MARKDOWN"], scores["CLEAR"])
     elif (
-        market_overpricing >= 0.22
-        and inventory_pressure >= 0.20
-        and markdown_ready_margin >= 0.22
-        and recent_discount_penalty <= 0.55
-        and score_markdown >= 0.35
+        market_overpricing >= 0.18
+        and inventory_pressure >= 0.14
+        and markdown_ready_margin >= 0.24
+        and recent_discount_penalty <= 0.45
+        and (
+            sale_pressure >= 0.35
+            or stale_pressure >= 0.70
+            or obvious_markdown_pressure >= 0.42
+        )
+        and score_markdown >= 0.33
     ):
         best_label = "MARKDOWN"
         best_score = scores["MARKDOWN"]

@@ -1,12 +1,13 @@
 """
 Unit tests for the IE2 hard rules engine.
 
-Covers all 5 rules:
+ Covers all 6 rules:
   - rule_dead_stock_clear
   - rule_low_stock_protection
   - rule_margin_floor_protection
   - rule_recent_discount_protection
   - rule_calendar_event_nudge
+  - rule_obvious_markdown_nudge
   - run_rules orchestration (priority / blocking / nudge behaviour)
 """
 
@@ -17,6 +18,7 @@ from services.decision_intelligence.rules.engine import (
     rule_margin_floor_protection,
     rule_recent_discount_protection,
     rule_calendar_event_nudge,
+    rule_obvious_markdown_nudge,
     run_rules,
 )
 
@@ -176,6 +178,36 @@ class TestCalendarEventNudge:
 
 # ── run_rules orchestration ───────────────────────────────────────────────────
 
+class TestObviousMarkdownNudge:
+    def test_nudges_markdown_when_signals_align(self):
+        f = base()
+        f.update(
+            days_of_supply=70,
+            current_margin_pct=46.0,
+            price_gap_pct=0.18,
+            competitors_on_sale=3,
+            days_since_last_discount=35,
+            season_sell_through_pct=0.25,
+        )
+        result = rule_obvious_markdown_nudge(f)
+        assert result["fired"] is True
+        assert result["override_strength"] == "soft"
+        assert "MARKDOWN" in result.get("nudge_toward", [])
+
+    def test_does_not_fire_when_recent_discount_still_active(self):
+        f = base()
+        f.update(
+            days_of_supply=70,
+            current_margin_pct=46.0,
+            price_gap_pct=0.18,
+            competitors_on_sale=3,
+            days_since_last_discount=10,
+            season_sell_through_pct=0.25,
+        )
+        result = rule_obvious_markdown_nudge(f)
+        assert result["fired"] is False
+
+
 class TestRunRules:
     def test_absolute_rule_short_circuits(self):
         f = base()
@@ -200,6 +232,21 @@ class TestRunRules:
         result = run_rules(f)
         assert result["hard_override"] is False
         assert "PROMOTE" in result["nudges"]
+        assert result["forced_action"] is None
+
+    def test_markdown_soft_nudge_is_included(self):
+        f = base()
+        f.update(
+            days_of_supply=70,
+            current_margin_pct=46.0,
+            price_gap_pct=0.18,
+            competitors_on_sale=3,
+            days_since_last_discount=35,
+            season_sell_through_pct=0.25,
+        )
+        result = run_rules(f)
+        assert result["hard_override"] is False
+        assert "MARKDOWN" in result["nudges"]
         assert result["forced_action"] is None
 
     def test_healthy_sku_no_rules_fire(self):
