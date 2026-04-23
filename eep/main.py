@@ -1,69 +1,143 @@
 """
 EEP — Executive Experience Platform.
-Owner: Mohammad Farhat.
 
-Status: STUB — endpoints defined, orchestration logic not implemented.
+Frontend-facing API that exposes:
+  - the transformed analytics report used by the dashboard
+  - scrape/competitor operations data from local outputs
+  - recommendation endpoints that adapt the existing IE2 service contract
 
-Pipeline per request:
-  1. Call IE1 → GET /competitor/{sku_id} → CompetitorSignals
-  2. Call IE2 → POST /recommend → RecommendationResult
-  3. Call IE3 → POST /campaign/generate → CampaignPackage
-  4. Return RecommendationPackage (all three merged)
-
-Port: 8000
 Run:
     uvicorn eep.main:app --port 8000 --reload
 """
 
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import Optional
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+
+from eep.frontend_bridge import (
+    build_competitor_latest,
+    build_frontend_report,
+    build_scrape_runs,
+    prepare_ie2_request,
+    report_overview,
+    serialize_frontend_recommendation,
+)
+
 
 app = FastAPI(
     title="StylePulse AI — EEP Executive Platform",
-    description="Unified dashboard API — orchestrates IE1 + IE2 + IE3",
-    version="0.1.0",
+    description="Unified dashboard API for the Retail Radar frontend.",
+    version="0.2.0",
 )
 
-IE1_URL = "http://localhost:8001"
-IE2_URL = "http://localhost:8002"
-IE3_URL = "http://localhost:8003"
-
-
-class RecommendationPackage(BaseModel):
-    """Full package returned to the dashboard."""
-    sku_id: str
-    product_name: str
-    recommendation: str
-    confidence: float
-    explanation: str
-    suggested_price_usd: Optional[float]
-    campaign_headline_en: Optional[str]
-    campaign_headline_ar: Optional[str]
-    instagram_caption: Optional[str]
-    suggested_channels: list[str] = []
-    requires_human_approval: bool = True
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
-def health():
-    return {"status": "healthy", "service": "eep"}
+def health() -> dict[str, Any]:
+    overview = report_overview()
+    return {
+        "status": "healthy",
+        "service": "eep",
+        "report_ready": True,
+        "sku_count": overview["sku_count"],
+        "shops_covered": overview["shop_count"],
+    }
 
 
-@app.post("/recommend/full", response_model=RecommendationPackage)
-async def full_recommendation(sku_id: str):
-    """
-    TODO (Mohammad Farhat): Orchestrate IE1 → IE2 → IE3 pipeline.
-    Use httpx.AsyncClient to call all three services and merge results
-    into a RecommendationPackage for the dashboard.
-    """
-    raise NotImplementedError("EEP: full_recommendation not implemented yet")
+@app.get("/report")
+def report() -> dict[str, Any]:
+    return build_frontend_report()
+
+
+@app.get("/ops/scrape-runs")
+def scrape_runs() -> list[dict[str, Any]]:
+    return build_scrape_runs()
+
+
+@app.get("/ops/competitor-latest")
+def competitor_latest(limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
+    return build_competitor_latest(limit=limit)
+
+
+@app.post("/recommend/{sku_id}")
+async def recommend_for_frontend(
+    sku_id: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    from services.decision_intelligence.main import _recommend_single
+    from services.decision_intelligence.schemas import RecommendationRequest
+
+    request_payload = prepare_ie2_request(sku_id, payload)
+    request_model = RecommendationRequest.model_validate(request_payload)
+    result = _recommend_single(request_model)
+    return serialize_frontend_recommendation(result)
+
+
+@app.post("/recommend/batch")
+async def recommend_batch(
+    payload: dict[str, Any] = Body(...),
+) -> list[dict[str, Any]]:
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="Body must include a non-empty 'items' array.")
+
+    results = []
+    for item in items:
+        if not isinstance(item, dict) or not item.get("sku_id"):
+            raise HTTPException(status_code=400, detail="Each batch item must include sku_id.")
+        results.append(await recommend_for_frontend(item["sku_id"], item))
+    return results
+
+
+@app.post("/recommend/full")
+async def full_recommendation(
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    sku_id = payload.get("sku_id")
+    if not sku_id:
+        raise HTTPException(status_code=400, detail="sku_id is required.")
+
+    report_payload = build_frontend_report()
+    recommendation = await recommend_for_frontend(sku_id, payload)
+    creative = next(
+        (item for item in report_payload["promotions"]["promote"] if item["sku_id"] == sku_id),
+        None,
+    )
+    return {
+        "sku_id": sku_id,
+        "ie2_result": recommendation,
+        "campaign_creative": creative.get("creative") if creative else None,
+        "status": "pending",
+    }
 
 
 @app.get("/dashboard/summary")
-async def dashboard_summary():
-    """
-    TODO (Mohammad Farhat): Return aggregated stats for the dashboard home page.
-    Query IE2 batch endpoint for all 350 SKUs, aggregate by decision class.
-    """
-    raise NotImplementedError("EEP: dashboard_summary not implemented yet")
+async def dashboard_summary() -> dict[str, Any]:
+    report_payload = build_frontend_report()
+    return {
+        "generated_at": report_payload["metadata"]["generated_at"],
+        "inventory": report_payload["inventory"]["metrics"],
+        "market": report_payload["competitor"]["market_overview"],
+        "promotions": report_payload["promotions"]["summary"],
+        "financial": {
+            "cash_runway_months": report_payload["financial"]["cashflow_health"]["cash_runway_months"],
+            "inventory_pct_of_assets": report_payload["financial"]["balance_sheet_health"]["inventory_pct_of_assets"],
+            "blended_margin_pct": report_payload["financial"]["profitability"]["blended_margin_pct"],
+        },
+    }
