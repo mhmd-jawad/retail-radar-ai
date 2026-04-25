@@ -25,6 +25,7 @@ from services.decision_intelligence.main import (
     _recommend_single,
 )
 from services.decision_intelligence.schemas import CompetitorSignals
+from services.decision_intelligence.training.train import _enrich_feature_space
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -665,6 +666,9 @@ def _load_training_signatures() -> tuple[Path, set[tuple[Any, ...]]]:
         training_path = ROOT / training_path
 
     training_df = pd.read_csv(training_path)
+    missing_columns = [column for column in MODEL_FEATURE_COLUMNS if column not in training_df.columns]
+    if missing_columns:
+        training_df = _enrich_feature_space(training_df)
     signatures = {
         tuple(_normalize_value(row[column]) for column in MODEL_FEATURE_COLUMNS)
         for _, row in training_df[MODEL_FEATURE_COLUMNS].iterrows()

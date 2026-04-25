@@ -146,14 +146,54 @@ def _resolve_registered_model_name() -> str:
     return os.environ.get("IE2_REGISTERED_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME).strip()
 
 
-def _find_latest_registered_model_uri(model_name: str, tracking_uri: str) -> tuple[str, str]:
+def _artifact_uri_to_local_path(artifact_uri: str) -> Path | None:
+    prefix = "mlflow-artifacts:/"
+    if artifact_uri.startswith(prefix):
+        relative = artifact_uri[len(prefix):].replace("/", os.sep)
+        return ROOT / "mlartifacts" / relative
+    return None
+
+
+def _registered_model_local_path(client: MlflowClient, run_id: str, source_uri: str) -> str | None:
+    if not source_uri.startswith("runs:/"):
+        return None
+
+    run = client.get_run(run_id)
+    artifact_root = _artifact_uri_to_local_path(run.info.artifact_uri)
+    if artifact_root is None:
+        return None
+
+    source_parts = source_uri.split("/", 2)
+    artifact_subpath = source_parts[2] if len(source_parts) > 2 else ""
+    local_path = artifact_root / artifact_subpath if artifact_subpath else artifact_root
+    return str(local_path)
+
+
+def _load_latest_registered_model(model_name: str, tracking_uri: str) -> tuple[object, str, str]:
     client = MlflowClient(tracking_uri=tracking_uri)
     versions = client.search_model_versions(f"name = '{model_name}'")
     if not versions:
         raise ValueError(f"No registered MLflow model versions found for model '{model_name}'.")
 
     latest = max(versions, key=lambda version: int(version.version))
-    return f"models:/{model_name}/{latest.version}", latest.version
+    candidates = [f"models:/{model_name}/{latest.version}"]
+
+    source_uri = str(getattr(latest, "source", "") or "")
+    local_source_path = _registered_model_local_path(client, latest.run_id, source_uri)
+    if local_source_path:
+        candidates.append(local_source_path)
+    if source_uri:
+        candidates.append(source_uri)
+
+    load_errors: list[str] = []
+    for candidate in candidates:
+        try:
+            loaded_model = mlflow.catboost.load_model(candidate)
+            return loaded_model, str(latest.version), candidate
+        except Exception as exc:
+            load_errors.append(f"{candidate}: {exc}")
+
+    raise RuntimeError(" | ".join(load_errors))
 
 
 MODEL_META = _load_model_meta()
@@ -167,8 +207,7 @@ REGISTERED_MODEL = None
 
 try:
     mlflow.set_tracking_uri(MODEL_TRACKING_URI)
-    latest_model_uri, latest_version = _find_latest_registered_model_uri(MODEL_NAME, MODEL_TRACKING_URI)
-    REGISTERED_MODEL = mlflow.catboost.load_model(latest_model_uri)
+    REGISTERED_MODEL, latest_version, latest_model_uri = _load_latest_registered_model(MODEL_NAME, MODEL_TRACKING_URI)
     MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
     MODEL_SOURCE = latest_model_uri
 except Exception as exc:  # pragma: no cover
@@ -198,6 +237,88 @@ def _market_position_from_gap(price_gap: float) -> str:
     return "deep_value"
 
 
+def _augment_model_features(features: dict) -> dict:
+    days_of_supply = float(features.get("days_of_supply", 0.0) or 0.0)
+    total_qty = float(features.get("total_qty", 0.0) or 0.0)
+    margin_pct = float(features.get("current_margin_pct", 0.0) or 0.0)
+    price_gap_pct = float(features.get("price_gap_pct", 0.0) or 0.0)
+    competitors_on_sale = float(features.get("competitors_on_sale", 0.0) or 0.0)
+    competitors_out_of_stock = float(features.get("competitors_out_of_stock", 0.0) or 0.0)
+    num_competitors = float(features.get("num_competitors", 0.0) or 0.0)
+    season_sell_through = min(max(float(features.get("season_sell_through_pct", 0.0) or 0.0), 0.0), 1.0)
+    days_since_launch = float(features.get("days_since_launch", 0.0) or 0.0)
+    days_since_discount = float(features.get("days_since_last_discount", 999.0) or 999.0)
+    event_score = min(max(float(features.get("event_proximity_score", 0.0) or 0.0), 0.0), 1.0)
+
+    sale_pressure_ratio = min(max((competitors_on_sale / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
+    competitor_oos_ratio = min(max((competitors_out_of_stock / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
+    recent_discount_cooldown = min(max((21.0 - days_since_discount) / 21.0, 0.0), 1.0)
+    overpricing_signal = min(max(price_gap_pct, 0.0), 0.40)
+    stale_pressure = min(max(1.0 - season_sell_through, 0.0), 1.0)
+    stock_staleness_index = min(max((min(days_of_supply, 240.0) / 150.0) * stale_pressure, 0.0), 2.5)
+    inventory_age_pressure = min(
+        max(
+            (max(days_of_supply - 90.0, 0.0) / 180.0) * (max(days_since_launch - 180.0, 0.0) / 240.0),
+            0.0,
+        ),
+        1.5,
+    )
+    overpricing_sale_pressure = min(max(overpricing_signal * sale_pressure_ratio, 0.0), 0.50)
+    clearance_pressure_index = min(
+        max(
+            (max(days_of_supply - 120.0, 0.0) / 140.0) * 0.34
+            + stale_pressure * 0.28
+            + (max(days_since_launch - 220.0, 0.0) / 220.0) * 0.18
+            + min(overpricing_signal / 0.35, 1.0) * 0.12
+            + sale_pressure_ratio * 0.08,
+            0.0,
+        ),
+        1.5,
+    )
+    low_stock_signal = max(
+        min(max(14.0 - days_of_supply, 0.0) / 14.0, 1.0),
+        min(max(12.0 - total_qty, 0.0) / 12.0, 1.0),
+    )
+    stable_high_dos_signal = min(
+        max(
+            (max(days_of_supply - 70.0, 0.0) / 80.0)
+            * (1.0 - sale_pressure_ratio)
+            * (1.0 - min(overpricing_signal / 0.15, 1.0)),
+            0.0,
+        ),
+        1.0,
+    )
+    moderate_stock = min(max(1.0 - (abs(days_of_supply - 70.0) / 70.0), 0.0), 1.0)
+    low_margin_signal = min(max((35.5 - margin_pct) / 15.0, 0.0), 1.0)
+    hold_guardrail_index = min(
+        max(
+            low_margin_signal * 0.40
+            + recent_discount_cooldown * 0.24
+            + low_stock_signal * 0.20
+            + stable_high_dos_signal * 0.10
+            + (moderate_stock * event_score) * 0.06,
+            0.0,
+        ),
+        1.5,
+    )
+
+    features.update(
+        {
+            "sale_pressure_ratio": round(sale_pressure_ratio, 4),
+            "competitor_oos_ratio": round(competitor_oos_ratio, 4),
+            "markdown_margin_buffer": round(margin_pct - 35.0, 4),
+            "promote_margin_buffer": round(margin_pct - 38.0, 4),
+            "recent_discount_cooldown": round(recent_discount_cooldown, 4),
+            "stock_staleness_index": round(stock_staleness_index, 4),
+            "inventory_age_pressure": round(inventory_age_pressure, 4),
+            "overpricing_sale_pressure": round(overpricing_sale_pressure, 4),
+            "clearance_pressure_index": round(clearance_pressure_index, 4),
+            "hold_guardrail_index": round(hold_guardrail_index, 4),
+        }
+    )
+    return features
+
+
 def _build_model_features(req: RecommendationRequest) -> dict:
     comp = req.competitor_signals
     category = _normalize_category(req.category)
@@ -221,7 +342,7 @@ def _build_model_features(req: RecommendationRequest) -> dict:
     base_seasonality = _get_seasonal_multiplier(month)
     stock_median = INVENTORY_MEDIAN_PROXY.get(category, INVENTORY_MEDIAN_PROXY["other"])
 
-    return {
+    features = {
         "brand": brand,
         "category": category,
         "days_of_supply": days_of_supply,
@@ -251,6 +372,7 @@ def _build_model_features(req: RecommendationRequest) -> dict:
         "cash_tight": 0,
         "inventory_intensity": DEFAULT_INVENTORY_INTENSITY,
     }
+    return _augment_model_features(features)
 
 
 def _predict_with_registered_model(features: dict) -> tuple[str, float]:

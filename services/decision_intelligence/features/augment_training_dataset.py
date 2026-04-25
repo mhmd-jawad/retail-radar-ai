@@ -38,7 +38,7 @@ AUGMENTED_TRAINING_DATASET_PATH = ROOT / "data" / "features" / "training_dataset
 AUGMENTED_AI_LABELS_PATH = ROOT / "data" / "features" / "ai_labeled_dataset_augmented.csv"
 SUMMARY_REPORT_PATH = ROOT / "data" / "reports" / "training_dataset_augmentation_summary.json"
 
-TARGET_LABEL_ORDER = ["CLEAR", "PROMOTE", "MARKDOWN"]
+TARGET_LABEL_ORDER = ["CLEAR", "HOLD", "PROMOTE", "MARKDOWN"]
 AI_SCORE_COLUMNS = {
     "HOLD": "ai_score_hold",
     "MARKDOWN": "ai_score_markdown",
@@ -46,7 +46,8 @@ AI_SCORE_COLUMNS = {
     "CLEAR": "ai_score_clear",
 }
 DEFAULT_TARGET_COUNTS = {
-    "CLEAR": 320,
+    "CLEAR": 420,
+    "HOLD": 180,
     "PROMOTE": 220,
     "MARKDOWN": 240,
 }
@@ -162,6 +163,11 @@ def _select_anchor_pool(base_df: pd.DataFrame, target_label: str) -> pd.DataFram
     df = base_df.copy()
 
     if target_label == "CLEAR":
+        sale_pressure = (
+            pd.to_numeric(df["competitors_on_sale"], errors="coerce").fillna(0.0)
+            .div(pd.to_numeric(df["num_competitors"], errors="coerce").replace(0, float("nan")))
+            .fillna(0.0)
+        )
         pool = df[
             (df["days_of_supply"] >= 95)
             & (df["season_sell_through_pct"] <= 0.45)
@@ -174,6 +180,51 @@ def _select_anchor_pool(base_df: pd.DataFrame, target_label: str) -> pd.DataFram
             + pool["days_of_supply"].clip(lower=0, upper=240) / 240.0
             + (0.55 - pool["season_sell_through_pct"].clip(lower=0.0, upper=0.55))
             + pool["days_since_launch"].clip(lower=0, upper=365) / 365.0
+            + pd.to_numeric(pool["price_gap_pct"], errors="coerce").fillna(0.0).clip(lower=0.0, upper=0.35) * 1.7
+            + sale_pressure.loc[pool.index].clip(lower=0.0, upper=1.0) * 0.8
+            + (pool["market_position"].astype(str) == "premium").astype(float) * 0.35
+        )
+    elif target_label == "HOLD":
+        recent_discount_signal = (
+            (21.0 - pd.to_numeric(df["days_since_last_discount"], errors="coerce").fillna(999.0))
+            .clip(lower=0.0, upper=21.0)
+            / 21.0
+        )
+        margin_guardrail = (
+            (36.0 - pd.to_numeric(df["current_margin_pct"], errors="coerce").fillna(100.0))
+            .clip(lower=0.0, upper=15.0)
+            / 15.0
+        )
+        low_stock_signal = (
+            (15.0 - pd.to_numeric(df["total_qty"], errors="coerce").fillna(999.0))
+            .clip(lower=0.0, upper=15.0)
+            / 15.0
+        )
+        pool = df[
+            (df["ai_label"] == "HOLD")
+            & (
+                (pd.to_numeric(df["current_margin_pct"], errors="coerce").fillna(100.0) <= 38.0)
+                | (pd.to_numeric(df["days_since_last_discount"], errors="coerce").fillna(999.0) <= 35.0)
+                | (pd.to_numeric(df["total_qty"], errors="coerce").fillna(999.0) <= 18.0)
+                | (
+                    (pd.to_numeric(df["days_of_supply"], errors="coerce").fillna(0.0) >= 70.0)
+                    & (pd.to_numeric(df["num_competitors"], errors="coerce").fillna(0.0) <= 1.0)
+                    & (pd.to_numeric(df["price_gap_pct"], errors="coerce").fillna(0.0) <= 0.05)
+                )
+            )
+        ].copy()
+        if pool.empty:
+            pool = df[df["ai_label"] == "HOLD"].copy()
+        pool["_anchor_weight"] = (
+            pool["ai_score_hold"].fillna(0.0)
+            + recent_discount_signal.loc[pool.index] * 1.1
+            + margin_guardrail.loc[pool.index] * 1.0
+            + low_stock_signal.loc[pool.index] * 1.0
+            + (
+                pd.to_numeric(pool["days_of_supply"], errors="coerce").fillna(0.0)
+                .clip(lower=0.0, upper=140.0)
+                / 140.0
+            ) * 0.4
         )
     elif target_label == "PROMOTE":
         pool = df[
@@ -283,28 +334,75 @@ def _is_realistic(row: dict[str, Any]) -> bool:
     )
 
 
-def _mutate_clear(anchor: pd.Series, candidate: dict[str, Any], rng: random.Random, strong: bool) -> None:
-    dos_low, dos_high = (170, 260) if strong else (150, 230)
-    sell_low, sell_high = (0.0, 0.12) if strong else (0.0, 0.20)
+def _mutate_clear(
+    anchor: pd.Series,
+    candidate: dict[str, Any],
+    rng: random.Random,
+    strong: bool,
+    force_profile: str | None = None,
+) -> str:
+    profile = force_profile or rng.choices(
+        ["event_deadstock_clear", "lifecycle_clear", "premium_deadstock_clear"],
+        weights=[0.45, 0.25 if strong else 0.35, 0.30 if strong else 0.20],
+        k=1,
+    )[0]
 
-    candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], dos_low, dos_high, rng, anchor_weight=0.20, decimals=1)
-    candidate["total_qty"] = _anchored_int(anchor["total_qty"], max(_safe_int(anchor["total_qty"], 0), 36), max(_safe_int(anchor["total_qty"], 0) + 90, 180), rng, anchor_weight=0.25)
-    candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], sell_low, sell_high, rng, anchor_weight=0.15)
-    candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 180, 420 if strong else 360, rng, anchor_weight=0.20)
-    candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 0.70, 0.95, rng, anchor_weight=0.20, decimals=3)
-    candidate["category_seasonal_boost"] = _anchored_float(anchor["category_seasonal_boost"], 0.00, 0.10, rng, anchor_weight=0.10, decimals=3)
-    candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.00, 0.30, rng, anchor_weight=0.10, decimals=3)
-    candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.04, 0.24 if strong else 0.20, rng, anchor_weight=0.30)
-    candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 35, 200, rng, anchor_weight=0.15)
-    candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.12, rng, anchor_weight=0.10)
-    candidate["days_at_current_price"] = _anchored_int(anchor["days_at_current_price"], 45, 160, rng, anchor_weight=0.20)
+    if profile == "event_deadstock_clear":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 123, 152 if strong else 148, rng, anchor_weight=0.12, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], max(_safe_int(anchor["total_qty"], 0), 42), max(_safe_int(anchor["total_qty"], 0) + 70, 125), rng, anchor_weight=0.28)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.10, 0.17, rng, anchor_weight=0.10)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 235, 420, rng, anchor_weight=0.20)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 1.03, 1.18, rng, anchor_weight=0.12, decimals=3)
+        candidate["category_seasonal_boost"] = _anchored_float(anchor["category_seasonal_boost"], 0.00, 0.16, rng, anchor_weight=0.10, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.68, 0.90, rng, anchor_weight=0.10, decimals=3)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.22, 0.34, rng, anchor_weight=0.10)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 55, 220, rng, anchor_weight=0.15)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.08, rng, anchor_weight=0.08)
+        candidate["days_at_current_price"] = _anchored_int(anchor["days_at_current_price"], 65, 190, rng, anchor_weight=0.18)
+        num_competitors = max(1, _anchored_int(anchor["num_competitors"], 1, 6, rng, anchor_weight=0.20))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * rng.uniform(0.65, 1.00)))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.12))))
+    elif profile == "premium_deadstock_clear":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 125, 175 if strong else 165, rng, anchor_weight=0.20, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], max(_safe_int(anchor["total_qty"], 0), 42), max(_safe_int(anchor["total_qty"], 0) + 70, 140), rng, anchor_weight=0.30)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.00, 0.16, rng, anchor_weight=0.15)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 220, 420, rng, anchor_weight=0.25)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 0.95, 1.20, rng, anchor_weight=0.20, decimals=3)
+        candidate["category_seasonal_boost"] = _anchored_float(anchor["category_seasonal_boost"], 0.00, 0.20, rng, anchor_weight=0.10, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.40, 0.90, rng, anchor_weight=0.15, decimals=3)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.18, 0.35, rng, anchor_weight=0.15)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 45, 220, rng, anchor_weight=0.15)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.10, rng, anchor_weight=0.10)
+        candidate["days_at_current_price"] = _anchored_int(anchor["days_at_current_price"], 55, 180, rng, anchor_weight=0.20)
+        num_competitors = max(1, _anchored_int(anchor["num_competitors"], 1, 6, rng, anchor_weight=0.25))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * rng.uniform(0.60, 1.00)))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.15))))
+    else:
+        dos_low, dos_high = (170, 260) if strong else (150, 230)
+        sell_low, sell_high = (0.0, 0.12) if strong else (0.0, 0.20)
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], dos_low, dos_high, rng, anchor_weight=0.20, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], max(_safe_int(anchor["total_qty"], 0), 36), max(_safe_int(anchor["total_qty"], 0) + 90, 180), rng, anchor_weight=0.25)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], sell_low, sell_high, rng, anchor_weight=0.15)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 180, 420 if strong else 360, rng, anchor_weight=0.20)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 0.70, 0.95, rng, anchor_weight=0.20, decimals=3)
+        candidate["category_seasonal_boost"] = _anchored_float(anchor["category_seasonal_boost"], 0.00, 0.10, rng, anchor_weight=0.10, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.00, 0.30, rng, anchor_weight=0.10, decimals=3)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.04, 0.24 if strong else 0.20, rng, anchor_weight=0.30)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 35, 200, rng, anchor_weight=0.15)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.12, rng, anchor_weight=0.10)
+        candidate["days_at_current_price"] = _anchored_int(anchor["days_at_current_price"], 45, 160, rng, anchor_weight=0.20)
+
     if rng.random() < 0.35:
         candidate["cash_tight"] = 1
         candidate["cash_runway_months"] = _anchored_float(anchor["cash_runway_months"], 1.2, 2.6, rng, anchor_weight=0.10, decimals=2)
         candidate["inventory_intensity"] = _anchored_float(anchor["inventory_intensity"], 0.60, 0.88, rng, anchor_weight=0.15)
 
+    return profile
 
-def _mutate_markdown(anchor: pd.Series, candidate: dict[str, Any], rng: random.Random, strong: bool) -> None:
+
+def _mutate_markdown(anchor: pd.Series, candidate: dict[str, Any], rng: random.Random, strong: bool) -> str:
     gap_low, gap_high = (0.18, 0.32) if strong else (0.12, 0.28)
     dos_low, dos_high = (95, 165) if strong else (80, 150)
 
@@ -322,9 +420,106 @@ def _mutate_markdown(anchor: pd.Series, candidate: dict[str, Any], rng: random.R
     on_sale_ratio = rng.uniform(0.45, 0.90) if strong else rng.uniform(0.35, 0.80)
     candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * on_sale_ratio))))
     candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.20))))
+    return "markdown_strong" if strong else "markdown_guided"
 
 
-def _mutate_promote(anchor: pd.Series, candidate: dict[str, Any], rng: random.Random, strong: bool) -> None:
+def _mutate_hold(
+    anchor: pd.Series,
+    candidate: dict[str, Any],
+    rng: random.Random,
+    strong: bool,
+    force_profile: str | None = None,
+) -> str:
+    profile = force_profile or rng.choices(
+        [
+            "margin_floor_event_hold",
+            "margin_guardrail_hold",
+            "recent_discount_hold",
+            "scarcity_hold",
+            "stable_high_dos_hold",
+        ],
+        weights=[0.40, 0.22, 0.18, 0.10, 0.10],
+        k=1,
+    )[0]
+
+    if profile == "margin_floor_event_hold":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 48, 104, rng, anchor_weight=0.20, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], 26, 76, rng, anchor_weight=0.28)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.02, 0.10, rng, anchor_weight=0.18)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 90, 240, rng, anchor_weight=0.15)
+        if rng.random() < 0.30:
+            candidate["days_since_last_discount"] = 999
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.05, rng, anchor_weight=0.12)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 75, 180, rng, anchor_weight=0.25)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.24, 0.46, rng, anchor_weight=0.20)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 1.03, 1.16, rng, anchor_weight=0.12, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.68, 0.90, rng, anchor_weight=0.12, decimals=3)
+        candidate["cost_price_usd"] = round(candidate["retail_price_usd"] * (1.0 - rng.uniform(0.28, 0.355)), 2)
+        num_competitors = max(2, _anchored_int(anchor["num_competitors"], 2, 4, rng, anchor_weight=0.25))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * rng.uniform(0.30, 0.55)))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.15))))
+    elif profile == "margin_guardrail_hold":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 35, 95, rng, anchor_weight=0.25, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], 24, 90, rng, anchor_weight=0.35)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.00, 0.12, rng, anchor_weight=0.20)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 28, 120, rng, anchor_weight=0.20)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.12, rng, anchor_weight=0.20)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 45, 180, rng, anchor_weight=0.30)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.25, 0.55, rng, anchor_weight=0.25)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 1.00, 1.18, rng, anchor_weight=0.20, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.40, 0.90, rng, anchor_weight=0.20, decimals=3)
+        candidate["cost_price_usd"] = round(candidate["retail_price_usd"] * (1.0 - rng.uniform(0.24, 0.35)), 2)
+        num_competitors = max(2, _anchored_int(anchor["num_competitors"], 2, 5, rng, anchor_weight=0.30))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * rng.uniform(0.25, 0.60)))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.15))))
+    elif profile == "recent_discount_hold":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 35, 90, rng, anchor_weight=0.25, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], 22, 85, rng, anchor_weight=0.35)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], 0.10, 0.28, rng, anchor_weight=0.20)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 3, 18, rng, anchor_weight=0.10)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.08, 0.25, rng, anchor_weight=0.15)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 60, 200, rng, anchor_weight=0.30)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.25, 0.55, rng, anchor_weight=0.25)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 1.00, 1.20, rng, anchor_weight=0.20, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.35, 0.90, rng, anchor_weight=0.20, decimals=3)
+        num_competitors = max(2, _anchored_int(anchor["num_competitors"], 2, 6, rng, anchor_weight=0.25))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, max(1, int(round(num_competitors * rng.uniform(0.40, 0.85)))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.15))))
+    elif profile == "scarcity_hold":
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 4, 18, rng, anchor_weight=0.15, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], 2, 14, rng, anchor_weight=0.15)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], -0.08, 0.08, rng, anchor_weight=0.20)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 21, 180, rng, anchor_weight=0.25)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.08, rng, anchor_weight=0.20)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 20, 180, rng, anchor_weight=0.25)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.55, 0.92, rng, anchor_weight=0.20)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 0.90, 1.18, rng, anchor_weight=0.20, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.10, 0.80, rng, anchor_weight=0.20, decimals=3)
+        num_competitors = max(1, _anchored_int(anchor["num_competitors"], 1, 4, rng, anchor_weight=0.30))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.25))))
+        candidate["competitors_out_of_stock"] = min(num_competitors, max(0, int(round(num_competitors * rng.uniform(0.20, 0.70)))))
+    else:
+        candidate["days_of_supply"] = _anchored_float(anchor["days_of_supply"], 80, 140 if strong else 125, rng, anchor_weight=0.25, decimals=1)
+        candidate["total_qty"] = _anchored_int(anchor["total_qty"], 20, 65, rng, anchor_weight=0.35)
+        candidate["price_gap_pct"] = _anchored_float(anchor["price_gap_pct"], -0.02, 0.05, rng, anchor_weight=0.25)
+        candidate["days_since_last_discount"] = _anchored_int(anchor["days_since_last_discount"], 45, 180, rng, anchor_weight=0.25)
+        candidate["discount_depth_last_30d"] = _anchored_float(anchor["discount_depth_last_30d"], 0.00, 0.08, rng, anchor_weight=0.20)
+        candidate["days_since_launch"] = _anchored_int(anchor["days_since_launch"], 120, 300, rng, anchor_weight=0.30)
+        candidate["season_sell_through_pct"] = _anchored_float(anchor["season_sell_through_pct"], 0.22, 0.48, rng, anchor_weight=0.25)
+        candidate["seasonality_score"] = _anchored_float(anchor["seasonality_score"], 0.75, 1.02, rng, anchor_weight=0.20, decimals=3)
+        candidate["event_proximity_score"] = _anchored_float(anchor["event_proximity_score"], 0.00, 0.30, rng, anchor_weight=0.20, decimals=3)
+        num_competitors = max(0, _anchored_int(anchor["num_competitors"], 0, 1, rng, anchor_weight=0.20))
+        candidate["num_competitors"] = num_competitors
+        candidate["competitors_on_sale"] = 0
+        candidate["competitors_out_of_stock"] = 0
+    return profile
+
+
+def _mutate_promote(anchor: pd.Series, candidate: dict[str, Any], rng: random.Random, strong: bool) -> str:
     season_low, season_high = (1.18, 1.55) if strong else (1.10, 1.45)
     event_low, event_high = (0.65, 0.98) if strong else (0.55, 0.92)
 
@@ -344,26 +539,74 @@ def _mutate_promote(anchor: pd.Series, candidate: dict[str, Any], rng: random.Ra
     candidate["num_competitors"] = num_competitors
     candidate["competitors_on_sale"] = min(num_competitors, int(round(num_competitors * rng.uniform(0.00, 0.10))))
     candidate["competitors_out_of_stock"] = min(num_competitors, max(0, int(round(num_competitors * rng.uniform(0.15, 0.45)))))
+    return "promote_strong" if strong else "promote_guided"
 
 
-def _mutate_candidate(anchor: pd.Series, candidate: dict[str, Any], target_label: str, rng: random.Random, strong: bool) -> None:
+def _mutate_candidate(
+    anchor: pd.Series,
+    candidate: dict[str, Any],
+    target_label: str,
+    rng: random.Random,
+    strong: bool,
+    force_profile: str | None = None,
+) -> str:
     if target_label == "CLEAR":
-        _mutate_clear(anchor, candidate, rng, strong=strong)
+        return _mutate_clear(anchor, candidate, rng, strong=strong, force_profile=force_profile)
+    elif target_label == "HOLD":
+        return _mutate_hold(anchor, candidate, rng, strong=strong, force_profile=force_profile)
     elif target_label == "PROMOTE":
-        _mutate_promote(anchor, candidate, rng, strong=strong)
+        return _mutate_promote(anchor, candidate, rng, strong=strong)
     elif target_label == "MARKDOWN":
-        _mutate_markdown(anchor, candidate, rng, strong=strong)
+        return _mutate_markdown(anchor, candidate, rng, strong=strong)
     else:
         raise ValueError(f"Unsupported target label: {target_label}")
+
+
+def _planned_profile(target_label: str, generated_count: int, target_count: int) -> str | None:
+    if target_count <= 0:
+        return None
+
+    progress = generated_count / max(target_count, 1)
+    if target_label == "CLEAR":
+        if progress < 0.55:
+            return "event_deadstock_clear"
+        if progress < 0.80:
+            return "premium_deadstock_clear"
+        return "lifecycle_clear"
+    if target_label == "HOLD":
+        if progress < 0.55:
+            return "margin_floor_event_hold"
+        if progress < 0.78:
+            return "margin_guardrail_hold"
+        if progress < 0.90:
+            return "recent_discount_hold"
+        return "stable_high_dos_hold"
+    return None
 
 
 def _accept_candidate(candidate: dict[str, Any], target_label: str) -> tuple[bool, dict[str, Any]]:
     if not _is_realistic(candidate):
         return False, {}
 
-    candidate["rules_label"] = _assign_label(pd.Series(candidate))
-    ai_label, confidence, scores, rationale = _score_row(pd.Series(candidate))
-    confidence_floor = 0.55 if target_label == "PROMOTE" else 0.63
+    candidate_series = pd.Series(candidate)
+    candidate["rules_label"] = _assign_label(candidate_series)
+    ai_label, confidence, scores, rationale = _score_row(candidate_series)
+    confidence_floor = {
+        "HOLD": 0.60,
+        "PROMOTE": 0.55,
+        "MARKDOWN": 0.63,
+        "CLEAR": 0.63,
+    }.get(target_label, 0.63)
+    if (
+        target_label == "CLEAR"
+        and _safe_float(candidate.get("event_proximity_score"), 0.0) >= 0.60
+        and _safe_float(candidate.get("price_gap_pct"), 0.0) >= 0.18
+        and _safe_float(candidate.get("days_of_supply"), 0.0) >= 120
+        and _safe_float(candidate.get("season_sell_through_pct"), 1.0) <= 0.18
+        and _safe_float(candidate.get("days_since_launch"), 0.0) >= 220
+        and scores["CLEAR"] >= 0.55
+    ):
+        confidence_floor = 0.55
     if ai_label != target_label or confidence < confidence_floor:
         return False, {}
 
@@ -397,7 +640,7 @@ def _generate_target_rows(
 
     while len(generated_rows) < target_count and attempts < max_attempts:
         attempts += 1
-        strong = attempts > (max_attempts // 2)
+        strong = len(generated_rows) >= max(1, int(target_count * 0.45))
         anchor = _pick_anchor(pool, rng)
         anchor_state_id = str(anchor["state_id"])
         if per_anchor_count[anchor_state_id] >= max_copies_per_anchor:
@@ -410,9 +653,11 @@ def _generate_target_rows(
         candidate["synthetic_is_augmented"] = 1
         candidate["synthetic_target_label"] = target_label
         candidate["synthetic_anchor_state_id"] = anchor_state_id
-        candidate["synthetic_mutation_profile"] = f"{target_label.lower()}_{'strong' if strong else 'guided'}"
-
-        _mutate_candidate(anchor, candidate, target_label, rng, strong=strong)
+        force_profile = _planned_profile(target_label, len(generated_rows), target_count)
+        if attempts > int(max_attempts * 0.85):
+            force_profile = None
+        mutation_profile = _mutate_candidate(anchor, candidate, target_label, rng, strong=strong, force_profile=force_profile)
+        candidate["synthetic_mutation_profile"] = mutation_profile
         _recompute_dependent_fields(candidate, inventory_medians)
         accepted, score_payload = _accept_candidate(candidate, target_label)
         if not accepted:
@@ -541,6 +786,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-ai", type=Path, default=AUGMENTED_AI_LABELS_PATH)
     parser.add_argument("--summary-report", type=Path, default=SUMMARY_REPORT_PATH)
     parser.add_argument("--clear-count", type=int, default=DEFAULT_TARGET_COUNTS["CLEAR"])
+    parser.add_argument("--hold-count", type=int, default=DEFAULT_TARGET_COUNTS["HOLD"])
     parser.add_argument("--promote-count", type=int, default=DEFAULT_TARGET_COUNTS["PROMOTE"])
     parser.add_argument("--markdown-count", type=int, default=DEFAULT_TARGET_COUNTS["MARKDOWN"])
     parser.add_argument("--seed", type=int, default=42)
@@ -559,6 +805,7 @@ def main() -> None:
         summary_report_output=args.summary_report,
         target_counts={
             "CLEAR": args.clear_count,
+            "HOLD": args.hold_count,
             "PROMOTE": args.promote_count,
             "MARKDOWN": args.markdown_count,
         },

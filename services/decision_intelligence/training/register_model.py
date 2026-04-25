@@ -19,6 +19,7 @@ import argparse
 import json
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 import mlflow
@@ -28,6 +29,14 @@ from mlflow.tracking import MlflowClient
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+for _stream_name in ("stdout", "stderr"):
+    _stream = getattr(sys, _stream_name, None)
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 ROOT = Path(__file__).resolve().parents[3]
 META_PATH = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision" / "meta.json"
