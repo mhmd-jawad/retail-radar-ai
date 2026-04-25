@@ -264,7 +264,7 @@ export default function Overview() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
               { to: '/queue', icon: Database, label: 'Recommendations', count: '350' },
-              { to: '/inventory', icon: Boxes, label: 'Inventory Health', count: `${inventory.metrics.dead_stock_skus} dead` },
+              { to: '/inventory', icon: Boxes, label: 'Inventory & Stock', count: `${inventory.metrics.dead_stock_skus} dead` },
               { to: '/competitive', icon: Radar, label: 'Competitive', count: `${competitor.market_overview.shops_covered} shops` },
               { to: '/promotions', icon: DollarSign, label: 'Promotions', count: `${promotions.promote.length} ready` },
               { to: '/financial', icon: Wallet, label: 'Financial', count: `${financial.cashflow_health.cash_runway_months}mo runway` },

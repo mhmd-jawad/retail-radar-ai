@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
-import { Upload, FileSpreadsheet, Check, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, Check, Boxes } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
@@ -32,6 +33,24 @@ export default function UploadBatch() {
     <>
       <TopBar title="Upload & Batch Processing" subtitle="Run IE2 recommendations across a CSV of SKUs" />
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
+        <Section
+          title="Need to add or update real inventory?"
+          subtitle="Use Inventory & Stock. This Upload & Batch page is only for recommendation scoring."
+          action={
+            <Link
+              to="/inventory"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-[12.5px] font-semibold text-primary-foreground"
+            >
+              <Boxes className="h-3.5 w-3.5" /> Open Inventory & Stock
+            </Link>
+          }
+        >
+          <p className="text-[13px] text-muted-foreground">
+            The inventory screen has the PostgreSQL-backed table, an <span className="font-semibold text-foreground">Add SKU</span> button,
+            edit/archive actions, CSV upload, paste import, and full inventory replace mode.
+          </p>
+        </Section>
+
         {stage === 'idle' && (
           <div
             onDragOver={(e) => e.preventDefault()}

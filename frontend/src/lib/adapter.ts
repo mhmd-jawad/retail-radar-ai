@@ -8,7 +8,17 @@
 // differences are normalized here so the screens do not need to care.
 
 import type {
-  Report, IE2Request, IE2Result, ScrapeRun, CompetitorProductLatest, DataMode,
+  Report,
+  IE2Request,
+  IE2Result,
+  ScrapeRun,
+  CompetitorProductLatest,
+  DataMode,
+  RetailDbStatus,
+  RetailInventoryImportResult,
+  RetailInventoryInput,
+  RetailInventoryItem,
+  RetailInventoryResponse,
 } from '@/types/domain';
 import { MOCK_REPORT, MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
@@ -49,6 +59,66 @@ export async function fetchCompetitorLatest(): Promise<CompetitorProductLatest[]
   }
   await wait(120);
   return MOCK_COMPETITOR_LATEST;
+}
+
+export async function fetchRetailDbStatus(): Promise<RetailDbStatus> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/db/status`);
+  if (!r.ok) throw new Error(`EEP /inventory/db/status ${r.status}`);
+  return r.json();
+}
+
+export async function fetchRetailInventory(search = ''): Promise<RetailInventoryResponse> {
+  const { base } = settings();
+  const params = new URLSearchParams();
+  if (search.trim()) params.set('search', search.trim());
+  params.set('limit', '1000');
+  const r = await fetch(`${base}/inventory/items?${params.toString()}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/items'));
+  return r.json();
+}
+
+export async function createRetailInventoryItem(payload: RetailInventoryInput): Promise<RetailInventoryItem> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/items'));
+  return r.json();
+}
+
+export async function updateRetailInventoryItem(skuId: string, payload: RetailInventoryInput): Promise<RetailInventoryItem> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /inventory/items/${skuId}`));
+  return r.json();
+}
+
+export async function archiveRetailInventoryItem(skuId: string): Promise<RetailInventoryItem> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /inventory/items/${skuId}`));
+  return r.json();
+}
+
+export async function importRetailInventory(
+  items: RetailInventoryInput[],
+  mode: 'upsert' | 'replace',
+): Promise<RetailInventoryImportResult> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, items }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/import'));
+  return r.json();
 }
 
 export async function recommend(req: IE2Request): Promise<IE2Result> {
@@ -179,6 +249,15 @@ function explain(d: string, dos: number, gap: number, margin: number) {
 function round(n: number, d: number) { return Math.round(n * 10 ** d) / 10 ** d; }
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function apiError(response: Response, label: string) {
+  try {
+    const payload = await response.json();
+    return `${label} ${response.status}: ${payload.detail || response.statusText}`;
+  } catch {
+    return `${label} ${response.status}: ${response.statusText}`;
+  }
+}
 
 // Supabase-ready stubs (future)
 export const supabaseRepo = {

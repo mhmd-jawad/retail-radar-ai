@@ -17,7 +17,7 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
   {
     label: 'Intelligence',
     items: [
-      { to: '/inventory', label: 'Inventory Health', icon: Boxes },
+      { to: '/inventory', label: 'Inventory & Stock', icon: Boxes },
       { to: '/competitive', label: 'Competitive', icon: Radar },
       { to: '/promotions', label: 'Promotions', icon: Megaphone },
       { to: '/financial', label: 'Financial', icon: Wallet },

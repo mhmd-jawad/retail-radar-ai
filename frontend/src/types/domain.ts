@@ -325,6 +325,80 @@ export interface CompetitorProductLatest {
   last_seen: string;
 }
 
+// Retail core inventory DB
+export interface RetailInventoryItem {
+  product_id: string;
+  variant_id: string;
+  sku_id: string;
+  product_name: string;
+  brand: string;
+  category: string;
+  current_stock: number;
+  retail_price_usd: number;
+  cost_price_usd: number;
+  margin_pct: number;
+  stock_value_usd: number;
+  reorder_point: number;
+  reorder_quantity: number;
+  needs_reorder: boolean;
+  barcode?: string | null;
+  style_code?: string | null;
+  color?: string | null;
+  size?: string | null;
+  gender_target?: string | null;
+  season?: string | null;
+  updated_at?: string;
+}
+
+export interface RetailInventoryInput {
+  sku_id: string;
+  product_name: string;
+  brand: string;
+  category: string;
+  current_stock: number;
+  retail_price_usd: number;
+  cost_price_usd: number;
+  barcode?: string | null;
+  style_code?: string | null;
+  color?: string | null;
+  size?: string | null;
+  gender_target?: string | null;
+  season?: string | null;
+  reorder_point?: number;
+  reorder_quantity?: number;
+  supplier_name?: string | null;
+  notes?: string | null;
+}
+
+export interface RetailInventorySummary {
+  total_skus: number;
+  total_units: number;
+  inventory_value_at_cost_usd: number;
+  inventory_value_at_retail_usd: number;
+  reorder_count: number;
+  categories: string[];
+}
+
+export interface RetailInventoryResponse {
+  items: RetailInventoryItem[];
+  summary: RetailInventorySummary;
+}
+
+export interface RetailInventoryImportResult extends RetailInventoryResponse {
+  imported: number;
+  archived: number;
+}
+
+export interface RetailDbStatus {
+  connected: boolean;
+  database_url_hint: string;
+  tenant: string;
+  store: string;
+  item_count?: number;
+  schema_auto_init?: string;
+  error?: string;
+}
+
 // Audit
 export interface AuditEntry {
   id: string;

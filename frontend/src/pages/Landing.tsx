@@ -20,7 +20,7 @@ const SHOPS = [
 
 const MODULES = [
   { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve HOLD / MARKDOWN / PROMOTE / CLEAR per SKU.', status: 'live' },
-  { to: '/inventory', icon: Boxes, title: 'Inventory Health', desc: 'Days of supply, dead-stock, category alerts.', status: 'live' },
+  { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.', status: 'live' },
   { to: '/competitive', icon: Radar, title: 'Competitive Intelligence', desc: 'Price gaps across 7 Lebanese sportswear shops.', status: 'live' },
   { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
   { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, current ratio, lollar exposure.', status: 'live' },
