@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import threading
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
@@ -19,6 +20,7 @@ DEFAULT_TENANT_SLUG = "default"
 DEFAULT_STORE_CODE = "MAIN"
 
 _SCHEMA_READY = False
+_SCHEMA_LOCK = threading.Lock()
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -125,12 +127,15 @@ def _ensure_schema(conn) -> None:
     global _SCHEMA_READY
     if _SCHEMA_READY or os.environ.get("RETAIL_AUTO_INIT_DB", "true").lower() not in {"1", "true", "yes"}:
         return
-    if not SCHEMA_PATH.exists():
-        raise DatabaseUnavailable(f"Schema file not found: {SCHEMA_PATH}")
-    with conn.cursor() as cur:
-        cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
-    conn.commit()
-    _SCHEMA_READY = True
+    with _SCHEMA_LOCK:
+        if _SCHEMA_READY:
+            return
+        if not SCHEMA_PATH.exists():
+            raise DatabaseUnavailable(f"Schema file not found: {SCHEMA_PATH}")
+        with conn.cursor() as cur:
+            cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+        conn.commit()
+        _SCHEMA_READY = True
 
 
 def _context(cur) -> dict[str, Any]:
@@ -181,21 +186,22 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
         with conn.cursor() as cur:
             ctx = _context(cur)
             params: list[Any] = [ctx["tenant_id"]]
-            where = "v.tenant_id = %s and v.status = 'active'"
+            conditions = ["v.tenant_id = %s", "v.status = 'active'"]
             if search:
-                params.append(f"%{search.lower()}%")
-                where += """
-                    and (
-                        lower(v.sku_id) like %s
-                        or lower(p.name) like %s
-                        or lower(p.brand) like %s
-                        or lower(coalesce(v.style_code, '')) like %s
-                    )
-                """
-                params.extend([params[-1], params[-1], params[-1]])
+                search_param = f"%{search.lower()}%"
+                conditions.append(
+                    "("
+                    "lower(v.sku_id) like %s"
+                    " or lower(p.name) like %s"
+                    " or lower(p.brand) like %s"
+                    " or lower(coalesce(v.style_code, '')) like %s"
+                    ")"
+                )
+                params.extend([search_param, search_param, search_param, search_param])
             params.append(limit)
+            where = " and ".join(conditions)
             cur.execute(
-                f"""
+                """
                 select
                     p.id as product_id,
                     v.id as variant_id,
@@ -226,7 +232,9 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     order by valid_from desc
                     limit 1
                 ) pr on true
-                where {where}
+                where """
+                + where
+                + """
                 order by greatest(p.updated_at, v.updated_at, coalesce(b.updated_at, v.updated_at)) desc, v.sku_id
                 limit %s
                 """,
