@@ -9,6 +9,14 @@ used by the full pipeline benchmark, without applying:
 
 Run from the repo root:
     py -m services.decision_intelligence.evaluation.model_only_edge_case_benchmark
+
+Specifying the test cases:
+    py -m services.decision_intelligence.evaluation.model_only_edge_case_benchmark --case-set v1
+    py -m services.decision_intelligence.evaluation.model_only_edge_case_benchmark --case-set v2
+
+Default outputs:
+    v1 -> data/reports/model_only_edge_case_benchmark.json
+    v2 -> data/reports/model_only_edge_case_benchmark_v2.json
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 from services.decision_intelligence.evaluation.edge_case_benchmark import (
     EDGE_CASES,
+    EDGE_CASES_V2,
     LABELS,
     ROOT,
     _build_request,
@@ -59,7 +68,7 @@ def evaluate_model_only_edge_cases() -> dict[str, Any]:
     training_path, training_signatures = _load_training_signatures()
 
     case_rows: list[dict[str, Any]] = []
-    for case in EDGE_CASES:
+    for case in EDGE_CASES_V2:
         request = _build_request(case.request)
         features = _build_model_features(request)
         signature = tuple(_normalize_value(features[column]) for column in MODEL_FEATURE_COLUMNS)
