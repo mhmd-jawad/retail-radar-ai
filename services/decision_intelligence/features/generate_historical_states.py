@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from services.decision_intelligence.calendar import get_active_or_upcoming_event, get_event_proximity_score
 
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTS_PATH = ROOT / "data" / "real" / "products.csv"
@@ -55,15 +56,6 @@ CATEGORY_SEASONAL_BOOST = {
     "swimwear": {5: 0.3, 6: 0.5, 7: 0.5, 8: 0.3},
     "football_boots": {8: 0.3, 9: 0.4, 10: 0.2},
     "kids": {8: 0.4, 9: 0.3},
-}
-
-EVENT_WINDOWS = {
-    8: ("back_to_school", 0.9),
-    9: ("back_to_school", 0.7),
-    4: ("eid_al_fitr", 0.8),
-    3: ("eid_al_fitr", 0.5),
-    12: ("holiday_gifting", 0.7),
-    11: ("pre_holiday", 0.5),
 }
 
 EXPECTED_PRODUCT_COLUMNS = {
@@ -149,7 +141,9 @@ def get_category_boost(week_ts: pd.Timestamp, category: str) -> float:
 
 
 def get_event_score(week_ts: pd.Timestamp) -> tuple[str, float]:
-    return EVENT_WINDOWS.get(int(week_ts.month), ("none", 0.0))
+    event_window, _ = get_active_or_upcoming_event(week_ts.date())
+    event_name = event_window.name if event_window is not None else "none"
+    return event_name, get_event_proximity_score(week_ts.date())
 
 
 def infer_current_age_days(product_row: pd.Series) -> int:

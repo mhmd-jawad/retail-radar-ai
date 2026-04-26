@@ -28,11 +28,12 @@ from fastapi.security import APIKeyHeader
 from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
+from .calendar import get_event_proximity_score
+from .explainability.shap_engine import SHAPEngine
 from .features.engineer import (
     BRAND_TIER,
     DEFAULT_INVENTORY_AT_COST,
     DEFAULT_TOTAL_ASSETS,
-    EVENT_WINDOWS,
     _estimate_daily_demand,
     _get_seasonal_multiplier,
 )
@@ -48,6 +49,14 @@ from .schemas import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_META_PATH = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision" / "meta.json"
+LOCAL_PINNED_MODEL_EXPORT_DIR = (
+    ROOT
+    / "services"
+    / "decision_intelligence"
+    / "models"
+    / "mlflow_export"
+    / "retail_radar_decision_model_v6"
+)
 LOCAL_MODEL_EXPORT_DIR = (
     ROOT
     / "services"
@@ -62,6 +71,7 @@ DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 DEFAULT_LOCAL_API_KEY = "ie2-local-postman-key"
 CONFIDENCE_THRESHOLD = 0.45
 LABEL_INV = {0: "HOLD", 1: "MARKDOWN", 2: "PROMOTE", 3: "CLEAR"}
+LABEL_MAP = {label: idx for idx, label in LABEL_INV.items()}
 DEFAULT_CASH_RUNWAY_MONTHS = 3.0
 DEFAULT_INVENTORY_INTENSITY = round(DEFAULT_INVENTORY_AT_COST / DEFAULT_TOTAL_ASSETS, 4)
 INVENTORY_MEDIAN_PROXY = {
@@ -153,6 +163,13 @@ def _resolve_registered_model_name() -> str:
     return os.environ.get("IE2_REGISTERED_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME).strip()
 
 
+def _resolve_preferred_local_model_dir() -> Path:
+    configured_path = os.environ.get("IE2_LOCAL_MODEL_DIR", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return LOCAL_PINNED_MODEL_EXPORT_DIR
+
+
 def _artifact_uri_to_local_path(artifact_uri: str) -> Path | None:
     prefix = "mlflow-artifacts:/"
     if artifact_uri.startswith(prefix):
@@ -205,27 +222,36 @@ def _load_latest_registered_model(model_name: str, tracking_uri: str) -> tuple[o
 
 MODEL_META = _load_model_meta()
 MODEL_FEATURE_COLUMNS = MODEL_META.get("feature_cols", [])
+MODEL_CATEGORICAL_FEATURES = MODEL_META.get("cat_features", [])
 MODEL_TRACKING_URI = _resolve_tracking_uri(MODEL_META)
 MODEL_NAME = _resolve_registered_model_name()
+PREFERRED_LOCAL_MODEL_DIR = _resolve_preferred_local_model_dir()
 MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}"
 MODEL_SOURCE = ""
 MODEL_LOADER_ERROR = None
 REGISTERED_MODEL = None
+SHAP_ENGINE: SHAPEngine | None = None
 
 try:
-    mlflow.set_tracking_uri(MODEL_TRACKING_URI)
-    REGISTERED_MODEL, latest_version, latest_model_uri = _load_latest_registered_model(MODEL_NAME, MODEL_TRACKING_URI)
-    MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
-    MODEL_SOURCE = latest_model_uri
+    REGISTERED_MODEL = mlflow.catboost.load_model(str(PREFERRED_LOCAL_MODEL_DIR))
+    MODEL_VERSION = f"mlflow_export:{PREFERRED_LOCAL_MODEL_DIR.name}"
+    MODEL_SOURCE = str(PREFERRED_LOCAL_MODEL_DIR)
 except Exception as exc:  # pragma: no cover
-    MODEL_LOADER_ERROR = f"Registry load failed: {exc}"
+    MODEL_LOADER_ERROR = f"Preferred local export load failed: {exc}"
     try:
-        REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
-        MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
-        MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
-    except Exception as fallback_exc:  # pragma: no cover
-        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; local export fallback failed: {fallback_exc}"
-        MODEL_VERSION = "rules_fallback"
+        mlflow.set_tracking_uri(MODEL_TRACKING_URI)
+        REGISTERED_MODEL, latest_version, latest_model_uri = _load_latest_registered_model(MODEL_NAME, MODEL_TRACKING_URI)
+        MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
+        MODEL_SOURCE = latest_model_uri
+    except Exception as registry_exc:  # pragma: no cover
+        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; registry load failed: {registry_exc}"
+        try:
+            REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
+            MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
+            MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
+        except Exception as fallback_exc:  # pragma: no cover
+            MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; legacy local export fallback failed: {fallback_exc}"
+            MODEL_VERSION = "rules_fallback"
 
 
 def _normalize_category(category: str | None) -> str:
@@ -373,7 +399,7 @@ def _build_model_features(req: RecommendationRequest) -> dict:
         "cost_price_usd": req.cost_price_usd,
         "seasonality_score": round(seasonality_score, 3),
         "category_seasonal_boost": round(seasonality_score - base_seasonality, 3),
-        "event_proximity_score": round(EVENT_WINDOWS.get(month, ("none", 0.0))[1], 3),
+        "event_proximity_score": round(get_event_proximity_score(_date.today()), 3),
         "next_month_seasonality": round(_get_seasonal_multiplier(next_month, category), 3),
         "cash_runway_months": DEFAULT_CASH_RUNWAY_MONTHS,
         "cash_tight": 0,
@@ -395,6 +421,34 @@ def _predict_with_registered_model(features: dict) -> tuple[str, float]:
     probabilities = REGISTERED_MODEL.predict_proba(frame)[0]
     best_idx = max(range(len(probabilities)), key=lambda idx: probabilities[idx])
     return LABEL_INV.get(best_idx, "HOLD"), float(probabilities[best_idx])
+
+
+def _get_shap_engine() -> SHAPEngine | None:
+    global SHAP_ENGINE
+    if SHAP_ENGINE is None and REGISTERED_MODEL is not None:
+        SHAP_ENGINE = SHAPEngine(REGISTERED_MODEL, MODEL_CATEGORICAL_FEATURES)
+    return SHAP_ENGINE
+
+
+def _build_model_shap_explanations(features: dict, decision: str) -> list[SHAPFeature]:
+    if not MODEL_FEATURE_COLUMNS:
+        return _build_rule_explanations(features, decision)
+
+    predicted_class_idx = LABEL_MAP.get(decision)
+    if predicted_class_idx is None:
+        return _build_rule_explanations(features, decision)
+
+    try:
+        frame = pd.DataFrame(
+            [{column: features.get(column) for column in MODEL_FEATURE_COLUMNS}],
+            columns=MODEL_FEATURE_COLUMNS,
+        )
+        engine = _get_shap_engine()
+        if engine is None:
+            return _build_rule_explanations(features, decision)
+        return [SHAPFeature(**item) for item in engine.explain(frame, predicted_class_idx)]
+    except Exception:
+        return _build_rule_explanations(features, decision)
 
 
 def _build_rule_explanations(features: dict, decision: str) -> list[SHAPFeature]:
@@ -659,7 +713,7 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         if REGISTERED_MODEL is not None:
             decision, confidence = _predict_with_registered_model(features)
             decision, confidence = _apply_soft_rule_nudges(decision, confidence, rule_result, features)
-            shap_top5 = _build_rule_explanations(features, decision)
+            shap_top5 = _build_model_shap_explanations(features, decision)
         else:
             decision, confidence, shap_top5 = _rules_only_decision(features, rule_result)
 
