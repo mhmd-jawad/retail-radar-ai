@@ -14,7 +14,9 @@ Default local API key:
 
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import os
 import time
 from datetime import date as _date, datetime
@@ -87,7 +89,11 @@ INVENTORY_MEDIAN_PROXY = {
 }
 
 _API_KEY = os.environ.get("IE2_API_KEY", DEFAULT_LOCAL_API_KEY)
-print(f"INFO: IE2 API key ready for local testing: {_API_KEY}")
+_logger = logging.getLogger(__name__)
+if os.environ.get("IE2_API_KEY"):
+    _logger.info("IE2: API key loaded from environment (IE2_API_KEY).")
+else:
+    _logger.warning("IE2: IE2_API_KEY not set — using default local key. Do not deploy without setting this.")
 
 app = FastAPI(
     title="Retail Radar AI - Decision Intelligence API",
@@ -106,14 +112,15 @@ app.add_middleware(
         "http://127.0.0.1:4173",
     ],
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def _verify_api_key(key: str | None = Security(_api_key_header)):
-    if not key or key != _API_KEY:
+    if not key or not hmac.compare_digest(key, _API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
 
@@ -771,7 +778,6 @@ def health():
         "model_source": MODEL_SOURCE,
         "registered_model_loaded": REGISTERED_MODEL is not None,
         "model_loader_error": MODEL_LOADER_ERROR,
-        "api_key_hint": "Use X-API-Key: ie2-local-postman-key unless you set IE2_API_KEY manually.",
         "timestamp": datetime.now().isoformat(),
     }
 
