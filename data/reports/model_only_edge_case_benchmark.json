@@ -1,6 +1,6 @@
 {
   "summary": {
-    "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+    "model_version": "mlflow_registry:retail_radar_decision_model:v6",
     "reference_training_dataset": "C:\\Users\\USER\\Desktop\\AI in Industry\\Project\\retail-radar-ai\\data\\features\\ai_labeled_dataset_augmented.csv",
     "total_cases": 20,
     "exact_training_feature_matches": 0,
@@ -12,38 +12,39 @@
       "CLEAR": 5
     },
     "predicted_distribution": {
-      "HOLD": 3,
-      "PROMOTE": 7,
-      "MARKDOWN": 10
+      "HOLD": 4,
+      "PROMOTE": 6,
+      "MARKDOWN": 4,
+      "CLEAR": 6
     },
     "overall_metrics": {
-      "accuracy": 0.65,
-      "macro_f1": 0.5625,
-      "weighted_f1": 0.5625
+      "accuracy": 0.9,
+      "macro_f1": 0.899,
+      "weighted_f1": 0.899
     },
     "per_class_metrics": {
       "HOLD": {
         "precision": 1.0,
-        "recall": 0.6,
-        "f1": 0.75,
+        "recall": 0.8,
+        "f1": 0.8889,
         "support": 5
       },
       "MARKDOWN": {
-        "precision": 0.5,
-        "recall": 1.0,
-        "f1": 0.6667,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8889,
         "support": 5
       },
       "PROMOTE": {
-        "precision": 0.7143,
+        "precision": 0.8333,
         "recall": 1.0,
-        "f1": 0.8333,
+        "f1": 0.9091,
         "support": 5
       },
       "CLEAR": {
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0,
+        "precision": 0.8333,
+        "recall": 1.0,
+        "f1": 0.9091,
         "support": 5
       }
     },
@@ -56,16 +57,16 @@
       ],
       "matrix": [
         [
-          3,
+          4,
           0,
-          2,
+          1,
           0
         ],
         [
           0,
-          5,
+          4,
           0,
-          0
+          1
         ],
         [
           0,
@@ -75,9 +76,9 @@
         ],
         [
           0,
-          5,
           0,
-          0
+          0,
+          5
         ]
       ]
     }
@@ -90,14 +91,14 @@
       "expected_label": "HOLD",
       "predicted_label": "HOLD",
       "correct": true,
-      "confidence": 0.9933,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9648,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.9933,
-        "MARKDOWN": 0.0009,
-        "PROMOTE": 0.0051,
-        "CLEAR": 0.0006
+        "HOLD": 0.9648,
+        "MARKDOWN": 0.0087,
+        "PROMOTE": 0.0211,
+        "CLEAR": 0.0054
       },
       "request": {
         "sku_id": "EC-001",
@@ -143,14 +144,14 @@
       "expected_label": "HOLD",
       "predicted_label": "HOLD",
       "correct": true,
-      "confidence": 0.9706,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9533,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.9706,
-        "MARKDOWN": 0.0006,
-        "PROMOTE": 0.0284,
-        "CLEAR": 0.0004
+        "HOLD": 0.9533,
+        "MARKDOWN": 0.003,
+        "PROMOTE": 0.0412,
+        "CLEAR": 0.0025
       },
       "request": {
         "sku_id": "EC-002",
@@ -194,16 +195,16 @@
       "description": "Mid-stock apparel where gross margin is only about 30.5%.",
       "label_rationale": "The margin floor should block markdown pressure and preserve profitability.",
       "expected_label": "HOLD",
-      "predicted_label": "PROMOTE",
-      "correct": false,
-      "confidence": 0.8636,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "HOLD",
+      "correct": true,
+      "confidence": 0.9352,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.1349,
-        "MARKDOWN": 0.0009,
-        "PROMOTE": 0.8636,
-        "CLEAR": 0.0005
+        "HOLD": 0.9352,
+        "MARKDOWN": 0.0032,
+        "PROMOTE": 0.0588,
+        "CLEAR": 0.0027
       },
       "request": {
         "sku_id": "EC-003",
@@ -249,14 +250,14 @@
       "expected_label": "HOLD",
       "predicted_label": "PROMOTE",
       "correct": false,
-      "confidence": 0.4714,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.3853,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.085,
-        "MARKDOWN": 0.4381,
-        "PROMOTE": 0.4714,
-        "CLEAR": 0.0054
+        "HOLD": 0.368,
+        "MARKDOWN": 0.2245,
+        "PROMOTE": 0.3853,
+        "CLEAR": 0.0221
       },
       "request": {
         "sku_id": "EC-004",
@@ -302,14 +303,14 @@
       "expected_label": "HOLD",
       "predicted_label": "HOLD",
       "correct": true,
-      "confidence": 0.9919,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9888,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.9919,
-        "MARKDOWN": 0.0008,
-        "PROMOTE": 0.0068,
-        "CLEAR": 0.0005
+        "HOLD": 0.9888,
+        "MARKDOWN": 0.0021,
+        "PROMOTE": 0.0079,
+        "CLEAR": 0.0012
       },
       "request": {
         "sku_id": "EC-005",
@@ -355,14 +356,14 @@
       "expected_label": "MARKDOWN",
       "predicted_label": "MARKDOWN",
       "correct": true,
-      "confidence": 0.9876,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.8653,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0042,
-        "MARKDOWN": 0.9876,
-        "PROMOTE": 0.007,
-        "CLEAR": 0.0012
+        "HOLD": 0.0463,
+        "MARKDOWN": 0.8653,
+        "PROMOTE": 0.0339,
+        "CLEAR": 0.0544
       },
       "request": {
         "sku_id": "EC-006",
@@ -408,14 +409,14 @@
       "expected_label": "MARKDOWN",
       "predicted_label": "MARKDOWN",
       "correct": true,
-      "confidence": 0.9381,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.7004,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.029,
-        "MARKDOWN": 0.9381,
-        "PROMOTE": 0.0301,
-        "CLEAR": 0.0028
+        "HOLD": 0.1167,
+        "MARKDOWN": 0.7004,
+        "PROMOTE": 0.1262,
+        "CLEAR": 0.0566
       },
       "request": {
         "sku_id": "EC-007",
@@ -461,14 +462,14 @@
       "expected_label": "MARKDOWN",
       "predicted_label": "MARKDOWN",
       "correct": true,
-      "confidence": 0.9949,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9362,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0021,
-        "MARKDOWN": 0.9949,
-        "PROMOTE": 0.0024,
-        "CLEAR": 0.0006
+        "HOLD": 0.0184,
+        "MARKDOWN": 0.9362,
+        "PROMOTE": 0.014,
+        "CLEAR": 0.0314
       },
       "request": {
         "sku_id": "EC-008",
@@ -514,14 +515,14 @@
       "expected_label": "MARKDOWN",
       "predicted_label": "MARKDOWN",
       "correct": true,
-      "confidence": 0.9168,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.7498,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0317,
-        "MARKDOWN": 0.9168,
-        "PROMOTE": 0.0495,
-        "CLEAR": 0.002
+        "HOLD": 0.1004,
+        "MARKDOWN": 0.7498,
+        "PROMOTE": 0.1241,
+        "CLEAR": 0.0258
       },
       "request": {
         "sku_id": "EC-009",
@@ -565,16 +566,16 @@
       "description": "Very old lifestyle SKU with low sell-through, but not quite enough days of supply to qualify as dead stock.",
       "label_rationale": "This is intentionally near the CLEAR boundary, but it should still be treated as markdown rather than forced clearance.",
       "expected_label": "MARKDOWN",
-      "predicted_label": "MARKDOWN",
-      "correct": true,
-      "confidence": 0.9902,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": false,
+      "confidence": 0.7126,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0027,
-        "MARKDOWN": 0.9902,
-        "PROMOTE": 0.0041,
-        "CLEAR": 0.003
+        "HOLD": 0.0236,
+        "MARKDOWN": 0.2447,
+        "PROMOTE": 0.0192,
+        "CLEAR": 0.7126
       },
       "request": {
         "sku_id": "EC-010",
@@ -620,14 +621,14 @@
       "expected_label": "PROMOTE",
       "predicted_label": "PROMOTE",
       "correct": true,
-      "confidence": 0.9865,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9761,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0133,
-        "MARKDOWN": 0.0001,
-        "PROMOTE": 0.9865,
-        "CLEAR": 0.0001
+        "HOLD": 0.0215,
+        "MARKDOWN": 0.0014,
+        "PROMOTE": 0.9761,
+        "CLEAR": 0.001
       },
       "request": {
         "sku_id": "EC-011",
@@ -673,14 +674,14 @@
       "expected_label": "PROMOTE",
       "predicted_label": "PROMOTE",
       "correct": true,
-      "confidence": 0.9688,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9892,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0308,
-        "MARKDOWN": 0.0002,
-        "PROMOTE": 0.9688,
-        "CLEAR": 0.0002
+        "HOLD": 0.0081,
+        "MARKDOWN": 0.0015,
+        "PROMOTE": 0.9892,
+        "CLEAR": 0.0012
       },
       "request": {
         "sku_id": "EC-012",
@@ -726,14 +727,14 @@
       "expected_label": "PROMOTE",
       "predicted_label": "PROMOTE",
       "correct": true,
-      "confidence": 0.9946,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9894,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0053,
-        "MARKDOWN": 0.0001,
-        "PROMOTE": 0.9946,
-        "CLEAR": 0.0001
+        "HOLD": 0.0091,
+        "MARKDOWN": 0.0008,
+        "PROMOTE": 0.9894,
+        "CLEAR": 0.0006
       },
       "request": {
         "sku_id": "EC-013",
@@ -779,14 +780,14 @@
       "expected_label": "PROMOTE",
       "predicted_label": "PROMOTE",
       "correct": true,
-      "confidence": 0.9652,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9795,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0344,
-        "MARKDOWN": 0.0002,
-        "PROMOTE": 0.9652,
-        "CLEAR": 0.0002
+        "HOLD": 0.0166,
+        "MARKDOWN": 0.0022,
+        "PROMOTE": 0.9795,
+        "CLEAR": 0.0017
       },
       "request": {
         "sku_id": "EC-014",
@@ -832,14 +833,14 @@
       "expected_label": "PROMOTE",
       "predicted_label": "PROMOTE",
       "correct": true,
-      "confidence": 0.982,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "confidence": 0.9872,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0178,
-        "MARKDOWN": 0.0001,
-        "PROMOTE": 0.982,
-        "CLEAR": 0.0001
+        "HOLD": 0.0113,
+        "MARKDOWN": 0.0009,
+        "PROMOTE": 0.9872,
+        "CLEAR": 0.0006
       },
       "request": {
         "sku_id": "EC-015",
@@ -883,16 +884,16 @@
       "description": "Late-season swimwear with very weak sell-through and premium pricing.",
       "label_rationale": "Dead stock criteria are clearly met, so full clearance is the only sensible action.",
       "expected_label": "CLEAR",
-      "predicted_label": "MARKDOWN",
-      "correct": false,
-      "confidence": 0.9955,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": true,
+      "confidence": 0.8571,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0013,
-        "MARKDOWN": 0.9955,
-        "PROMOTE": 0.0016,
-        "CLEAR": 0.0016
+        "HOLD": 0.0086,
+        "MARKDOWN": 0.1266,
+        "PROMOTE": 0.0077,
+        "CLEAR": 0.8571
       },
       "request": {
         "sku_id": "EC-016",
@@ -936,16 +937,16 @@
       "description": "Old football boots with premium pricing, low sell-through, and long stock cover.",
       "label_rationale": "This case is squarely in the dead-stock zone and should be forced to clearance.",
       "expected_label": "CLEAR",
-      "predicted_label": "MARKDOWN",
-      "correct": false,
-      "confidence": 0.9944,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": true,
+      "confidence": 0.9203,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0022,
-        "MARKDOWN": 0.9944,
-        "PROMOTE": 0.0017,
-        "CLEAR": 0.0017
+        "HOLD": 0.0067,
+        "MARKDOWN": 0.0675,
+        "PROMOTE": 0.0055,
+        "CLEAR": 0.9203
       },
       "request": {
         "sku_id": "EC-017",
@@ -989,16 +990,16 @@
       "description": "Aging lifestyle layer with very high days of supply and minimal competitive urgency.",
       "label_rationale": "Even with low competitor count, the age and sell-through profile indicate trapped cash that should be freed.",
       "expected_label": "CLEAR",
-      "predicted_label": "MARKDOWN",
-      "correct": false,
-      "confidence": 0.9924,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": true,
+      "confidence": 0.8594,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0021,
-        "MARKDOWN": 0.9924,
-        "PROMOTE": 0.0025,
-        "CLEAR": 0.0031
+        "HOLD": 0.0098,
+        "MARKDOWN": 0.1224,
+        "PROMOTE": 0.0084,
+        "CLEAR": 0.8594
       },
       "request": {
         "sku_id": "EC-018",
@@ -1042,16 +1043,16 @@
       "description": "Swimwear case close to the sell-through cutoff, but still clearly weak enough for forced clearance.",
       "label_rationale": "This scenario probes the dead-stock boundary while still remaining on the CLEAR side of the rule.",
       "expected_label": "CLEAR",
-      "predicted_label": "MARKDOWN",
-      "correct": false,
-      "confidence": 0.9931,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": true,
+      "confidence": 0.8696,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.002,
-        "MARKDOWN": 0.9931,
-        "PROMOTE": 0.0023,
-        "CLEAR": 0.0026
+        "HOLD": 0.0084,
+        "MARKDOWN": 0.115,
+        "PROMOTE": 0.0071,
+        "CLEAR": 0.8696
       },
       "request": {
         "sku_id": "EC-019",
@@ -1095,16 +1096,16 @@
       "description": "Premium footwear with very high stock cover and very weak sell-through.",
       "label_rationale": "The case is old, overpriced, and underperforming enough that forced clearance is appropriate.",
       "expected_label": "CLEAR",
-      "predicted_label": "MARKDOWN",
-      "correct": false,
-      "confidence": 0.9968,
-      "model_version": "mlflow_registry:retail_radar_decision_model:v4",
+      "predicted_label": "CLEAR",
+      "correct": true,
+      "confidence": 0.9158,
+      "model_version": "mlflow_registry:retail_radar_decision_model:v6",
       "is_exact_feature_match_in_training_data": false,
       "raw_class_probabilities": {
-        "HOLD": 0.0012,
-        "MARKDOWN": 0.9968,
-        "PROMOTE": 0.0009,
-        "CLEAR": 0.0011
+        "HOLD": 0.0048,
+        "MARKDOWN": 0.0751,
+        "PROMOTE": 0.0043,
+        "CLEAR": 0.9158
       },
       "request": {
         "sku_id": "EC-020",

@@ -23,6 +23,7 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
+from services.decision_intelligence.calendar import get_event_proximity_score
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = ROOT / "data" / "real"
@@ -56,15 +57,6 @@ CATEGORY_SEASONAL_BOOST = {
     "swimwear": {5: 0.3, 6: 0.5, 7: 0.5, 8: 0.3},
     "football_boots": {8: 0.3, 9: 0.4, 10: 0.2},
     "kids": {8: 0.4, 9: 0.3},
-}
-
-EVENT_WINDOWS = {
-    8: ("back_to_school", 0.9),
-    9: ("back_to_school", 0.7),
-    4: ("eid_al_fitr", 0.8),
-    3: ("eid_al_fitr", 0.5),
-    12: ("holiday_gifting", 0.7),
-    11: ("pre_holiday", 0.5),
 }
 
 BRAND_TIER = {
@@ -216,7 +208,10 @@ def compute_state_features(state_row: dict, financial_profile: dict) -> dict:
 
     seasonality_score = _to_float(state_row.get("seasonality_score"), _get_seasonal_multiplier(week_date.month, category))
     category_seasonal_boost = _to_float(state_row.get("category_seasonal_boost"), CATEGORY_SEASONAL_BOOST.get(category, {}).get(week_date.month, 0.0))
-    event_proximity_score = _to_float(state_row.get("event_proximity_score"), EVENT_WINDOWS.get(week_date.month, ("none", 0.0))[1])
+    event_proximity_score = _to_float(
+        state_row.get("event_proximity_score"),
+        get_event_proximity_score(week_date),
+    )
     next_month = (week_date.month % 12) + 1
     next_month_seasonality = _get_seasonal_multiplier(next_month, category)
 

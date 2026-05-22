@@ -23,12 +23,21 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from itertools import product
 from pathlib import Path
 
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+for _stream_name in ("stdout", "stderr"):
+    _stream = getattr(sys, _stream_name, None)
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 ROOT = Path(__file__).resolve().parents[3]
 TRAINING_DATASET_PATH = ROOT / "data" / "features" / "training_dataset.csv"
@@ -168,6 +177,164 @@ def _build_feature_matrix(df):
     return X, y, feature_cols, cat_idxs
 
 
+def _enrich_feature_space(df):
+    import pandas as pd
+
+    enriched = df.copy()
+
+    days_of_supply = pd.to_numeric(enriched.get("days_of_supply"), errors="coerce").fillna(0.0)
+    total_qty = pd.to_numeric(enriched.get("total_qty"), errors="coerce").fillna(0.0)
+    margin_pct = pd.to_numeric(enriched.get("current_margin_pct"), errors="coerce").fillna(0.0)
+    price_gap_pct = pd.to_numeric(enriched.get("price_gap_pct"), errors="coerce").fillna(0.0)
+    comp_on_sale = pd.to_numeric(enriched.get("competitors_on_sale"), errors="coerce").fillna(0.0)
+    comp_out = pd.to_numeric(enriched.get("competitors_out_of_stock"), errors="coerce").fillna(0.0)
+    num_comp = pd.to_numeric(enriched.get("num_competitors"), errors="coerce").fillna(0.0)
+    sell_through = pd.to_numeric(enriched.get("season_sell_through_pct"), errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+    days_since_launch = pd.to_numeric(enriched.get("days_since_launch"), errors="coerce").fillna(0.0)
+    days_since_discount = pd.to_numeric(enriched.get("days_since_last_discount"), errors="coerce").fillna(999.0)
+    seasonality = pd.to_numeric(enriched.get("seasonality_score"), errors="coerce").fillna(1.0)
+    event_score = pd.to_numeric(enriched.get("event_proximity_score"), errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+
+    safe_num_comp = num_comp.replace(0, float("nan"))
+    sale_pressure_ratio = comp_on_sale.div(safe_num_comp).fillna(0.0).clip(lower=0.0, upper=1.0)
+    competitor_oos_ratio = comp_out.div(safe_num_comp).fillna(0.0).clip(lower=0.0, upper=1.0)
+    markdown_margin_buffer = (margin_pct - 35.0).round(4)
+    promote_margin_buffer = (margin_pct - 38.0).round(4)
+    recent_discount_cooldown = ((21.0 - days_since_discount).clip(lower=0.0, upper=21.0) / 21.0).round(4)
+    overpricing_signal = price_gap_pct.clip(lower=0.0, upper=0.40)
+    stale_pressure = (1.0 - sell_through).clip(lower=0.0, upper=1.0)
+    stock_staleness_index = ((days_of_supply.clip(lower=0.0, upper=240.0) / 150.0) * stale_pressure).clip(lower=0.0, upper=2.5).round(4)
+    inventory_age_pressure = (
+        ((days_of_supply - 90.0).clip(lower=0.0, upper=180.0) / 180.0)
+        * ((days_since_launch - 180.0).clip(lower=0.0, upper=240.0) / 240.0)
+    ).clip(lower=0.0, upper=1.5).round(4)
+    overpricing_sale_pressure = (overpricing_signal * sale_pressure_ratio).clip(lower=0.0, upper=0.50).round(4)
+
+    clearance_pressure_index = (
+        ((days_of_supply - 120.0).clip(lower=0.0, upper=140.0) / 140.0) * 0.34
+        + stale_pressure * 0.28
+        + ((days_since_launch - 220.0).clip(lower=0.0, upper=220.0) / 220.0) * 0.18
+        + (overpricing_signal / 0.35).clip(lower=0.0, upper=1.0) * 0.12
+        + sale_pressure_ratio * 0.08
+    ).clip(lower=0.0, upper=1.5).round(4)
+
+    low_stock_signal = pd.concat(
+        [
+            ((14.0 - days_of_supply).clip(lower=0.0, upper=14.0) / 14.0),
+            ((12.0 - total_qty).clip(lower=0.0, upper=12.0) / 12.0),
+        ],
+        axis=1,
+    ).max(axis=1)
+    stable_high_dos_signal = (
+        ((days_of_supply - 70.0).clip(lower=0.0, upper=80.0) / 80.0)
+        * (1.0 - sale_pressure_ratio)
+        * (1.0 - (overpricing_signal / 0.15).clip(lower=0.0, upper=1.0))
+    ).clip(lower=0.0, upper=1.0)
+    moderate_stock = (1.0 - ((days_of_supply - 70.0).abs() / 70.0)).clip(lower=0.0, upper=1.0)
+    low_margin_signal = ((35.5 - margin_pct).clip(lower=0.0, upper=15.0) / 15.0)
+    hold_guardrail_index = (
+        low_margin_signal * 0.40
+        + recent_discount_cooldown * 0.24
+        + low_stock_signal * 0.20
+        + stable_high_dos_signal * 0.10
+        + (moderate_stock * event_score) * 0.06
+    ).clip(lower=0.0, upper=1.5).round(4)
+
+    enriched["sale_pressure_ratio"] = sale_pressure_ratio.round(4)
+    enriched["competitor_oos_ratio"] = competitor_oos_ratio.round(4)
+    enriched["markdown_margin_buffer"] = markdown_margin_buffer
+    enriched["promote_margin_buffer"] = promote_margin_buffer
+    enriched["recent_discount_cooldown"] = recent_discount_cooldown
+    enriched["stock_staleness_index"] = stock_staleness_index
+    enriched["inventory_age_pressure"] = inventory_age_pressure
+    enriched["overpricing_sale_pressure"] = overpricing_sale_pressure
+    enriched["clearance_pressure_index"] = clearance_pressure_index
+    enriched["hold_guardrail_index"] = hold_guardrail_index
+    return enriched
+
+
+def _compute_sample_weights(df):
+    counts = df["label"].value_counts().to_dict()
+    if not counts:
+        return [], {}
+
+    max_count = max(counts.values())
+    class_weights = {
+        int(label_id): round((max_count / count) ** 0.5, 4)
+        for label_id, count in counts.items()
+        if count > 0
+    }
+
+    weights: list[float] = []
+    for _, row in df.iterrows():
+        label_id = int(row["label"])
+        label_name = LABEL_INV.get(label_id, "HOLD")
+        weight = float(class_weights.get(label_id, 1.0))
+
+        is_synthetic = int(float(row.get("synthetic_is_augmented", 0) or 0)) == 1
+        if is_synthetic:
+            weight *= 0.90
+
+        dos = float(row.get("days_of_supply", 0.0) or 0.0)
+        sell_through = float(row.get("season_sell_through_pct", 0.0) or 0.0)
+        age = float(row.get("days_since_launch", 0.0) or 0.0)
+        price_gap = float(row.get("price_gap_pct", 0.0) or 0.0)
+        margin = float(row.get("current_margin_pct", 0.0) or 0.0)
+        days_since_discount = float(row.get("days_since_last_discount", 999.0) or 999.0)
+        qty = float(row.get("total_qty", 0.0) or 0.0)
+        num_competitors = float(row.get("num_competitors", 0.0) or 0.0)
+        event_score = float(row.get("event_proximity_score", 0.0) or 0.0)
+        sale_pressure_ratio = float(row.get("sale_pressure_ratio", 0.0) or 0.0)
+        clearance_pressure_index = float(row.get("clearance_pressure_index", 0.0) or 0.0)
+        hold_guardrail_index = float(row.get("hold_guardrail_index", 0.0) or 0.0)
+
+        if label_name == "CLEAR":
+            if dos >= 125 and sell_through <= 0.16 and age >= 220:
+                weight *= 1.45
+            if price_gap >= 0.15:
+                weight *= 1.10
+            if (
+                clearance_pressure_index >= 0.68
+                and event_score >= 0.60
+                and price_gap >= 0.18
+                and 120 <= dos <= 160
+            ):
+                weight *= 1.55
+            if is_synthetic and event_score < 0.35 and price_gap < 0.12:
+                weight *= 0.92
+        elif label_name == "HOLD":
+            hold_signals = 0
+            if margin < 36:
+                hold_signals += 1
+            if days_since_discount < 21:
+                hold_signals += 1
+            if qty < 15 or dos < 10:
+                hold_signals += 1
+            if num_competitors <= 1 and dos >= 80 and price_gap <= 0.05:
+                hold_signals += 1
+            weight *= 1.0 + hold_signals * 0.18
+            if (
+                hold_guardrail_index >= 0.22
+                and event_score >= 0.60
+                and 35 <= dos <= 110
+            ):
+                weight *= 1.35
+            if margin <= 35.5 and price_gap <= 0.10 and days_since_discount >= 90:
+                weight *= 1.18
+        elif label_name == "MARKDOWN":
+            if dos >= 80 and price_gap >= 0.12 and margin >= 38 and days_since_discount >= 21:
+                weight *= 1.10
+            if sale_pressure_ratio >= 0.45 and price_gap >= 0.18:
+                weight *= 1.06
+        elif label_name == "PROMOTE":
+            if 25 <= dos <= 90 and margin >= 38 and price_gap <= 0.05 and event_score >= 0.50:
+                weight *= 1.08
+
+        weights.append(round(min(6.0, max(0.60, weight)), 4))
+
+    return weights, class_weights
+
+
 def _time_aware_split(df):
     import pandas as pd
     from sklearn.model_selection import train_test_split
@@ -272,14 +439,26 @@ def _log_run_to_mlflow(
         mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
 
-    with mlflow.start_run(run_name=run_name):
-        mlflow.log_params(params)
-        mlflow.log_param("label_source", label_source)
-        mlflow.log_param("num_features", len(feature_cols))
-        mlflow.log_metrics(metrics)
-        mlflow.log_dict({"feature_columns": feature_cols}, "feature_columns.json")
-        if model_path and model_path.exists():
-            mlflow.log_artifact(str(model_path), artifact_path="model_files")
+    try:
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_params(params)
+            mlflow.log_param("label_source", label_source)
+            mlflow.log_param("num_features", len(feature_cols))
+            mlflow.log_metrics(metrics)
+            try:
+                mlflow.log_text(
+                    json.dumps({"feature_columns": feature_cols}, indent=2),
+                    "feature_columns.json",
+                )
+            except Exception as exc:
+                log.warning("MLflow feature-column artifact logging failed for run %s: %s", run_name, exc)
+            if model_path and model_path.exists():
+                try:
+                    mlflow.log_artifact(str(model_path), artifact_path="model_files")
+                except Exception as exc:
+                    log.warning("MLflow model artifact logging failed for run %s: %s", run_name, exc)
+    except Exception as exc:
+        log.warning("MLflow logging failed for run %s: %s", run_name, exc)
 
 
 def train(
@@ -329,10 +508,14 @@ def train(
     if train_df.empty or val_df.empty:
         raise ValueError("Train/validation split failed. Check week_of coverage in the dataset.")
 
+    train_df = _enrich_feature_space(train_df)
+    val_df = _enrich_feature_space(val_df)
+
     X_train, y_train, feature_cols, cat_idxs = _build_feature_matrix(train_df)
     X_val, y_val, _, _ = _build_feature_matrix(val_df)
+    train_weights, class_weights = _compute_sample_weights(train_df)
 
-    train_pool = cb.Pool(X_train, y_train, cat_features=cat_idxs, feature_names=feature_cols)
+    train_pool = cb.Pool(X_train, y_train, cat_features=cat_idxs, feature_names=feature_cols, weight=train_weights)
     val_pool = cb.Pool(X_val, y_val, cat_features=cat_idxs, feature_names=feature_cols)
 
     trial_results: list[dict] = []
@@ -355,6 +538,8 @@ def train(
             "cat_features": cat_idxs,
             "early_stopping_rounds": 30,
             "random_seed": 42,
+            "bootstrap_type": "Bernoulli",
+            "subsample": 0.9,
             "verbose": 100,
         }
 
@@ -385,6 +570,7 @@ def train(
                 "learning_rate": float(learning_rate),
                 "depth": int(depth),
                 "l2_leaf_reg": float(l2_leaf_reg),
+                "sample_weight_mode": "heuristic_v1",
             },
             "metrics": metrics,
             "model_path": str(trial_model_path),
@@ -424,6 +610,12 @@ def train(
         "val_examples": len(val_df),
         "feature_cols": feature_cols,
         "cat_features": CATEGORICAL_FEATURES,
+        "train_class_weights": class_weights,
+        "train_sample_weight_summary": {
+            "min": min(train_weights) if train_weights else None,
+            "max": max(train_weights) if train_weights else None,
+            "mean": round(sum(train_weights) / len(train_weights), 4) if train_weights else None,
+        },
         "label_map": LABEL_MAP,
         "label_column": label_column,
         "mlflow_tracking_uri": mlflow_tracking_uri,

@@ -33,6 +33,8 @@ Usage:
 
 from datetime import datetime
 
+from services.decision_intelligence.calendar import get_active_or_upcoming_event
+
 
 # ── Configurable thresholds (match stylepulse/analyzers/thresholds.py) ──────
 
@@ -70,17 +72,6 @@ MARKDOWN_NUDGE_DOS_MIN = 45
 MARKDOWN_NUDGE_COMP_ON_SALE_MIN = 2
 MARKDOWN_NUDGE_MARGIN_MIN = 38.0
 MARKDOWN_NUDGE_RECENT_DISCOUNT_MIN_DAYS = 21
-
-# Lebanon retail calendar (month → event name, if within event window)
-LEBANON_EVENTS = {
-    8: "back_to_school",
-    9: "back_to_school",
-    11: "pre_holiday",
-    12: "holiday_gifting",
-    4: "eid_al_fitr",    # approximate — shifts yearly with lunar calendar
-    3: "eid_al_fitr",
-}
-
 
 def rule_dead_stock_clear(features: dict) -> dict:
     """
@@ -226,19 +217,29 @@ def rule_calendar_event_nudge(features: dict, *, today: datetime | None = None) 
 
     Override strength: SOFT — adds a signal, does not force a decision.
     """
-    current_month = (today or datetime.now()).month
+    current_date = (today or datetime.now()).date()
     dos = features.get("days_of_supply", 0)
     margin_pct = features.get("current_margin_pct", 0)
-
-    upcoming_event = LEBANON_EVENTS.get(current_month) or LEBANON_EVENTS.get(
-        (current_month % 12) + 1  # check next month too
-    )
+    event_window, days_until_event = get_active_or_upcoming_event(current_date, EVENT_NUDGE_DAYS)
 
     fired = (
-        upcoming_event is not None
+        event_window is not None
         and dos >= EVENT_NUDGE_DOS_MIN
         and margin_pct >= EVENT_NUDGE_MARGIN_MIN
     )
+
+    if event_window is None:
+        event_summary = ""
+    elif days_until_event == 0:
+        event_summary = (
+            f"Event window active now: {event_window.name.replace('_', ' ').title()} "
+            f"({event_window.start_date.isoformat()} to {event_window.end_date.isoformat()})."
+        )
+    else:
+        event_summary = (
+            f"Upcoming event: {event_window.name.replace('_', ' ').title()} in {days_until_event} days "
+            f"(starts {event_window.start_date.isoformat()})."
+        )
 
     return {
         "fired": fired,
@@ -247,7 +248,7 @@ def rule_calendar_event_nudge(features: dict, *, today: datetime | None = None) 
         "override_strength": "soft",
         "nudge_toward": ["PROMOTE", "HOLD"] if fired else [],
         "reason": (
-            f"Upcoming event: {upcoming_event.replace('_', ' ').title()}. "
+            f"{event_summary} "
             f"Stock is healthy ({dos:.0f} DOS) and margin is {margin_pct:.0f}%. "
             f"Do not discount now — promote at full price to capture peak demand."
         ) if fired else "",

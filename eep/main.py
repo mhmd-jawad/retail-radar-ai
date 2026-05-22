@@ -12,6 +12,7 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -36,6 +37,8 @@ from eep.retail_db import (
     list_inventory_items,
     update_inventory_item,
 )
+from services.decision_intelligence.main import _recommend_single
+from services.decision_intelligence.schemas import RecommendationRequest
 
 
 app = FastAPI(
@@ -56,7 +59,7 @@ app.add_middleware(
     ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -144,9 +147,6 @@ async def recommend_for_frontend(
     sku_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
-    from services.decision_intelligence.main import _recommend_single
-    from services.decision_intelligence.schemas import RecommendationRequest
-
     request_payload = prepare_ie2_request(sku_id, payload)
     request_model = RecommendationRequest.model_validate(request_payload)
     result = _recommend_single(request_model)
@@ -161,12 +161,11 @@ async def recommend_batch(
     if not isinstance(items, list) or not items:
         raise HTTPException(status_code=400, detail="Body must include a non-empty 'items' array.")
 
-    results = []
     for item in items:
         if not isinstance(item, dict) or not item.get("sku_id"):
             raise HTTPException(status_code=400, detail="Each batch item must include sku_id.")
-        results.append(await recommend_for_frontend(item["sku_id"], item))
-    return results
+
+    return list(await asyncio.gather(*[recommend_for_frontend(item["sku_id"], item) for item in items]))
 
 
 @app.post("/recommend/full")
@@ -180,14 +179,14 @@ async def full_recommendation(
     report_payload = build_frontend_report()
     recommendation = await recommend_for_frontend(sku_id, payload)
     creative = next(
-        (item for item in report_payload["promotions"]["promote"] if item["sku_id"] == sku_id),
+        (item for item in report_payload.get("promotions", {}).get("promote", []) if item["sku_id"] == sku_id),
         None,
     )
     return {
         "sku_id": sku_id,
         "ie2_result": recommendation,
         "campaign_creative": creative.get("creative") if creative else None,
-        "status": "pending",
+        "status": "complete",
     }
 
 

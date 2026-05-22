@@ -14,7 +14,9 @@ Default local API key:
 
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import os
 import time
 from datetime import date as _date, datetime
@@ -28,11 +30,12 @@ from fastapi.security import APIKeyHeader
 from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
+from .calendar import get_event_proximity_score
+from .explainability.shap_engine import SHAPEngine
 from .features.engineer import (
     BRAND_TIER,
     DEFAULT_INVENTORY_AT_COST,
     DEFAULT_TOTAL_ASSETS,
-    EVENT_WINDOWS,
     _estimate_daily_demand,
     _get_seasonal_multiplier,
 )
@@ -48,6 +51,14 @@ from .schemas import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_META_PATH = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision" / "meta.json"
+LOCAL_PINNED_MODEL_EXPORT_DIR = (
+    ROOT
+    / "services"
+    / "decision_intelligence"
+    / "models"
+    / "mlflow_export"
+    / "retail_radar_decision_model_v6"
+)
 LOCAL_MODEL_EXPORT_DIR = (
     ROOT
     / "services"
@@ -62,6 +73,7 @@ DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 DEFAULT_LOCAL_API_KEY = "ie2-local-postman-key"
 CONFIDENCE_THRESHOLD = 0.45
 LABEL_INV = {0: "HOLD", 1: "MARKDOWN", 2: "PROMOTE", 3: "CLEAR"}
+LABEL_MAP = {label: idx for idx, label in LABEL_INV.items()}
 DEFAULT_CASH_RUNWAY_MONTHS = 3.0
 DEFAULT_INVENTORY_INTENSITY = round(DEFAULT_INVENTORY_AT_COST / DEFAULT_TOTAL_ASSETS, 4)
 INVENTORY_MEDIAN_PROXY = {
@@ -77,7 +89,11 @@ INVENTORY_MEDIAN_PROXY = {
 }
 
 _API_KEY = os.environ.get("IE2_API_KEY", DEFAULT_LOCAL_API_KEY)
-print(f"INFO: IE2 API key ready for local testing: {_API_KEY}")
+_logger = logging.getLogger(__name__)
+if os.environ.get("IE2_API_KEY"):
+    _logger.info("IE2: API key loaded from environment (IE2_API_KEY).")
+else:
+    _logger.warning("IE2: IE2_API_KEY not set — using default local key. Do not deploy without setting this.")
 
 app = FastAPI(
     title="Retail Radar AI - Decision Intelligence API",
@@ -96,14 +112,15 @@ app.add_middleware(
         "http://127.0.0.1:4173",
     ],
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def _verify_api_key(key: str | None = Security(_api_key_header)):
-    if not key or key != _API_KEY:
+    if not key or not hmac.compare_digest(key, _API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
 
@@ -153,40 +170,95 @@ def _resolve_registered_model_name() -> str:
     return os.environ.get("IE2_REGISTERED_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME).strip()
 
 
-def _find_latest_registered_model_uri(model_name: str, tracking_uri: str) -> tuple[str, str]:
+def _resolve_preferred_local_model_dir() -> Path:
+    configured_path = os.environ.get("IE2_LOCAL_MODEL_DIR", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return LOCAL_PINNED_MODEL_EXPORT_DIR
+
+
+def _artifact_uri_to_local_path(artifact_uri: str) -> Path | None:
+    prefix = "mlflow-artifacts:/"
+    if artifact_uri.startswith(prefix):
+        relative = artifact_uri[len(prefix):].replace("/", os.sep)
+        return ROOT / "mlartifacts" / relative
+    return None
+
+
+def _registered_model_local_path(client: MlflowClient, run_id: str, source_uri: str) -> str | None:
+    if not source_uri.startswith("runs:/"):
+        return None
+
+    run = client.get_run(run_id)
+    artifact_root = _artifact_uri_to_local_path(run.info.artifact_uri)
+    if artifact_root is None:
+        return None
+
+    source_parts = source_uri.split("/", 2)
+    artifact_subpath = source_parts[2] if len(source_parts) > 2 else ""
+    local_path = artifact_root / artifact_subpath if artifact_subpath else artifact_root
+    return str(local_path)
+
+
+def _load_latest_registered_model(model_name: str, tracking_uri: str) -> tuple[object, str, str]:
     client = MlflowClient(tracking_uri=tracking_uri)
     versions = client.search_model_versions(f"name = '{model_name}'")
     if not versions:
         raise ValueError(f"No registered MLflow model versions found for model '{model_name}'.")
 
     latest = max(versions, key=lambda version: int(version.version))
-    return f"models:/{model_name}/{latest.version}", latest.version
+    candidates = [f"models:/{model_name}/{latest.version}"]
+
+    source_uri = str(getattr(latest, "source", "") or "")
+    local_source_path = _registered_model_local_path(client, latest.run_id, source_uri)
+    if local_source_path:
+        candidates.append(local_source_path)
+    if source_uri:
+        candidates.append(source_uri)
+
+    load_errors: list[str] = []
+    for candidate in candidates:
+        try:
+            loaded_model = mlflow.catboost.load_model(candidate)
+            return loaded_model, str(latest.version), candidate
+        except Exception as exc:
+            load_errors.append(f"{candidate}: {exc}")
+
+    raise RuntimeError(" | ".join(load_errors))
 
 
 MODEL_META = _load_model_meta()
 MODEL_FEATURE_COLUMNS = MODEL_META.get("feature_cols", [])
+MODEL_CATEGORICAL_FEATURES = MODEL_META.get("cat_features", [])
 MODEL_TRACKING_URI = _resolve_tracking_uri(MODEL_META)
 MODEL_NAME = _resolve_registered_model_name()
+PREFERRED_LOCAL_MODEL_DIR = _resolve_preferred_local_model_dir()
 MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}"
 MODEL_SOURCE = ""
 MODEL_LOADER_ERROR = None
 REGISTERED_MODEL = None
+SHAP_ENGINE: SHAPEngine | None = None
 
 try:
-    mlflow.set_tracking_uri(MODEL_TRACKING_URI)
-    latest_model_uri, latest_version = _find_latest_registered_model_uri(MODEL_NAME, MODEL_TRACKING_URI)
-    REGISTERED_MODEL = mlflow.catboost.load_model(latest_model_uri)
-    MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
-    MODEL_SOURCE = latest_model_uri
+    REGISTERED_MODEL = mlflow.catboost.load_model(str(PREFERRED_LOCAL_MODEL_DIR))
+    MODEL_VERSION = f"mlflow_export:{PREFERRED_LOCAL_MODEL_DIR.name}"
+    MODEL_SOURCE = str(PREFERRED_LOCAL_MODEL_DIR)
 except Exception as exc:  # pragma: no cover
-    MODEL_LOADER_ERROR = f"Registry load failed: {exc}"
+    MODEL_LOADER_ERROR = f"Preferred local export load failed: {exc}"
     try:
-        REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
-        MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
-        MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
-    except Exception as fallback_exc:  # pragma: no cover
-        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; local export fallback failed: {fallback_exc}"
-        MODEL_VERSION = "rules_fallback"
+        mlflow.set_tracking_uri(MODEL_TRACKING_URI)
+        REGISTERED_MODEL, latest_version, latest_model_uri = _load_latest_registered_model(MODEL_NAME, MODEL_TRACKING_URI)
+        MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
+        MODEL_SOURCE = latest_model_uri
+    except Exception as registry_exc:  # pragma: no cover
+        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; registry load failed: {registry_exc}"
+        try:
+            REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
+            MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
+            MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
+        except Exception as fallback_exc:  # pragma: no cover
+            MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; legacy local export fallback failed: {fallback_exc}"
+            MODEL_VERSION = "rules_fallback"
 
 
 def _normalize_category(category: str | None) -> str:
@@ -203,6 +275,88 @@ def _market_position_from_gap(price_gap: float) -> str:
     if price_gap > -0.15:
         return "below_market"
     return "deep_value"
+
+
+def _augment_model_features(features: dict) -> dict:
+    days_of_supply = float(features.get("days_of_supply", 0.0) or 0.0)
+    total_qty = float(features.get("total_qty", 0.0) or 0.0)
+    margin_pct = float(features.get("current_margin_pct", 0.0) or 0.0)
+    price_gap_pct = float(features.get("price_gap_pct", 0.0) or 0.0)
+    competitors_on_sale = float(features.get("competitors_on_sale", 0.0) or 0.0)
+    competitors_out_of_stock = float(features.get("competitors_out_of_stock", 0.0) or 0.0)
+    num_competitors = float(features.get("num_competitors", 0.0) or 0.0)
+    season_sell_through = min(max(float(features.get("season_sell_through_pct", 0.0) or 0.0), 0.0), 1.0)
+    days_since_launch = float(features.get("days_since_launch", 0.0) or 0.0)
+    days_since_discount = float(features.get("days_since_last_discount", 999.0) or 999.0)
+    event_score = min(max(float(features.get("event_proximity_score", 0.0) or 0.0), 0.0), 1.0)
+
+    sale_pressure_ratio = min(max((competitors_on_sale / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
+    competitor_oos_ratio = min(max((competitors_out_of_stock / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
+    recent_discount_cooldown = min(max((21.0 - days_since_discount) / 21.0, 0.0), 1.0)
+    overpricing_signal = min(max(price_gap_pct, 0.0), 0.40)
+    stale_pressure = min(max(1.0 - season_sell_through, 0.0), 1.0)
+    stock_staleness_index = min(max((min(days_of_supply, 240.0) / 150.0) * stale_pressure, 0.0), 2.5)
+    inventory_age_pressure = min(
+        max(
+            (max(days_of_supply - 90.0, 0.0) / 180.0) * (max(days_since_launch - 180.0, 0.0) / 240.0),
+            0.0,
+        ),
+        1.5,
+    )
+    overpricing_sale_pressure = min(max(overpricing_signal * sale_pressure_ratio, 0.0), 0.50)
+    clearance_pressure_index = min(
+        max(
+            (max(days_of_supply - 120.0, 0.0) / 140.0) * 0.34
+            + stale_pressure * 0.28
+            + (max(days_since_launch - 220.0, 0.0) / 220.0) * 0.18
+            + min(overpricing_signal / 0.35, 1.0) * 0.12
+            + sale_pressure_ratio * 0.08,
+            0.0,
+        ),
+        1.5,
+    )
+    low_stock_signal = max(
+        min(max(14.0 - days_of_supply, 0.0) / 14.0, 1.0),
+        min(max(12.0 - total_qty, 0.0) / 12.0, 1.0),
+    )
+    stable_high_dos_signal = min(
+        max(
+            (max(days_of_supply - 70.0, 0.0) / 80.0)
+            * (1.0 - sale_pressure_ratio)
+            * (1.0 - min(overpricing_signal / 0.15, 1.0)),
+            0.0,
+        ),
+        1.0,
+    )
+    moderate_stock = min(max(1.0 - (abs(days_of_supply - 70.0) / 70.0), 0.0), 1.0)
+    low_margin_signal = min(max((35.5 - margin_pct) / 15.0, 0.0), 1.0)
+    hold_guardrail_index = min(
+        max(
+            low_margin_signal * 0.40
+            + recent_discount_cooldown * 0.24
+            + low_stock_signal * 0.20
+            + stable_high_dos_signal * 0.10
+            + (moderate_stock * event_score) * 0.06,
+            0.0,
+        ),
+        1.5,
+    )
+
+    features.update(
+        {
+            "sale_pressure_ratio": round(sale_pressure_ratio, 4),
+            "competitor_oos_ratio": round(competitor_oos_ratio, 4),
+            "markdown_margin_buffer": round(margin_pct - 35.0, 4),
+            "promote_margin_buffer": round(margin_pct - 38.0, 4),
+            "recent_discount_cooldown": round(recent_discount_cooldown, 4),
+            "stock_staleness_index": round(stock_staleness_index, 4),
+            "inventory_age_pressure": round(inventory_age_pressure, 4),
+            "overpricing_sale_pressure": round(overpricing_sale_pressure, 4),
+            "clearance_pressure_index": round(clearance_pressure_index, 4),
+            "hold_guardrail_index": round(hold_guardrail_index, 4),
+        }
+    )
+    return features
 
 
 def _build_model_features(req: RecommendationRequest) -> dict:
@@ -228,7 +382,7 @@ def _build_model_features(req: RecommendationRequest) -> dict:
     base_seasonality = _get_seasonal_multiplier(month)
     stock_median = INVENTORY_MEDIAN_PROXY.get(category, INVENTORY_MEDIAN_PROXY["other"])
 
-    return {
+    features = {
         "brand": brand,
         "category": category,
         "days_of_supply": days_of_supply,
@@ -252,12 +406,13 @@ def _build_model_features(req: RecommendationRequest) -> dict:
         "cost_price_usd": req.cost_price_usd,
         "seasonality_score": round(seasonality_score, 3),
         "category_seasonal_boost": round(seasonality_score - base_seasonality, 3),
-        "event_proximity_score": round(EVENT_WINDOWS.get(month, ("none", 0.0))[1], 3),
+        "event_proximity_score": round(get_event_proximity_score(_date.today()), 3),
         "next_month_seasonality": round(_get_seasonal_multiplier(next_month, category), 3),
         "cash_runway_months": DEFAULT_CASH_RUNWAY_MONTHS,
         "cash_tight": 0,
         "inventory_intensity": DEFAULT_INVENTORY_INTENSITY,
     }
+    return _augment_model_features(features)
 
 
 def _predict_with_registered_model(features: dict) -> tuple[str, float]:
@@ -273,6 +428,34 @@ def _predict_with_registered_model(features: dict) -> tuple[str, float]:
     probabilities = REGISTERED_MODEL.predict_proba(frame)[0]
     best_idx = max(range(len(probabilities)), key=lambda idx: probabilities[idx])
     return LABEL_INV.get(best_idx, "HOLD"), float(probabilities[best_idx])
+
+
+def _get_shap_engine() -> SHAPEngine | None:
+    global SHAP_ENGINE
+    if SHAP_ENGINE is None and REGISTERED_MODEL is not None:
+        SHAP_ENGINE = SHAPEngine(REGISTERED_MODEL, MODEL_CATEGORICAL_FEATURES)
+    return SHAP_ENGINE
+
+
+def _build_model_shap_explanations(features: dict, decision: str) -> list[SHAPFeature]:
+    if not MODEL_FEATURE_COLUMNS:
+        return _build_rule_explanations(features, decision)
+
+    predicted_class_idx = LABEL_MAP.get(decision)
+    if predicted_class_idx is None:
+        return _build_rule_explanations(features, decision)
+
+    try:
+        frame = pd.DataFrame(
+            [{column: features.get(column) for column in MODEL_FEATURE_COLUMNS}],
+            columns=MODEL_FEATURE_COLUMNS,
+        )
+        engine = _get_shap_engine()
+        if engine is None:
+            return _build_rule_explanations(features, decision)
+        return [SHAPFeature(**item) for item in engine.explain(frame, predicted_class_idx)]
+    except Exception:
+        return _build_rule_explanations(features, decision)
 
 
 def _build_rule_explanations(features: dict, decision: str) -> list[SHAPFeature]:
@@ -537,7 +720,7 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         if REGISTERED_MODEL is not None:
             decision, confidence = _predict_with_registered_model(features)
             decision, confidence = _apply_soft_rule_nudges(decision, confidence, rule_result, features)
-            shap_top5 = _build_rule_explanations(features, decision)
+            shap_top5 = _build_model_shap_explanations(features, decision)
         else:
             decision, confidence, shap_top5 = _rules_only_decision(features, rule_result)
 
@@ -595,7 +778,6 @@ def health():
         "model_source": MODEL_SOURCE,
         "registered_model_loaded": REGISTERED_MODEL is not None,
         "model_loader_error": MODEL_LOADER_ERROR,
-        "api_key_hint": "Use X-API-Key: ie2-local-postman-key unless you set IE2_API_KEY manually.",
         "timestamp": datetime.now().isoformat(),
     }
 

@@ -96,12 +96,14 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
         season_weakness = clamp(season_weakness * 1.10)
 
     score_clear = (
-        severe_inventory * 0.34
+        severe_inventory * 0.28
         + stale_pressure * 0.23
         + age_pressure * 0.18
-        + season_weakness * 0.14
-        + cash_pressure * 0.07
-        + thin_margin * 0.04
+        + season_weakness * 0.08
+        + market_overpricing * 0.10
+        + sale_pressure * 0.07
+        + cash_pressure * 0.04
+        + thin_margin * 0.02
     )
 
     score_markdown = (
@@ -174,6 +176,12 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
     if season_strength >= 0.55 and event_score >= 0.70 and market_overpricing < 0.10:
         score_markdown -= 0.06
         score_promote += 0.04
+    if dos >= 125 and stale_pressure >= 0.84 and age_pressure >= 0.45:
+        score_clear += 0.12
+        score_markdown -= 0.10
+    if dos >= 125 and sell_through <= 0.16 and days_since_launch >= 220 and market_overpricing >= 0.15:
+        score_clear += 0.10
+        score_markdown -= 0.06
 
     scores = {
         "HOLD": round(max(score_hold, 0.0), 4),
@@ -194,6 +202,20 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
         and dos >= 150
         and (days_since_launch >= 60 or seasonality <= 0.90 or market_overpricing >= 0.15)
         and score_clear >= 0.40
+    ):
+        best_label = "CLEAR"
+        best_score = scores["CLEAR"]
+        second_score = max(scores["HOLD"], scores["MARKDOWN"], scores["PROMOTE"])
+    elif (
+        dos >= 125
+        and sell_through <= 0.16
+        and days_since_launch >= 220
+        and score_clear >= 0.38
+        and (
+            market_overpricing >= 0.15
+            or sale_pressure >= 0.45
+            or market_position == "premium"
+        )
     ):
         best_label = "CLEAR"
         best_score = scores["CLEAR"]
