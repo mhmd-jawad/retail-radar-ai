@@ -1,0 +1,12 @@
+services:
+  eep:
+    build:
+      context: ..
+      dockerfile: eep/Dockerfile
+      args:
+        INSTALL_IE2: "false"
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

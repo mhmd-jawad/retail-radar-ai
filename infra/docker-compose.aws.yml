@@ -1,0 +1,32 @@
+services:
+  eep:
+    build:
+      context: ..
+      dockerfile: eep/Dockerfile
+      args:
+        INSTALL_IE2: "false"
+    env_file:
+      - ../.env
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - eep
+    env_file:
+      - ../.env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

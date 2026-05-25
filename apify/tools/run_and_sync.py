@@ -7,8 +7,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import os
+import sys
 
-from apify_client import ApifyClient
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from eep.apify_ingest import DEFAULT_SCHEMA_PATH, sync_items_to_retail_core
 
 
 SCRAPED_PRODUCT_FIELDS = [
@@ -48,6 +53,14 @@ def parse_args() -> argparse.Namespace:
         default="scraping/data/output",
         help="Repo-relative directory where records.json/csv/metadata.json should be written.",
     )
+    parser.add_argument(
+        "--sync-db",
+        action="store_true",
+        help="Also write the Apify dataset into PostgreSQL intel.* tables.",
+    )
+    parser.add_argument("--database-url", default=None, help="PostgreSQL URL. Defaults to DATABASE_URL.")
+    parser.add_argument("--schema-path", default=str(DEFAULT_SCHEMA_PATH), help="Retail Radar PostgreSQL schema path.")
+    parser.add_argument("--skip-schema", action="store_true", help="Skip applying the schema before DB sync.")
     return parser.parse_args()
 
 
@@ -56,6 +69,8 @@ def main() -> int:
     token = args.token or os.getenv("APIFY_TOKEN")
     if not token:
         raise RuntimeError("Provide --token or set APIFY_TOKEN in your environment.")
+
+    from apify_client import ApifyClient
 
     client = ApifyClient(token)
 
@@ -129,6 +144,29 @@ def main() -> int:
     }
     with metadata_path.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2, ensure_ascii=True)
+
+    if args.sync_db:
+        import psycopg
+
+        database_url = args.database_url or os.getenv("DATABASE_URL")
+        if not database_url:
+            raise RuntimeError("Provide --database-url or set DATABASE_URL when using --sync-db.")
+        with psycopg.connect(database_url) as conn:
+            result = sync_items_to_retail_core(
+                conn=conn,
+                schema_path=Path(args.schema_path),
+                skip_schema=args.skip_schema,
+                shop=args.shop,
+                actor_id=args.actor_id,
+                run_info={
+                    "run_id": run_id,
+                    "dataset_id": dataset_id,
+                    "status": status,
+                },
+                items=items,
+                raw_payload={"source": "run_and_sync"},
+            )
+        print(f"Synced {result.item_count} items into PostgreSQL intel.* tables")
 
     print(f"Synced {len(items)} items into {output_dir}")
     print(f"Run ID: {run_id}")
