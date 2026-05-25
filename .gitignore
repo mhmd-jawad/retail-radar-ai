@@ -2,3 +2,7 @@ data/outputs/
 scraping_new/
 __pycache__/
 *.pyc
+.env
+.env.*
+!.env.example
+!frontend/.env.example
