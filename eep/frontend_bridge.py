@@ -11,6 +11,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from services.market_intelligence.competitor_processor import build_competitor_signals_for_product
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "data" / "reports" / "report.json"
@@ -767,43 +769,31 @@ def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
-def build_competitor_signals(sku_id: str) -> dict[str, Any]:
+def _merge_product_context(*sources: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for source in sources:
+        for key, value in source.items():
+            if value not in (None, ""):
+                merged[key] = value
+    return merged
+
+
+def build_competitor_signals(sku_id: str, product_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     products = load_products_index()
     latest_states = load_latest_state_index()
     product = products.get(sku_id, {})
     state = latest_states.get(sku_id, {})
-
-    our_price = _to_float(product.get("retail_price_usd"), _to_float(state.get("retail_price_usd"), 0.0))
-    competitor_min = _to_float(state.get("competitor_min_price_usd"), _to_float(product.get("market_min_price_usd"), 0.0))
-    competitor_avg = _to_float(state.get("competitor_avg_price_usd"), _to_float(product.get("market_median_price_usd"), competitor_min))
-    num_competitors = _to_int(state.get("num_competitors"), _to_int(product.get("num_competitors"), 0))
-    on_sale_count = _to_int(state.get("competitors_on_sale_count"), 0)
-    out_of_stock_count = _to_int(state.get("competitors_out_of_stock_count"), max(num_competitors - _to_int(state.get("competitors_in_stock_count"), num_competitors), 0))
-    freshness = _to_float(state.get("data_freshness_hours"), 0.0)
-    competitor_names = [name.strip() for name in str(product.get("competitors", "")).split(",") if name.strip()]
-
-    if our_price > 0 and competitor_min > 0:
-        price_gap_pct = round((our_price - competitor_min) / our_price, 4)
-    else:
-        price_gap_pct = 0.0
-
-    fallback_used = competitor_min <= 0 or num_competitors == 0
-    return {
-        "sku_id": sku_id,
-        "competitor_min_price": round(competitor_min or competitor_avg or our_price, 2),
-        "competitor_avg_price": round(competitor_avg or competitor_min or our_price, 2),
-        "price_gap_pct": price_gap_pct,
-        "competitors_on_sale_count": on_sale_count,
-        "competitors_out_of_stock_count": out_of_stock_count,
-        "num_competitors_tracked": num_competitors,
-        "cheapest_competitor_name": competitor_names[0] if competitor_names else None,
-        "price_trend_direction": "STABLE",
-        "data_freshness_hours": round(freshness, 1),
-        "confidence_score": 0.9 if num_competitors > 0 else 0.4,
-        "fallback_used": fallback_used,
-        "fallback_reason": "No live competitor matches for SKU." if fallback_used else None,
-        "timestamp": report_generated_at(),
-    }
+    processor_product = _merge_product_context(
+        product,
+        {
+            "sku_id": sku_id,
+            "retail_price_usd": state.get("retail_price_usd"),
+            "category": state.get("category"),
+        },
+        product_payload or {},
+    )
+    processor_product["sku_id"] = sku_id
+    return build_competitor_signals_for_product(processor_product)
 
 
 def prepare_ie2_request(sku_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -828,7 +818,7 @@ def prepare_ie2_request(sku_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("days_at_current_price", _to_int(state.get("days_at_current_price"), 30))
 
     competitor_signals = dict(normalized.get("competitor_signals") or {})
-    derived_signals = build_competitor_signals(sku_id)
+    derived_signals = build_competitor_signals(sku_id, normalized)
 
     if not competitor_signals or _to_int(competitor_signals.get("num_competitors_tracked"), 0) <= 0:
         competitor_signals = derived_signals
@@ -882,6 +872,8 @@ def serialize_frontend_recommendation(result: Any) -> dict[str, Any]:
         rule_override = rule_override.get("rule_id")
 
     return {
+        "sku_id": payload.get("sku_id"),
+        "product_name": payload.get("product_name"),
         "recommendation": payload.get("recommendation"),
         "confidence": round(_to_float(payload.get("confidence"), 0.0), 4),
         "explanation": payload.get("explanation", ""),

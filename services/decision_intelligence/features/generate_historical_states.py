@@ -457,6 +457,8 @@ def load_inputs() -> pd.DataFrame:
     ensure_columns(inventory, EXPECTED_INVENTORY_COLUMNS, "inventory.csv")
 
     products = products.copy()
+    missing_product_key = products["product_key"].isna() | products["product_key"].astype(str).str.strip().eq("")
+    products.loc[missing_product_key, "product_key"] = "SKU|" + products.loc[missing_product_key, "sku_id"].astype(str)
     inventory = inventory.rename(columns={"initial_stock": "inventory_initial_stock"})
     merged = products.merge(
         inventory[["sku_id", "current_stock", "inventory_initial_stock"]],
@@ -468,22 +470,26 @@ def load_inputs() -> pd.DataFrame:
     if COMPETITOR_CLEAN_PATH.exists():
         competitor = normalize_columns(pd.read_csv(COMPETITOR_CLEAN_PATH))
         ensure_columns(competitor, EXPECTED_COMPETITOR_COLUMNS, "competitor_prices_clean.csv")
+        competitor_columns = [
+            "product_key",
+            "competitor_min_price_usd",
+            "competitor_avg_price_usd",
+            "competitor_max_price_usd",
+            "num_competitors",
+            "competitors_on_sale_count",
+            "competitors_on_sale_ratio",
+            "competitors_in_stock_count",
+            "competitors_out_of_stock_count",
+            "has_competitor_data",
+            "data_freshness_hours",
+        ]
+        overlapping_competitor_columns = [
+            column for column in competitor_columns if column != "product_key" and column in merged.columns
+        ]
+        if overlapping_competitor_columns:
+            merged = merged.drop(columns=overlapping_competitor_columns)
         merged = merged.merge(
-            competitor[
-                [
-                    "product_key",
-                    "competitor_min_price_usd",
-                    "competitor_avg_price_usd",
-                    "competitor_max_price_usd",
-                    "num_competitors",
-                    "competitors_on_sale_count",
-                    "competitors_on_sale_ratio",
-                    "competitors_in_stock_count",
-                    "competitors_out_of_stock_count",
-                    "has_competitor_data",
-                    "data_freshness_hours",
-                ]
-            ],
+            competitor[competitor_columns],
             on="product_key",
             how="left",
             validate="one_to_one",

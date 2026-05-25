@@ -16,10 +16,10 @@ Run:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 # IE1 must produce data that conforms to IE2's CompetitorSignals schema
 from services.decision_intelligence.schemas import CompetitorSignals
+from services.market_intelligence.competitor_processor import build_competitor_signals_for_sku
 
 app = FastAPI(
     title="StylePulse AI — IE1 Market Intelligence",
@@ -51,11 +51,16 @@ def health():
 @app.get("/competitor/{sku_id}", response_model=CompetitorSignals)
 def get_competitor_signals(sku_id: str):
     """
-    TODO (Mohammad Jawad): Return scraped competitor pricing for a SKU.
-    Reads from scraping/data/output/, aggregates per product,
-    returns CompetitorSignals conforming to IE2 schema.
+    Return live competitor pricing signals for a SKU.
+
+    Uses exact style matching first, then the shared fallback matcher. If no
+    reliable competitor is found, the response remains schema-valid with zero
+    competitor count and fallback_used=True.
     """
-    raise HTTPException(status_code=501, detail="IE1: get_competitor_signals not implemented yet")
+    try:
+        return CompetitorSignals.model_validate(build_competitor_signals_for_sku(sku_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
 
 
 @app.post("/ingest/competitor")

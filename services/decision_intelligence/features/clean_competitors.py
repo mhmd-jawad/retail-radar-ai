@@ -31,6 +31,8 @@ RELEVANT_SCRAPE_COLUMNS = [
     "style_code",
     "competitor_name",
     "product_name",
+    "category",
+    "gender_target",
     "competitor_price",
     "competitor_sale_price",
     "discount_pct",
@@ -55,6 +57,37 @@ PRODUCT_BRAND_CANDIDATES = ("brand", "brand_name")
 PRODUCT_STYLE_CANDIDATES = ("style_code", "style", "model_code", "article_code")
 PRODUCT_PRICE_CANDIDATES = ("retail_price_usd", "retail_price", "price_usd", "price")
 PRODUCT_NAME_CANDIDATES = ("product_name", "name", "title")
+PRODUCT_CATEGORY_CANDIDATES = ("system_category", "category", "product_category")
+PRODUCT_GENDER_CANDIDATES = ("gender", "gender_target", "target_gender")
+
+MATCH_SCORE_THRESHOLD = 0.60
+MAX_FALLBACK_ROWS_PER_PRODUCT = 6
+TOKEN_STOPWORDS = {
+    "adidas",
+    "nike",
+    "new",
+    "balance",
+    "men",
+    "mens",
+    "women",
+    "womens",
+    "kids",
+    "kid",
+    "unisex",
+    "shoe",
+    "shoes",
+    "black",
+    "white",
+    "blue",
+    "red",
+    "green",
+    "grey",
+    "gray",
+    "pink",
+    "navy",
+    "multi",
+    "multicolor",
+}
 
 ROW_OUTPUT_COLUMNS = [
     "sku_id",
@@ -63,6 +96,10 @@ ROW_OUTPUT_COLUMNS = [
     "style_code",
     "catalog_product_name",
     "product_name",
+    "matched_competitor_product_name",
+    "match_type",
+    "match_score",
+    "match_reason",
     "competitor_name",
     "competitor_price",
     "competitor_sale_price",
@@ -85,6 +122,8 @@ class ProductSchema:
     style_code: str
     retail_price: str | None
     product_name: str | None
+    category: str | None
+    gender: str | None
 
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -115,6 +154,8 @@ def inspect_product_schema(products_df: pd.DataFrame) -> ProductSchema:
         style_code=choose_column(products_df, PRODUCT_STYLE_CANDIDATES, "product style_code"),
         retail_price=choose_column(products_df, PRODUCT_PRICE_CANDIDATES, "retail price", required=False),
         product_name=choose_column(products_df, PRODUCT_NAME_CANDIDATES, "product name", required=False),
+        category=choose_column(products_df, PRODUCT_CATEGORY_CANDIDATES, "product category", required=False),
+        gender=choose_column(products_df, PRODUCT_GENDER_CANDIDATES, "product gender", required=False),
     )
 
 
@@ -135,6 +176,46 @@ def normalize_style_code(value: object) -> str | None:
     if not text:
         return None
     return re.sub(r"\s+", "", text.upper())
+
+
+def normalize_category(value: object, product_name: object | None = None) -> str | None:
+    text = " ".join(part for part in [normalize_string(value), normalize_string(product_name)] if part)
+    if not text:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    if any(token in normalized for token in ["football", "soccer", "boot", "cleat"]):
+        return "football_boots"
+    if any(token in normalized for token in ["shoe", "sneaker", "runner", "running", "basketball", "trail", "clog"]):
+        return "footwear"
+    if any(token in normalized for token in ["swim", "monokini", "bikini", "short"]):
+        return "swimwear"
+    if any(token in normalized for token in ["cap", "bottle", "bag", "sock", "jibbitz", "charm", "band"]):
+        return "accessories"
+    if any(token in normalized for token in ["kid", "infant", "junior", "girl", "boy"]):
+        return "kids"
+    if any(token in normalized for token in ["hoodie", "shirt", "tee", "jacket", "pant", "tight", "bra", "skort", "sweatshirt"]):
+        return "apparel"
+    if "lifestyle" in normalized:
+        return "lifestyle"
+    if "sport" in normalized or "training" in normalized:
+        return "sportswear"
+    return normalized.replace(" ", "_") or None
+
+
+def normalize_gender(value: object, product_name: object | None = None) -> str | None:
+    text = " ".join(part for part in [normalize_string(value), normalize_string(product_name)] if part)
+    if not text:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    if any(token in normalized.split() for token in ["women", "womens", "woman", "ladies", "girls", "girl"]):
+        return "women"
+    if any(token in normalized.split() for token in ["men", "mens", "man", "boys", "boy"]):
+        return "men"
+    if "kid" in normalized or "infant" in normalized or "junior" in normalized:
+        return "kids"
+    if "unisex" in normalized:
+        return "unisex"
+    return normalized.strip().replace(" ", "_") or None
 
 
 def normalize_competitor_name(value: object) -> str | None:
@@ -203,6 +284,120 @@ def build_product_key(brand_series: pd.Series, style_series: pd.Series) -> pd.Se
     return key
 
 
+def tokenize_product_name(value: object) -> set[str]:
+    text = normalize_string(value)
+    if not text:
+        return set()
+    tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) >= 2 and token not in TOKEN_STOPWORDS
+    }
+    return tokens
+
+
+def token_similarity(left: object, right: object) -> float:
+    left_tokens = tokenize_product_name(left)
+    right_tokens = tokenize_product_name(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = len(left_tokens & right_tokens)
+    return overlap / max(len(left_tokens), len(right_tokens))
+
+
+def price_band_score(our_price: object, competitor_price: object) -> float:
+    try:
+        our = float(our_price)
+        competitor = float(competitor_price)
+    except (TypeError, ValueError):
+        return 0.0
+    if our <= 0 or competitor <= 0:
+        return 0.0
+
+    relative_gap = abs(our - competitor) / max(our, competitor)
+    if relative_gap > 0.50:
+        return 0.0
+    return round(1.0 - (relative_gap / 0.50), 4)
+
+
+def score_fallback_match(product_row: pd.Series, competitor_row: pd.Series) -> tuple[str | None, float, str]:
+    if product_row.get("brand_normalized") != competitor_row.get("brand_name"):
+        return None, 0.0, "brand mismatch"
+
+    category_match = product_row.get("category_normalized") == competitor_row.get("category_normalized")
+    gender_match = product_row.get("gender_normalized") == competitor_row.get("gender_normalized")
+    name_score = token_similarity(product_row.get("catalog_product_name"), competitor_row.get("product_name"))
+    price_score = price_band_score(product_row.get("retail_price_usd"), competitor_row.get("effective_competitor_price_usd"))
+
+    if category_match and gender_match and name_score >= 0.55:
+        score = 0.58 + (name_score * 0.28) + (price_score * 0.14)
+        return "same_model_family", round(min(score, 0.98), 4), (
+            f"same brand/category/gender with {name_score:.2f} name overlap"
+        )
+
+    if category_match and gender_match and name_score >= 0.35 and price_score >= 0.40:
+        score = 0.36 + (name_score * 0.38) + (price_score * 0.26)
+        return "similar_product", round(min(score, 0.89), 4), (
+            f"same brand/category/gender with {name_score:.2f} name overlap and comparable price"
+        )
+
+    return None, 0.0, "below fallback similarity threshold"
+
+
+def _attach_catalog_fields(rows: pd.DataFrame, product_row: pd.Series, match_type: str, match_score: float, match_reason: str) -> pd.DataFrame:
+    matched = rows.copy()
+    matched["sku_id"] = product_row.get("sku_id")
+    matched["catalog_brand_raw"] = product_row.get("catalog_brand")
+    matched["catalog_style_code_raw"] = product_row.get("catalog_style_code")
+    matched["brand"] = product_row.get("brand_normalized")
+    matched["style_code"] = product_row.get("style_code_normalized")
+    matched["product_key"] = product_row.get("product_key")
+    matched["catalog_product_name"] = product_row.get("catalog_product_name")
+    matched["retail_price_usd"] = product_row.get("retail_price_usd")
+    matched["matched_competitor_product_name"] = matched.get("product_name")
+    matched["match_type"] = match_type
+    matched["match_score"] = match_score
+    matched["match_reason"] = match_reason
+    return matched
+
+
+def _best_fallback_rows_for_product(product_row: pd.Series, clean_rows: pd.DataFrame) -> pd.DataFrame:
+    candidates = clean_rows.loc[clean_rows["brand_name"].eq(product_row.get("brand_normalized"))].copy()
+    if candidates.empty:
+        return candidates
+
+    scored_rows: list[pd.Series] = []
+    for _, competitor_row in candidates.iterrows():
+        match_type, match_score, match_reason = score_fallback_match(product_row, competitor_row)
+        if match_type is None or match_score <= MATCH_SCORE_THRESHOLD:
+            continue
+        row = competitor_row.copy()
+        row["match_type"] = match_type
+        row["match_score"] = match_score
+        row["match_reason"] = match_reason
+        scored_rows.append(row)
+
+    if not scored_rows:
+        return candidates.iloc[0:0].copy()
+
+    fallback = pd.DataFrame(scored_rows)
+    fallback = fallback.sort_values(
+        by=["match_score", "effective_competitor_price_usd", "competitor_name"],
+        ascending=[False, True, True],
+        na_position="last",
+    )
+    fallback = fallback.drop_duplicates(subset=["competitor_name"], keep="first")
+    fallback = fallback.head(MAX_FALLBACK_ROWS_PER_PRODUCT).copy()
+    fallback["matched_competitor_product_name"] = fallback["product_name"]
+    return _attach_catalog_fields(
+        fallback,
+        product_row,
+        match_type=str(fallback["match_type"].iloc[0]),
+        match_score=float(fallback["match_score"].mean()),
+        match_reason=str(fallback["match_reason"].iloc[0]),
+    )
+
+
 def ensure_required_columns(df: pd.DataFrame, required_columns: set[str], dataset_name: str) -> None:
     missing = sorted(required_columns - set(df.columns))
     if missing:
@@ -220,11 +415,33 @@ def load_products() -> tuple[pd.DataFrame, ProductSchema]:
     schema = inspect_product_schema(products_df)
 
     products_clean = products_df.copy()
+    catalog_product_key = (
+        products_clean["product_key"].map(normalize_string)
+        if "product_key" in products_clean.columns
+        else pd.Series([None] * len(products_clean), index=products_clean.index)
+    )
     products_clean["brand_normalized"] = products_clean[schema.brand].map(normalize_brand)
     products_clean["style_code_normalized"] = products_clean[schema.style_code].map(normalize_style_code)
-    products_clean["product_key"] = build_product_key(
+    products_clean["category_normalized"] = (
+        products_clean.apply(lambda row: normalize_category(row.get(schema.category), row.get(schema.product_name)), axis=1)
+        if schema.category
+        else products_clean.apply(lambda row: normalize_category(None, row.get(schema.product_name)), axis=1)
+    )
+    products_clean["gender_normalized"] = (
+        products_clean.apply(lambda row: normalize_gender(row.get(schema.gender), row.get(schema.product_name)), axis=1)
+        if schema.gender
+        else products_clean.apply(lambda row: normalize_gender(None, row.get(schema.product_name)), axis=1)
+    )
+    exact_product_key = build_product_key(
         products_clean["brand_normalized"],
         products_clean["style_code_normalized"],
+    )
+    products_clean["product_key_source"] = exact_product_key.map(
+        lambda value: "brand_style" if pd.notna(value) else "catalog_fallback"
+    )
+    products_clean.loc[exact_product_key.isna() & catalog_product_key.isna(), "product_key_source"] = "sku_fallback"
+    products_clean["product_key"] = exact_product_key.fillna(catalog_product_key).fillna(
+        "SKU|" + products_clean[schema.product_id].astype(str)
     )
 
     if products_clean[schema.product_id].duplicated().any():
@@ -247,7 +464,17 @@ def load_products() -> tuple[pd.DataFrame, ProductSchema]:
     if schema.product_name:
         selected_columns[schema.product_name] = "catalog_product_name"
 
-    products_clean = products_clean[list(selected_columns.keys()) + ["brand_normalized", "style_code_normalized", "product_key"]]
+    products_clean = products_clean[
+        list(selected_columns.keys())
+        + [
+            "brand_normalized",
+            "style_code_normalized",
+            "category_normalized",
+            "gender_normalized",
+            "product_key",
+            "product_key_source",
+        ]
+    ]
     products_clean = products_clean.rename(columns=selected_columns)
     return products_clean, schema
 
@@ -276,6 +503,14 @@ def clean_scraped_rows(scraped_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     working["brand_name"] = working["brand_name"].map(normalize_brand)
     working["style_code"] = working["style_code"].map(normalize_style_code)
     working["competitor_name"] = working["competitor_name"].map(normalize_competitor_name)
+    working["category_normalized"] = working.apply(
+        lambda row: normalize_category(row.get("category"), row.get("product_name")),
+        axis=1,
+    )
+    working["gender_normalized"] = working.apply(
+        lambda row: normalize_gender(row.get("gender_target"), row.get("product_name")),
+        axis=1,
+    )
     working["availability"] = working["availability"].map(normalize_availability)
     working["currency"] = working["currency"].astype(str).str.strip().str.upper()
     working["data_valid_bool"] = working["data_valid"].map(parse_boolean)
@@ -289,7 +524,6 @@ def clean_scraped_rows(scraped_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     if "data_valid" in working.columns:
         invalid_mask |= working["data_valid_bool"].eq(False)
     invalid_mask |= working["brand_name"].isna()
-    invalid_mask |= working["style_code"].isna()
     invalid_mask |= working["competitor_name"].isna()
     invalid_mask |= working["competitor_price"].isna()
 
@@ -323,7 +557,7 @@ def clean_scraped_rows(scraped_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
 
     before_dedup = len(working)
     working = working.drop_duplicates(
-        subset=["product_key", "competitor_name", "competitor_price", "competitor_sale_price"],
+        subset=["product_key", "competitor_name", "product_name", "source_url", "competitor_price", "competitor_sale_price"],
         keep="first",
     ).copy()
     duplicates_removed = before_dedup - len(working)
@@ -340,26 +574,38 @@ def clean_scraped_rows(scraped_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
 
 def filter_to_catalog_products(clean_rows: pd.DataFrame, products_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float | int]]:
     catalog = products_df.copy()
-    catalog_valid = catalog.loc[catalog["product_key"].notna()].copy()
-    catalog_keys = set(catalog_valid["product_key"])
+    catalog_valid = catalog.loc[catalog["product_key"].notna() & catalog["brand_normalized"].notna()].copy()
+    exact_keys = set(clean_rows["product_key"].dropna())
+    matched_groups: list[pd.DataFrame] = []
+    exact_match_count = 0
+    fallback_match_count = 0
 
-    filtered_rows = clean_rows.loc[clean_rows["product_key"].isin(catalog_keys)].copy()
-    filtered_rows = filtered_rows.merge(
-        catalog_valid,
-        on="product_key",
-        how="left",
-        validate="many_to_one",
-    )
+    for _, product_row in catalog_valid.iterrows():
+        product_key = product_row.get("product_key")
+        exact_rows = clean_rows.loc[clean_rows["product_key"].eq(product_key)]
+        if not exact_rows.empty:
+            exact_match_count += 1
+            matched_groups.append(
+                _attach_catalog_fields(
+                    exact_rows,
+                    product_row,
+                    match_type="exact_style",
+                    match_score=1.0,
+                    match_reason="same normalized brand and style_code",
+                )
+            )
+            continue
 
-    filtered_rows = filtered_rows.rename(
-        columns={
-            "brand_name": "brand",
-            "catalog_brand": "catalog_brand_raw",
-            "catalog_style_code": "catalog_style_code_raw",
-        }
+        fallback_rows = _best_fallback_rows_for_product(product_row, clean_rows)
+        if not fallback_rows.empty:
+            fallback_match_count += 1
+            matched_groups.append(fallback_rows)
+
+    filtered_rows = (
+        pd.concat(matched_groups, ignore_index=True)
+        if matched_groups
+        else clean_rows.iloc[0:0].copy()
     )
-    filtered_rows["brand"] = filtered_rows["brand"]
-    filtered_rows["style_code"] = filtered_rows["style_code"]
 
     matched_product_keys = filtered_rows["product_key"].dropna().nunique()
     total_products = len(products_df)
@@ -372,17 +618,52 @@ def filter_to_catalog_products(clean_rows: pd.DataFrame, products_df: pd.DataFra
 
     coverage = {
         "total_products": total_products,
-        "matchable_products": int(catalog_valid["product_key"].nunique()),
-        "products_missing_safe_key": int(products_df["product_key"].isna().sum()),
-        "unique_product_keys_in_clean_rows": int(clean_rows["product_key"].dropna().nunique()),
+        "matchable_products": int(products_df["product_key_source"].eq("brand_style").sum())
+        if "product_key_source" in products_df.columns
+        else int(catalog_valid["product_key"].nunique()),
+        "products_missing_safe_key": int(products_df["product_key_source"].ne("brand_style").sum())
+        if "product_key_source" in products_df.columns
+        else int(products_df["product_key"].isna().sum()),
+        "unique_product_keys_in_clean_rows": int(len(exact_keys)),
         "matched_product_keys": int(matched_product_keys),
+        "exact_matched_product_keys": int(exact_match_count),
+        "fallback_matched_product_keys": int(fallback_match_count),
         "products_with_no_match": int(products_with_no_match),
         "avg_competitors_per_matched_product": float(avg_competitors_per_matched_product),
+        "fallback_threshold": float(MATCH_SCORE_THRESHOLD),
     }
     return filtered_rows, coverage
 
 
 def aggregate_competitor_rows(filtered_rows: pd.DataFrame) -> pd.DataFrame:
+    if filtered_rows.empty:
+        return pd.DataFrame(
+            columns=[
+                "product_key",
+                "sku_id",
+                "brand",
+                "style_code",
+                "catalog_product_name",
+                "retail_price_usd",
+                "match_type",
+                "match_score",
+                "matched_products_count",
+                "match_reason",
+                "competitor_min_price_usd",
+                "competitor_avg_price_usd",
+                "competitor_max_price_usd",
+                "num_competitors",
+                "competitors_on_sale_count",
+                "competitors_on_sale_ratio",
+                "competitors_in_stock_count",
+                "competitors_out_of_stock_count",
+                "latest_scraped_at",
+                "cheapest_competitor_name",
+                "has_competitor_data",
+                "data_freshness_hours",
+            ]
+        )
+
     grouped = filtered_rows.groupby("product_key", dropna=False)
     now_utc = pd.Timestamp.now(tz="UTC")
 
@@ -396,6 +677,7 @@ def aggregate_competitor_rows(filtered_rows: pd.DataFrame) -> pd.DataFrame:
     aggregated["competitor_min_price_usd"] = aggregated["competitor_min_price_usd"].round(4)
     aggregated["competitor_avg_price_usd"] = aggregated["competitor_avg_price_usd"].round(4)
     aggregated["competitor_max_price_usd"] = aggregated["competitor_max_price_usd"].round(4)
+    aggregated["match_score"] = aggregated["match_score"].round(4)
     return aggregated
 
 
@@ -419,6 +701,12 @@ def _aggregate_one_product(group: pd.DataFrame) -> pd.Series:
     on_sale_competitors = group.loc[group["is_on_sale"], "competitor_name"].nunique()
 
     first_row = group.iloc[0]
+    match_type = (
+        "exact_style"
+        if group["match_type"].eq("exact_style").all()
+        else str(group.sort_values("match_score", ascending=False)["match_type"].iloc[0])
+    )
+    match_reason = str(group.sort_values("match_score", ascending=False)["match_reason"].iloc[0])
     return pd.Series(
         {
             "sku_id": first_row.get("sku_id"),
@@ -426,6 +714,10 @@ def _aggregate_one_product(group: pd.DataFrame) -> pd.Series:
             "style_code": first_row.get("style_code"),
             "catalog_product_name": first_row.get("catalog_product_name"),
             "retail_price_usd": first_row.get("retail_price_usd"),
+            "match_type": match_type,
+            "match_score": float(group["match_score"].mean()),
+            "matched_products_count": int(group["matched_competitor_product_name"].nunique()),
+            "match_reason": match_reason,
             "competitor_min_price_usd": group["effective_competitor_price_usd"].min(),
             "competitor_avg_price_usd": group["effective_competitor_price_usd"].mean(),
             "competitor_max_price_usd": group["effective_competitor_price_usd"].max(),
@@ -496,7 +788,10 @@ def print_summary(
     print(f"Products missing safe key:  {coverage['products_missing_safe_key']}")
     print(f"Unique product_keys in cleaned competitor rows: {coverage['unique_product_keys_in_clean_rows']}")
     print(f"Products with competitor match:                 {coverage['matched_product_keys']}")
+    print(f"Products with exact style match:                {coverage['exact_matched_product_keys']}")
+    print(f"Products with fallback match:                   {coverage['fallback_matched_product_keys']}")
     print(f"Products with no competitor match:              {coverage['products_with_no_match']}")
+    print(f"Fallback threshold:                             > {coverage['fallback_threshold']:.2f}")
     print(f"Avg competitors / matched product:              {coverage['avg_competitors_per_matched_product']:.2f}")
     print("")
     print(f"Row-level output:           {OUTPUT_ROWS_PATH}")

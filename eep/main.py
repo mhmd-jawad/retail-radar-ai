@@ -142,17 +142,6 @@ def import_inventory_route(payload: InventoryImportPayload) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@app.post("/recommend/{sku_id}")
-async def recommend_for_frontend(
-    sku_id: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-) -> dict[str, Any]:
-    request_payload = prepare_ie2_request(sku_id, payload)
-    request_model = RecommendationRequest.model_validate(request_payload)
-    result = _recommend_single(request_model)
-    return serialize_frontend_recommendation(result)
-
-
 @app.post("/recommend/batch")
 async def recommend_batch(
     payload: dict[str, Any] = Body(...),
@@ -188,6 +177,17 @@ async def full_recommendation(
         "campaign_creative": creative.get("creative") if creative else None,
         "status": "complete",
     }
+
+
+@app.post("/recommend/{sku_id}")
+async def recommend_for_frontend(
+    sku_id: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    request_payload = prepare_ie2_request(sku_id, payload)
+    request_model = RecommendationRequest.model_validate(request_payload)
+    result = _recommend_single(request_model)
+    return serialize_frontend_recommendation(result)
 
 
 @app.get("/dashboard/summary")
