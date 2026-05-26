@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -23,6 +24,8 @@ from .normalization import (
     unique_preserve_order,
     utc_timestamp,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +53,15 @@ def scrape_shopify_catalog(
         try:
             payload = get_json(session, url)
         except RuntimeError as exc:
-            if page > 1 and "400 Client Error" in str(exc):
+            if page > 1 and _is_terminal_page_rejection(exc):
+                LOGGER.warning(
+                    "Stopping %s catalog pagination at page %s after %s products; "
+                    "the next page was rejected: %s",
+                    config.competitor_name,
+                    page,
+                    yielded,
+                    exc,
+                )
                 break
             raise
         products = payload.get("products") or []
@@ -67,6 +78,11 @@ def scrape_shopify_catalog(
         page += 1
         if max_pages is not None and page > max_pages:
             break
+
+
+def _is_terminal_page_rejection(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "400 Client Error" in message or "403 Client Error" in message
 
 
 def _catalog_url(config: ShopifyShopConfig, *, page: int, limit: int) -> str:
