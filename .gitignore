@@ -6,3 +6,5 @@ __pycache__/
 .env.*
 !.env.example
 !frontend/.env.example
+uvicorn.log
+*.log

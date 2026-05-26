@@ -26,15 +26,26 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from services.decision_intelligence.schemas import RecommendationResult
+
+# ── Load .env from the service directory ─────────────────────────────────────
+_SERVICE_DIR = Path(__file__).parent
+load_dotenv(_SERVICE_DIR / ".env", override=True)
+
+# ── Static directory (locally generated Pillow images) ───────────────────────
+_STATIC_DIR = _SERVICE_DIR / "static"
+_STATIC_DIR.mkdir(exist_ok=True)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +60,7 @@ DEFAULT_STORE_CODE = "MAIN"
 FALLBACK_IMAGE_URL = "https://placehold.co/1024x1024/FF6B35/FFFFFF?text=Sale+Now"
 
 _REPLICATE_API_KEY = os.getenv("REPLICATE_API_KEY") or os.getenv("REPLICATE_API_TOKEN", "")
+_GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 _REPLICATE_MODEL_VERSION = "db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
 
 _OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -83,6 +95,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# Serve locally generated promo images (used when Replicate + imgbb are both unavailable)
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
@@ -120,6 +135,8 @@ class CampaignPackage(BaseModel):
     tone_used: Literal["urgent", "aspirational", "value_focused"]
     fallback_used: bool = False
     prompt_version: str = "v1.0"
+    # One entry per platform: {platform, success, post_id, post_url, error}
+    social_posts: list[dict] = Field(default_factory=list)
 
 
 # ── Database helpers (mirrored from eep/retail_db.py pattern) ─────────────────
@@ -290,7 +307,8 @@ def _build_fallback_copy(brief: PromotionBrief) -> dict[str, str]:
         )[:300],
         "facebook_post": (
             f"Big news! {name} by {brand} is now {disc}% off. "
-            f"Limited stock available. Don't miss out — shop now in store or online."
+            f"Limited stock available. Don't miss out — shop now in store or online. "
+            f"#SportsFashion #{brand_tag} #LimitedStock #SaleAlert"
         )[:500],
         "tiktok_caption": (
             f"POV: {brand} just dropped {disc}% off {name} and stock is almost gone 👟🔥 "
@@ -337,31 +355,46 @@ def _validate_copy_keys(copy: dict) -> bool:
 # ── LLM Prompts ───────────────────────────────────────────────────────────────
 
 _TEXT_SYSTEM_PROMPT = """\
-You are a professional retail marketing copywriter for a sports fashion brand.
+You are a professional retail marketing copywriter for StylePulse, \
+a sports fashion retailer in Lebanon selling Adidas and other athletic brands.
 
-Generate copy ONLY based on the product info provided.
-Do NOT invent features, specs, or prices not given to you.
+Your job: generate realistic, platform-native ad copy for a product \
+that has been flagged for promotion by the pricing engine.
 
-Adapt tone based on urgency_level:
-- high: scarcity language — "Only X left", "This week only", "Almost gone"
-- medium: aspirational — "Made for your best performance", "Level up"
-- low: value-focused — "Quality that lasts", "Worth every penny"
+You are given structured data about the product from the store's live inventory:
+- Product name, brand, category, gender target
+- Current retail price (USD) and suggested discount %
+- Units remaining in stock
+- Urgency level: high / medium / low
+- Upcoming calendar event if any (e.g. Eid, Black Friday)
 
-Platform rules:
-- instagram_caption: max 300 chars, end with exactly 4 relevant hashtags
-- facebook_post: max 500 chars, friendly and engaging
-- tiktok_caption: max 150 chars, Gen-Z tone, trendy, use emojis, \
-casual language like "no cap", "it's giving", "lowkey"
-- headline: max 60 chars, punchy and bold
-- ad_copy_short: max 150 chars, one strong sentence
-- ad_copy_long: max 400 chars, benefit-driven, tell a story
-- cta_primary: strong action, max 10 words
-- cta_secondary: softer action, max 10 words
+TONE RULES — adapt strictly based on urgency_level:
+- high   → scarcity language: "Only X left", "Ends soon", FOMO-driven
+- medium → aspirational: performance, lifestyle, confidence, leveling up
+- low    → value-focused: quality, smart purchase, worth every penny
 
-Return ONLY a JSON object with these exact keys:
+PLATFORM RULES:
+- instagram_caption : max 300 chars — punchy opener + 4 relevant hashtags
+- facebook_post     : max 500 chars — friendly, conversational, engaging — include 3–4 relevant hashtags at the end
+- tiktok_caption    : max 150 chars — Gen-Z tone, emojis, casual ("no cap", \
+"it's giving", "lowkey obsessed")
+- headline          : max 60 chars  — bold, punchy, one strong idea
+- ad_copy_short     : max 150 chars — one powerful benefit sentence
+- ad_copy_long      : max 400 chars — story-driven, 2-3 sentences, benefit-led
+- cta_primary       : max 10 words  — strong action ("Shop Now Before It's Gone")
+- cta_secondary     : max 10 words  — softer action ("See Full Collection")
+
+RULES:
+- Do NOT invent specs, features, or prices not given to you
+- Do NOT mention cost price or margin
+- Always write in English (Lebanese market, English-dominant retail)
+- Keep every output brand-safe and athletic lifestyle appropriate
+- Each output must feel realistic and native to its platform — \
+not copy-pasted across channels
+
+Return ONLY a raw JSON object with these exact keys:
 instagram_caption, facebook_post, tiktok_caption,
-headline, ad_copy_short, ad_copy_long,
-cta_primary, cta_secondary
+headline, ad_copy_short, ad_copy_long, cta_primary, cta_secondary
 
 No markdown. No explanation. Raw JSON only."""
 
@@ -372,16 +405,18 @@ _TEXT_RETRY_SUFFIX = (
 
 _IMAGE_SYSTEM_PROMPT = """\
 You are a creative director for a sports fashion brand.
-Generate a unique, vivid image generation prompt for a product ad.
+Generate a vivid, unique Stable Diffusion image prompt for a social media ad.
 
 Rules:
-- Every prompt must be visually different — vary backgrounds, \
-lighting, composition, color schemes
-- Match the brand's vibe (Adidas=modern, Nike=bold, Puma=edgy)
-- Match urgency: high=dramatic, medium=energetic, low=clean minimal
-- Always include: product description, background style, \
-lighting mood, color palette, any text overlays needed
-- Make it suitable for social media ads
+- Every prompt must be visually different — vary backgrounds, lighting, \
+composition, color schemes, and camera angles
+- Match the brand vibe: Adidas = modern/clean, Nike = bold/dynamic, \
+Puma = edgy/street
+- Match urgency: high = dramatic/dark/high-contrast, \
+medium = energetic/outdoor, low = clean/minimal/studio
+- Always describe: product, background style, lighting mood, \
+color palette, photo style (lifestyle shot vs product shot)
+- Suitable for Instagram/TikTok square or vertical format
 - Max 100 words
 
 Return ONLY the image prompt text. Nothing else."""
@@ -457,8 +492,55 @@ async def _call_openrouter_image_prompt(brief: PromotionBrief) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
-async def _generate_image(image_prompt: str) -> str:
-    """Call Replicate REST API directly — avoids the replicate SDK's Pydantic v1 dependency."""
+async def _generate_image_gemini(image_prompt: str) -> str:
+    """
+    Generate a promotional image using Google Gemini 2.0 Flash image generation.
+    Free tier: 15 RPM / 1500 RPD via Google AI Studio.
+    Get a free key at: https://aistudio.google.com/apikey
+    """
+    if not _GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not set")
+
+    # Enhance prompt for a well-designed social media promo image
+    enhanced_prompt = (
+        f"{image_prompt}. "
+        "Professional social media advertisement, high-end retail photography style, "
+        "clean modern layout, bold typography, vibrant brand colors, "
+        "1:1 square format, Instagram-ready, premium quality product shot."
+    )
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.5-flash-image:generateContent",
+            params={"key": _GEMINI_API_KEY},
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": enhanced_prompt}]}],
+                "generationConfig": {"responseModalities": ["IMAGE"]},
+            },
+        )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:300]}")
+
+    data = resp.json()
+    try:
+        parts = data["candidates"][0]["content"]["parts"]
+        for part in parts:
+            if "inlineData" in part:
+                import base64
+                img_bytes = base64.b64decode(part["inlineData"]["data"])
+                # Upload to imgbb for a public URL
+                return await _upload_imgbb(img_bytes)
+    except (KeyError, IndexError) as exc:
+        raise RuntimeError(f"Unexpected Gemini response structure: {data}") from exc
+
+    raise RuntimeError("Gemini returned no image data")
+
+
+async def _generate_image_replicate(image_prompt: str) -> str:
+    """Call Replicate REST API for Stable Diffusion image generation."""
     if not _REPLICATE_API_KEY:
         raise RuntimeError("REPLICATE_API_KEY is not set")
 
@@ -503,6 +585,93 @@ async def _generate_image(image_prompt: str) -> str:
                 raise TimeoutError("Replicate polling timed out")
 
 
+async def _upload_imgbb(img_bytes: bytes) -> str:
+    """Upload raw PNG bytes to imgbb.com and return a permanent public direct-image URL.
+
+    imgbb returns two URL flavours:
+      data["url"]          → https://i.ibb.co/<id>/filename.png  (direct image)
+      data["url_viewer"]   → https://ibb.co/<id>                (webpage — do NOT use)
+
+    Instagram's /media endpoint requires a direct image URL, so we use
+    data["image"]["url"] which is unambiguously the raw file URL.
+    """
+    import base64
+    api_key = os.getenv("IMGBB_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("IMGBB_API_KEY not set")
+    b64 = base64.b64encode(img_bytes).decode()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.imgbb.com/1/upload",
+            data={"key": api_key, "image": b64},
+        )
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        # Prefer data["image"]["url"] — always https://i.ibb.co/... (direct file)
+        return data["image"]["url"]
+
+
+async def _generate_image_pillow(brief: PromotionBrief) -> str:
+    """
+    Generate a branded promo image with Pillow and upload to ImgBB.
+    ImgBB upload is mandatory — Instagram requires a public HTTPS image URL.
+    Raises RuntimeError if ImgBB key is missing or upload fails.
+    """
+    from services.campaign_creative.image_gen import generate_promo_image
+
+    img_bytes = await asyncio.to_thread(
+        generate_promo_image,
+        brief.product_name,
+        brief.brand,
+        float(brief.suggested_discount_pct or 0),
+        float(brief.retail_price_usd),
+        brief.urgency_level,
+        int(brief.current_stock),
+        brief.color,
+    )
+
+    # ImgBB upload is required — Instagram needs a direct public URL
+    return await _upload_imgbb(img_bytes)
+
+
+async def _generate_image_full(
+    image_prompt: str, brief: PromotionBrief
+) -> tuple[str, bool]:
+    """
+    Generate a promo image and upload to ImgBB for a direct public URL.
+
+    Chain: Gemini → Replicate → Pillow (all upload to ImgBB).
+    Returns (image_url, fallback_used) where image_url is always a
+    direct public https://i.ibb.co/... URL.
+    Raises RuntimeError if no public URL can be obtained.
+    """
+    # ── 1. Gemini (free tier, high quality) ───────────────────────────────────
+    if _GEMINI_API_KEY:
+        try:
+            url = await _generate_image_gemini(image_prompt)
+            logger.info("Gemini image generated for sku=%s", brief.product_name)
+            return url, False
+        except Exception as exc:
+            logger.warning(
+                "Gemini image failed for sku=%s: %s — trying Replicate",
+                brief.product_name, exc,
+            )
+
+    # ── 2. Replicate (Stable Diffusion) ───────────────────────────────────────
+    try:
+        url = await _generate_image_replicate(image_prompt)
+        return url, False
+    except Exception as exc:
+        logger.warning(
+            "Replicate failed for sku=%s: %s — falling back to Pillow+ImgBB",
+            brief.product_name, exc,
+        )
+
+    # ── 3. Pillow + ImgBB (last resort — raises if ImgBB unavailable) ─────────
+    url = await _generate_image_pillow(brief)
+    return url, True
+
+
 # ── FastAPI Endpoints ─────────────────────────────────────────────────────────
 
 
@@ -511,19 +680,184 @@ def health():
     return {"status": "healthy", "service": "ie3_campaign_creative"}
 
 
+@app.get("/debug/env")
+def debug_env():
+    tok = os.getenv("FB_PAGE_ACCESS_TOKEN", "")
+    return {"token_first30": tok[:30], "token_length": len(tok), "token_last4": tok[-4:] if tok else ""}
+
+
+# ── Facebook: get Page ID helper ──────────────────────────────────────────────
+
+@app.get("/meta/pages")
+async def get_facebook_pages():
+    """
+    Returns the list of Facebook Pages the current token has access to.
+    Use this to find your FB_PAGE_ID.
+
+    Open in browser: http://localhost:8003/meta/pages
+    Then copy the 'id' value and paste it as FB_PAGE_ID in .env
+    """
+    token = os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="FB_PAGE_ACCESS_TOKEN not set in .env")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://graph.facebook.com/v20.0/me/accounts",
+            params={"access_token": token, "fields": "id,name,category,instagram_business_account"},
+        )
+    data = resp.json()
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=data["error"])
+    return data
+
+
+# ── Instagram (Meta) OAuth helpers ───────────────────────────────────────────
+
+@app.get("/instagram/auth")
+async def instagram_auth_start():
+    """
+    Step 1: open http://localhost:8003/instagram/auth in your browser.
+    Redirects you to Meta's login + Instagram Business consent screen.
+
+    Before using this, set in .env:
+      META_APP_ID       — from developers.facebook.com → Your App → Settings → Basic
+      META_APP_SECRET   — same page
+    """
+    from fastapi.responses import RedirectResponse
+    import urllib.parse
+
+    app_id = os.getenv("META_APP_ID", "").strip()
+    if not app_id:
+        raise HTTPException(
+            status_code=400,
+            detail="META_APP_ID not set in .env — get it from developers.facebook.com → Your App → Settings → Basic",
+        )
+    params = {
+        "client_id":     app_id,
+        "redirect_uri":  "http://localhost:8003/instagram/callback",
+        "scope":         "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+        "response_type": "code",
+        "state":         "stylepulse_ie3",
+    }
+    url = "https://www.facebook.com/v20.0/dialog/oauth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url)
+
+
+@app.get("/instagram/callback")
+async def instagram_callback(code: str = "", error: str = "", error_reason: str = ""):
+    """
+    Step 2: Meta redirects here after the user grants access.
+    Exchanges the code for a long-lived user token, then fetches your
+    Page token and Instagram User ID, and displays everything to copy.
+
+    Redirect URL to paste in Meta Developer portal:
+        http://localhost:8003/instagram/callback
+    """
+    from fastapi.responses import HTMLResponse
+
+    if error:
+        return HTMLResponse(f"<h2>Meta auth error</h2><pre>{error}: {error_reason}</pre>", status_code=400)
+    if not code:
+        return HTMLResponse("<h2>No code received from Meta</h2>", status_code=400)
+
+    app_id     = os.getenv("META_APP_ID", "").strip()
+    app_secret = os.getenv("META_APP_SECRET", "").strip()
+
+    if not app_id or not app_secret:
+        return HTMLResponse("<h2>META_APP_ID / META_APP_SECRET not set in .env</h2>", status_code=400)
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Exchange code for short-lived token
+        r1 = await client.get(
+            "https://graph.facebook.com/v20.0/oauth/access_token",
+            params={
+                "client_id":     app_id,
+                "client_secret":  app_secret,
+                "redirect_uri":  "http://localhost:8003/instagram/callback",
+                "code":          code,
+            },
+        )
+        token_data = r1.json()
+        if "access_token" not in token_data:
+            return HTMLResponse(f"<h2>Short-lived token failed</h2><pre>{token_data}</pre>", status_code=400)
+
+        short_token = token_data["access_token"]
+
+        # Exchange for long-lived token (60-day)
+        r2 = await client.get(
+            "https://graph.facebook.com/v20.0/oauth/access_token",
+            params={
+                "grant_type":        "fb_exchange_token",
+                "client_id":         app_id,
+                "client_secret":     app_secret,
+                "fb_exchange_token": short_token,
+            },
+        )
+        ll_data    = r2.json()
+        ll_token   = ll_data.get("access_token", short_token)
+        expires_in = ll_data.get("expires_in", "unknown")
+
+        # Get pages + linked IG account
+        r3 = await client.get(
+            "https://graph.facebook.com/v20.0/me/accounts",
+            params={
+                "access_token": ll_token,
+                "fields":       "id,name,access_token,instagram_business_account",
+            },
+        )
+        pages = r3.json().get("data", [])
+
+    rows = ""
+    for p in pages:
+        ig_id  = (p.get("instagram_business_account") or {}).get("id", "—")
+        rows  += f"""
+        <tr>
+          <td style="padding:6px 12px">{p.get('name')}</td>
+          <td style="padding:6px 12px;font-weight:bold;color:#ff6b35">{p.get('id')}</td>
+          <td style="padding:6px 12px;font-weight:bold;color:#0af">{ig_id}</td>
+          <td style="padding:6px 12px;font-size:11px;word-break:break-all">{p.get('access_token','')[:60]}…</td>
+        </tr>"""
+
+    html = f"""
+    <html><body style="font-family:monospace;padding:2rem;background:#111;color:#eee">
+    <h2 style="color:#ff6b35">✅ Meta tokens received!</h2>
+
+    <h3>Long-lived user token (expires in {expires_in}s)</h3>
+    <p>Paste as <b>FB_PAGE_ACCESS_TOKEN</b> in .env:</p>
+    <textarea rows="3" cols="100" style="background:#222;color:#0f0;padding:.5rem">{ll_token}</textarea>
+
+    <h3 style="margin-top:1.5rem">Your Pages + Instagram accounts</h3>
+    <table border="0" cellspacing="0" style="background:#1a1a1a;border-collapse:collapse">
+      <tr style="background:#333">
+        <th style="padding:6px 12px">Page name</th>
+        <th style="padding:6px 12px">FB_PAGE_ID</th>
+        <th style="padding:6px 12px">IG_USER_ID</th>
+        <th style="padding:6px 12px">Page access_token (paste as FB_PAGE_ACCESS_TOKEN if posting to that page)</th>
+      </tr>
+      {rows}
+    </table>
+
+    <p style="margin-top:1.5rem;color:#aaa">After updating .env, restart uvicorn.</p>
+    </body></html>
+    """
+    return HTMLResponse(html)
+
+
 @app.post("/campaign/generate", response_model=CampaignPackage)
 async def generate_campaign(recommendation: RecommendationResult):
     """
-    Generate a full campaign package for a PROMOTE recommendation.
+    Generate and publish a full campaign for a PROMOTE recommendation.
 
     Flow:
       1. Gate: only PROMOTE decisions proceed
       2. DB lookup: fetch brand, category, stock, price for the SKU
       3. In parallel: generate text copy + image prompt via OpenRouter (Claude)
-      4. Generate product image via Replicate (Stable Diffusion)
-      5. Assemble CampaignPackage
-      6. Write one row per channel to marketing.campaigns
-      7. Return CampaignPackage
+      4. Generate promo image (Gemini → Replicate → Pillow)
+      5. Upload image to ImgBB — obtain direct public URL
+      6. Validate image URL is publicly accessible
+      7. Publish to Instagram and Facebook
+      8. Write campaign to DB
+      9. Return CampaignPackage — HTTP 400 if image or both publishes fail
     """
 
     # ── Step 0: gate ──────────────────────────────────────────────────────────
@@ -562,8 +896,15 @@ async def generate_campaign(recommendation: RecommendationResult):
 
     urgency = _derive_urgency(recommendation.confidence, current_stock)
 
+    # Pull upcoming_event from the recommendation's SHAP features if tagged
+    upcoming_event: Optional[str] = None
+    for feat in recommendation.shap_top5:
+        if "event" in feat.feature_name.lower() and feat.shap_value > 0:
+            upcoming_event = feat.explanation
+            break
+
     brief = PromotionBrief(
-        recommendation_id=None,  # TODO: populate once IE2 writes to marketing.recommendations first
+        recommendation_id=None,  # populated once IE2 writes to marketing.recommendations first
         product_name=recommendation.product_name,
         brand=brand,
         category=category,
@@ -575,6 +916,7 @@ async def generate_campaign(recommendation: RecommendationResult):
         current_stock=current_stock,
         confidence=recommendation.confidence,
         urgency_level=urgency,
+        upcoming_event=upcoming_event,
     )
 
     fallback_used = False
@@ -623,15 +965,16 @@ async def generate_campaign(recommendation: RecommendationResult):
     if copy_fallback:
         fallback_used = True
 
-    # ── Step 4: generate image via Replicate ──────────────────────────────────
-    image_url = FALLBACK_IMAGE_URL
+    # ── Step 4: generate image + upload to ImgBB ──────────────────────────────
     try:
-        image_url = await _generate_image(image_prompt)
+        image_url, img_fallback = await _generate_image_full(image_prompt, brief)
     except Exception as exc:
-        logger.warning(
-            "Replicate image generation failed for sku=%s: %s — using fallback image",
-            recommendation.sku_id, exc,
+        logger.error("Image generation failed for sku=%s: %s", recommendation.sku_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Image generation failed: {exc}",
         )
+    if img_fallback:
         fallback_used = True
 
     # ── Step 5: assemble CampaignPackage ─────────────────────────────────────
@@ -668,4 +1011,47 @@ async def generate_campaign(recommendation: RecommendationResult):
             recommendation.sku_id, exc,
         )
 
-    return package
+    # ── Step 7: publish to Instagram + Facebook (both required) ──────────────
+    from services.campaign_creative.publishers import publish_to_all_platforms
+
+    try:
+        social_posts = await asyncio.wait_for(
+            publish_to_all_platforms(
+                package.instagram_caption,
+                package.facebook_post,
+                package.image_url,
+            ),
+            timeout=90.0,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Social publishing failed: {exc}",
+        )
+
+    # Log each result and collect failures
+    failures: list[str] = []
+    for r in social_posts:
+        if r["success"]:
+            logger.info(
+                "Published to %s for sku=%s post_id=%s",
+                r["platform"], recommendation.sku_id, r["post_id"],
+            )
+        else:
+            logger.error(
+                "Publish to %s FAILED for sku=%s: %s",
+                r["platform"], recommendation.sku_id, r["error"],
+            )
+            failures.append(f"{r['platform']}: {r['error']}")
+
+    if failures:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Campaign generated but social publishing failed",
+                "image_url": package.image_url,
+                "failures": failures,
+            },
+        )
+
+    return package.model_copy(update={"social_posts": social_posts})
