@@ -1,9 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  Upload, ScrollText, Activity, Settings, Radio, Home,
+  Upload, ScrollText, Activity, Settings, Radio, Home, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const grafanaUrl = import.meta.env.VITE_GRAFANA_URL ?? 'http://localhost:3001';
 
 const sections: { label: string; items: { to: string; label: string; icon: any; badge?: string }[] }[] = [
   {
@@ -95,14 +97,25 @@ export function AppSidebar() {
       </nav>
 
       <div className="px-4 py-4 border-t border-sidebar-border">
-        <div className="rounded-lg bg-sidebar-accent/40 p-3">
-          <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/60 mb-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" />
-            ANALYTICS ENGINE
+        <div className="rounded-lg bg-sidebar-accent/40 p-3 space-y-3">
+          <div>
+            <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/60 mb-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" />
+              ANALYTICS ENGINE
+            </div>
+            <div className="text-[12px] text-sidebar-foreground/85 leading-snug">
+              350 SKUs - 37,102 competitor records - synced 6h ago
+            </div>
           </div>
-          <div className="text-[12px] text-sidebar-foreground/85 leading-snug">
-            350 SKUs · 37,102 competitor records · synced 6h ago
-          </div>
+          <a
+            href={grafanaUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-sidebar-primary hover:text-sidebar-primary/80 transition"
+          >
+            Monitoring
+            <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </div>
     </aside>

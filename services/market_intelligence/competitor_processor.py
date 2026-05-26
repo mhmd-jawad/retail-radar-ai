@@ -145,6 +145,8 @@ def _no_match_signals(sku_id: str) -> dict[str, Any]:
         "confidence_score": 0.0,
         "fallback_used": True,
         "fallback_reason": NO_MATCH_REASON,
+        "match_type": "no_match",
+        "match_score": 0.0,
         "timestamp": datetime.now(),
     }
 
@@ -202,6 +204,8 @@ def build_competitor_signals_for_product(
         "confidence_score": _confidence_from_freshness(freshness),
         "fallback_used": False,
         "fallback_reason": None,
+        "match_type": row.get("match_type") or "matched_unknown",
+        "match_score": round(_to_float(row.get("match_score")), 4),
         "timestamp": datetime.now(),
     }
 

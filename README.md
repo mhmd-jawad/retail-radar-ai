@@ -104,7 +104,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This starts: EEP (8000) · IE1 (8001) · IE2 (8002) · IE3 (8003) · PostgreSQL (5432) · MLflow (5000) · Prometheus (9090) · Grafana (3000)
+This starts: EEP (8000) · IE1 (8001) · IE2 (8002) · IE3 (8003) · PostgreSQL (5432) · MLflow (5000) · Prometheus (9090) · Grafana (3001)
 
 ### 3. Seed the Database
 
@@ -140,7 +140,7 @@ open http://localhost:8000/docs
 open http://localhost:5000
 
 # Grafana
-open http://localhost:3000
+open http://localhost:3001
 ```
 
 ### 6. Run Tests
@@ -302,9 +302,11 @@ stylepulse-ai/
 
 ## Monitoring
 
-- **Prometheus:** http://localhost:9090 — metrics from all 4 services
-- **Grafana:** http://localhost:3000 — 10-panel dashboard
+- **Prometheus:** http://localhost:9090 — service metrics
+- **Grafana:** http://localhost:3001 — observability dashboard
 - **MLflow:** http://localhost:5000 — experiment tracking, model registry
+
+See [Prometheus and Grafana Monitoring](./docs/monitoring-prometheus-grafana.md) for the current EEP monitoring setup.
 
 ---
 

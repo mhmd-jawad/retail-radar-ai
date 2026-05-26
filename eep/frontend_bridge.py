@@ -839,6 +839,8 @@ def prepare_ie2_request(sku_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         competitor_signals.setdefault("confidence_score", derived_signals["confidence_score"])
         competitor_signals.setdefault("fallback_used", derived_signals["fallback_used"])
         competitor_signals.setdefault("fallback_reason", derived_signals["fallback_reason"])
+        competitor_signals.setdefault("match_type", "provided_signals")
+        competitor_signals.setdefault("match_score", derived_signals.get("match_score", 0.0))
         competitor_signals.setdefault("timestamp", derived_signals["timestamp"])
 
     normalized["competitor_signals"] = competitor_signals

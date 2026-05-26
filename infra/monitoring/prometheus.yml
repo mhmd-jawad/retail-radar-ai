@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: eep
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - eep:8000
+
+  - job_name: ie2-decision-intelligence
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - ie2_decision_intelligence:8002

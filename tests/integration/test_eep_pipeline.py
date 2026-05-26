@@ -100,6 +100,14 @@ class TestHealthEndpoint:
         assert r.json()["service"] == "eep"
 
 
+class TestMetricsEndpoint:
+    def test_metrics_returns_prometheus_text(self, client):
+        client.get("/health")
+        r = client.get("/metrics")
+        assert r.status_code == 200
+        assert "eep_http_requests_total" in r.text
+
+
 # ── Single recommend ───────────────────────────────────────────────────────────
 
 class TestSingleRecommend:
@@ -139,6 +147,79 @@ class TestSingleRecommend:
             client.post("/recommend/SPECIFIC-SKU", json={})
             mock_prepare.assert_called_once()
             assert mock_prepare.call_args[0][0] == "SPECIFIC-SKU"
+
+    def test_recommend_strips_competitor_match_metadata_before_ie2(self, client):
+        captured = {}
+        request_with_metadata = {
+            **_VALID_IE2_REQUEST_DICT,
+            "competitor_signals": {
+                "sku_id": "SKU-TEST-001",
+                "competitor_min_price": 90.0,
+                "competitor_avg_price": 95.0,
+                "price_gap_pct": 0.10,
+                "competitors_on_sale_count": 1,
+                "competitors_out_of_stock_count": 0,
+                "num_competitors_tracked": 2,
+                "cheapest_competitor_name": "Competitor",
+                "price_trend_direction": "STABLE",
+                "data_freshness_hours": 2.0,
+                "confidence_score": 0.95,
+                "fallback_used": False,
+                "fallback_reason": None,
+                "timestamp": "2026-04-27T10:00:00",
+                "match_type": "similar_product",
+                "match_score": 0.72,
+            },
+        }
+
+        def fake_recommend(request_model):
+            captured["competitor_signals"] = request_model.competitor_signals
+            return _FAKE_RESULT
+
+        with (
+            patch("eep.main.prepare_ie2_request", return_value=request_with_metadata),
+            patch("eep.main._recommend_single", side_effect=fake_recommend),
+        ):
+            r = client.post("/recommend/SKU-TEST-001", json={})
+
+        assert r.status_code == 200
+        assert captured["competitor_signals"] is not None
+        assert not hasattr(captured["competitor_signals"], "match_type")
+
+    def test_recommend_adds_provided_signal_metadata_for_audit(self, client):
+        captured = {}
+        request_with_provided_signals = {
+            **_VALID_IE2_REQUEST_DICT,
+            "competitor_signals": {
+                "sku_id": "SKU-TEST-001",
+                "competitor_min_price": 90.0,
+                "competitor_avg_price": 95.0,
+                "price_gap_pct": 0.10,
+                "competitors_on_sale_count": 1,
+                "competitors_out_of_stock_count": 0,
+                "num_competitors_tracked": 2,
+                "cheapest_competitor_name": "Competitor",
+                "price_trend_direction": "STABLE",
+                "data_freshness_hours": 2.0,
+                "confidence_score": 0.95,
+                "fallback_used": False,
+                "fallback_reason": None,
+                "timestamp": "2026-04-27T10:00:00",
+            },
+        }
+
+        def fake_observe(competitor_signals):
+            captured["match_type"] = competitor_signals["match_type"]
+
+        with (
+            patch("eep.main.prepare_ie2_request", wraps=__import__("eep.frontend_bridge", fromlist=["prepare_ie2_request"]).prepare_ie2_request),
+            patch("eep.main.observe_competitor_match", side_effect=fake_observe),
+            patch("eep.main._recommend_single", return_value=_FAKE_RESULT),
+        ):
+            r = client.post("/recommend/SKU-TEST-001", json=request_with_provided_signals)
+
+        assert r.status_code == 200
+        assert captured["match_type"] == "provided_signals"
 
 
 # ── Batch recommend ────────────────────────────────────────────────────────────

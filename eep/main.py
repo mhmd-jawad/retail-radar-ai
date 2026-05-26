@@ -32,6 +32,12 @@ from eep.frontend_bridge import (
     report_overview,
     serialize_frontend_recommendation,
 )
+from eep.observability import (
+    configure_metrics,
+    observe_competitor_match,
+    observe_recommendation,
+    observe_scraper_ingest,
+)
 from eep.retail_db import (
     DatabaseUnavailable,
     InventoryImportPayload,
@@ -43,8 +49,7 @@ from eep.retail_db import (
     list_inventory_items,
     update_inventory_item,
 )
-from services.decision_intelligence.main import _recommend_single
-from services.decision_intelligence.schemas import RecommendationRequest
+from services.decision_intelligence.schemas import CompetitorSignals, RecommendationRequest
 
 app = FastAPI(
     title="StylePulse AI — EEP Executive Platform",
@@ -66,6 +71,13 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+configure_metrics(app)
+
+
+def _recommend_single(request_model: RecommendationRequest):
+    from services.decision_intelligence.main import _recommend_single as recommend_single
+
+    return recommend_single(request_model)
 
 
 @app.get("/health")
@@ -89,6 +101,7 @@ async def apify_run_succeeded_webhook(
     _require_webhook_secret(request)
     token = apify_token()
     if not token:
+        observe_scraper_ingest("configuration_error")
         raise HTTPException(status_code=503, detail="APIFY_TOKEN is not configured.")
 
     try:
@@ -100,6 +113,7 @@ async def apify_run_succeeded_webhook(
 
     actor_run_id = extract_actor_run_id(payload)
     if not actor_run_id:
+        observe_scraper_ingest("bad_request")
         raise HTTPException(status_code=400, detail="Webhook payload did not include an Apify actor run id.")
 
     try:
@@ -111,8 +125,10 @@ async def apify_run_succeeded_webhook(
             raw_webhook_payload=payload,
         )
     except Exception as exc:
+        observe_scraper_ingest("failure")
         raise HTTPException(status_code=502, detail=f"Apify ingest failed: {exc}") from exc
 
+    observe_scraper_ingest("success")
     return {"ok": True, **result.to_dict()}
 
 
@@ -125,6 +141,7 @@ async def replay_apify_run(
     _require_webhook_secret(request)
     token = apify_token()
     if not token:
+        observe_scraper_ingest("configuration_error")
         raise HTTPException(status_code=503, detail="APIFY_TOKEN is not configured.")
 
     try:
@@ -136,8 +153,10 @@ async def replay_apify_run(
             raw_webhook_payload={"source": "manual_replay", "run_id": run_id},
         )
     except Exception as exc:
+        observe_scraper_ingest("failure")
         raise HTTPException(status_code=502, detail=f"Apify replay ingest failed: {exc}") from exc
 
+    observe_scraper_ingest("success")
     return {"ok": True, **result.to_dict()}
 
 
@@ -218,6 +237,7 @@ def import_inventory_route(payload: InventoryImportPayload) -> dict[str, Any]:
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+
 @app.post("/recommend/batch")
 async def recommend_batch(
     payload: dict[str, Any] = Body(...),
@@ -230,7 +250,10 @@ async def recommend_batch(
         if not isinstance(item, dict) or not item.get("sku_id"):
             raise HTTPException(status_code=400, detail="Each batch item must include sku_id.")
 
-    return list(await asyncio.gather(*[recommend_for_frontend(item["sku_id"], item) for item in items]))
+    return list(await asyncio.gather(*[
+        _recommend_for_frontend(item["sku_id"], item, endpoint_label="/recommend/batch")
+        for item in items
+    ]))
 
 
 @app.post("/recommend/full")
@@ -242,7 +265,7 @@ async def full_recommendation(
         raise HTTPException(status_code=400, detail="sku_id is required.")
 
     report_payload = build_frontend_report()
-    recommendation = await recommend_for_frontend(sku_id, payload)
+    recommendation = await _recommend_for_frontend(sku_id, payload, endpoint_label="/recommend/full")
     creative = next(
         (item for item in report_payload.get("promotions", {}).get("promote", []) if item["sku_id"] == sku_id),
         None,
@@ -260,10 +283,36 @@ async def recommend_for_frontend(
     sku_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
+    return await _recommend_for_frontend(sku_id, payload, endpoint_label="/recommend/{sku_id}")
+
+
+async def _recommend_for_frontend(
+    sku_id: str,
+    payload: dict[str, Any],
+    endpoint_label: str,
+) -> dict[str, Any]:
     request_payload = prepare_ie2_request(sku_id, payload)
+    competitor_metric_payload = request_payload.get("competitor_signals")
+    request_payload = _strip_competitor_metadata(request_payload)
     request_model = RecommendationRequest.model_validate(request_payload)
     result = _recommend_single(request_model)
+    observe_competitor_match(competitor_metric_payload)
+    observe_recommendation(endpoint_label, getattr(result, "recommendation", None))
     return serialize_frontend_recommendation(result)
+
+
+def _strip_competitor_metadata(request_payload: dict[str, Any]) -> dict[str, Any]:
+    competitor_signals = request_payload.get("competitor_signals")
+    if not isinstance(competitor_signals, dict):
+        return request_payload
+
+    allowed_fields = set(CompetitorSignals.model_fields)
+    cleaned_signals = {
+        key: value
+        for key, value in competitor_signals.items()
+        if key in allowed_fields
+    }
+    return {**request_payload, "competitor_signals": cleaned_signals}
 
 
 @app.get("/dashboard/summary")

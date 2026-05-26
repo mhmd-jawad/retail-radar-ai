@@ -17,6 +17,7 @@ COPY eep ./eep
 COPY infra ./infra
 COPY data ./data
 COPY scraping/data/output ./scraping/data/output
+COPY stylepulse ./stylepulse
 COPY services ./services
 
 EXPOSE 8000
