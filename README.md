@@ -98,13 +98,15 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-### 2. Start the Full Stack
+### 2. Start the Full Stack Locally
 
 ```bash
-docker compose up --build
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-This starts: EEP (8000) · IE1 (8001) · IE2 (8002) · IE3 (8003) · PostgreSQL (5432) · MLflow (5000) · Prometheus (9090) · Grafana (3001)
+This starts EEP (8000), IE1 (8001), IE2 (8002), IE3 (8003), the dashboard (4173), PostgreSQL (5432), Adminer (8080), Prometheus (9090), and Grafana (3001).
+
+For the Lightsail/RDS deployment flow, see `docs/full-stack-docker-deployment.md`.
 
 ### 3. Seed the Database
 

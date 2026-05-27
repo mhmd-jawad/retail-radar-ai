@@ -25,13 +25,15 @@ interface SettingsState {
 }
 
 const env = import.meta.env;
+const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
+const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
       mode: (env.VITE_DATA_MODE as DataMode) || 'mock-report',
-      apiBaseUrl: env.VITE_API_BASE_URL || 'http://localhost:8000',
-      ie2BaseUrl: env.VITE_IE2_BASE_URL || 'http://localhost:8002',
+      apiBaseUrl: env.VITE_API_BASE_URL ?? defaultApiBaseUrl,
+      ie2BaseUrl: env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl,
       apiKey: env.VITE_API_KEY || 'ie2-local-postman-key',
       recState: {},
       setMode: (mode) => set({ mode }),

@@ -14,6 +14,8 @@ mlartifacts
 catboost_info
 temp_data
 data/outputs
+data/reports/inspection_tmp
+scraping/data/test_identifier_fix_outputs
 *.db
 *.sqlite
 *.sqlite3

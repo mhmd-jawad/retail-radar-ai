@@ -6,7 +6,7 @@ StylePulse AI uses Prometheus and Grafana as standalone observability services b
 
 ```powershell
 Copy-Item .env.example .env
-docker compose -f infra\docker-compose.eep.yml up -d --build
+docker compose -f infra\docker-compose.yml up -d --build
 ```
 
 - EEP API: `http://localhost:8000`
@@ -27,7 +27,8 @@ GRAFANA_ADMIN_PASSWORD=change_me
 - Recommendation decisions by action: `HOLD`, `MARKDOWN`, `PROMOTE`, `CLEAR`.
 - Competitor matching outcomes: `exact_style`, `same_model_family`, `similar_product`, `no_match`.
 - Apify scraper ingest success/failure.
-- IE2 `/metrics` remains available and can be scraped when IE2 runs in the same Compose network.
+- IE2 `/metrics` remains available for a later dedicated target. The standard
+  dashboard monitors EEP, which serves the public recommendation path.
 
 ## Frontend Relationship
 

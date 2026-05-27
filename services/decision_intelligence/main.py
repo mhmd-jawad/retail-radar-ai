@@ -112,7 +112,7 @@ app.add_middleware(
         "http://127.0.0.1:4173",
     ],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 

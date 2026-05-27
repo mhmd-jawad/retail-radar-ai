@@ -1,4 +1,25 @@
 {$WEBHOOK_DOMAIN} {
-    encode zstd gzip
-    reverse_proxy eep:8000
+	encode zstd gzip
+
+	@eep_api path /health /openapi.json /docs* /redoc* /webhooks/* /apify/* /report /ops/* /inventory/* /recommend/* /dashboard/*
+	handle @eep_api {
+		reverse_proxy eep:8000
+	}
+
+	# In the normal low-memory deployment, EEP loads the model in-process.
+	# Keep the dashboard model health check green without starting duplicate IE2.
+	handle /ie2/health {
+		rewrite * /health
+		reverse_proxy eep:8000
+	}
+
+	# Direct standalone IE2 endpoints are available only with --profile full.
+	# IE1 and IE3 stay internal until they have API authentication.
+	handle_path /ie2/* {
+		reverse_proxy ie2_decision_intelligence:8002
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }

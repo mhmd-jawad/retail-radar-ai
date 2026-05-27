@@ -8,6 +8,7 @@ CompetitorSignals shape for one selected product.
 from __future__ import annotations
 
 import csv
+import os
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -53,16 +54,40 @@ def load_products_index() -> dict[str, dict[str, str]]:
     return {row["sku_id"]: row for row in _read_csv(PRODUCTS_PATH)}
 
 
-@lru_cache(maxsize=1)
+def _load_database_competitor_rows() -> pd.DataFrame | None:
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        import psycopg
+
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select brand_name, style_code, shop_code as competitor_name, product_name,
+                           category, gender_target, competitor_price, competitor_sale_price,
+                           discount_pct, is_on_sale, availability, currency, source_url,
+                           last_seen_at as scraped_at, data_valid
+                    from intel.competitor_products_latest
+                    """
+                )
+                columns = [column.name for column in cur.description]
+                return pd.DataFrame(cur.fetchall(), columns=columns)
+    except Exception as exc:
+        raise RuntimeError("Cannot read live competitor data from configured PostgreSQL.") from exc
+
+
 def load_live_competitor_rows() -> pd.DataFrame:
-    scraped = matcher.load_scraped_competitors()
+    scraped = _load_database_competitor_rows()
+    if scraped is None:
+        scraped = matcher.load_scraped_competitors()
     clean_rows, _ = matcher.clean_scraped_rows(scraped)
     return clean_rows
 
 
 def clear_processor_cache() -> None:
     load_products_index.cache_clear()
-    load_live_competitor_rows.cache_clear()
 
 
 def _coalesce_product_field(product: dict[str, Any], *keys: str) -> Any:

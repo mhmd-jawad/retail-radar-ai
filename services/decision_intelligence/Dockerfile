@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Install dependencies
@@ -10,14 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/ ./services/
 COPY stylepulse/ ./stylepulse/
 COPY data/real/ ./data/real/
-
-# Create output directories (models populated by training step before deploy)
-RUN mkdir -p services/decision_intelligence/data/features \
-             services/decision_intelligence/models/catboost_decision
-
-# Copy pre-trained models and features if available (optional; training populates these)
-COPY services/decision_intelligence/data/features/ ./services/decision_intelligence/data/features/ 2>/dev/null || true
-COPY services/decision_intelligence/models/ ./services/decision_intelligence/models/ 2>/dev/null || true
 
 EXPOSE 8002
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -26,6 +27,29 @@ SCRAPE_MANIFEST_PATH = SCRAPING_OUTPUT_ROOT / "manifest.json"
 DEFAULT_REPORT_WINDOW_DAYS = 90
 
 _TS_TOKEN = re.compile(r"(?P<stamp>\d{8}T\d{6}Z)")
+
+
+def _read_intel_rows(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]] | None:
+    """Use RDS/local PostgreSQL when configured; retain file data for offline use."""
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        with psycopg.connect(database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                return list(cur.fetchall())
+    except Exception as exc:
+        raise RuntimeError("Cannot read scraper intelligence tables from configured PostgreSQL.") from exc
+
+
+def _as_iso(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value or _iso_now())
 
 CATEGORY_LABELS = {
     "footwear": "Footwear",
@@ -709,6 +733,28 @@ def build_frontend_report() -> dict[str, Any]:
 
 
 def build_scrape_runs() -> list[dict[str, Any]]:
+    database_rows = _read_intel_rows(
+        """
+        select id, shop_code, item_count, ingest_status, started_at, finished_at, created_at
+        from intel.scrape_runs
+        order by created_at desc
+        limit 100
+        """
+    )
+    if database_rows is not None:
+        return [
+            {
+                "id": str(row["id"]),
+                "shop": row["shop_code"],
+                "started_at": _as_iso(row["started_at"] or row["created_at"]),
+                "finished_at": _as_iso(row["finished_at"] or row["created_at"]),
+                "status": "success" if row["ingest_status"] == "succeeded" else "failed",
+                "items_scraped": _to_int(row["item_count"]),
+                "valid_rows": _to_int(row["item_count"]) if row["ingest_status"] == "succeeded" else 0,
+            }
+            for row in database_rows
+        ]
+
     manifest = load_scrape_manifest()
     runs: list[dict[str, Any]] = []
     for shop, meta in manifest.get("shops", {}).items():
@@ -738,6 +784,33 @@ def build_scrape_runs() -> list[dict[str, Any]]:
 
 
 def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
+    database_rows = _read_intel_rows(
+        """
+        select shop_code, product_key, competitor_product_id, product_name, brand_name,
+               coalesce(competitor_sale_price, competitor_price, 0) as price_usd,
+               is_on_sale, availability, source_url, last_seen_at
+        from intel.competitor_products_latest
+        order by last_seen_at desc
+        limit %s
+        """,
+        (limit,),
+    )
+    if database_rows is not None:
+        return [
+            {
+                "shop": row["shop_code"],
+                "external_id": row["competitor_product_id"] or row["product_key"],
+                "product_name": row["product_name"],
+                "brand": row["brand_name"] or "Unknown",
+                "price_usd": round(_to_float(row["price_usd"]), 2),
+                "on_sale": bool(row["is_on_sale"]),
+                "in_stock": str(row["availability"] or "").lower() == "in_stock",
+                "url": row["source_url"] or "",
+                "last_seen": _as_iso(row["last_seen_at"]),
+            }
+            for row in database_rows
+        ]
+
     manifest = load_scrape_manifest()
     rows: list[dict[str, Any]] = []
     for shop in manifest.get("shops", {}):
