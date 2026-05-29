@@ -1,5 +1,6 @@
 data/outputs/
 data/reports/inspection_tmp/
+scraping/
 scraping/data/test_identifier_fix_outputs/
 scraping_new/
 __pycache__/

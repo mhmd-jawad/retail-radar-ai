@@ -1,2 +1,0 @@
-"""MikeSport scraper adapter."""
-

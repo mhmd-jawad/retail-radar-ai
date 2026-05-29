@@ -1,2 +1,0 @@
-"""Tchooz scraper adapter."""
-

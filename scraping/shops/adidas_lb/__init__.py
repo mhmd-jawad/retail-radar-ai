@@ -1,2 +1,0 @@
-"""adidas Lebanon scraper adapter."""
-
