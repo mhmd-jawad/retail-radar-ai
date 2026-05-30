@@ -19,6 +19,7 @@ import type {
   RetailInventoryInput,
   RetailInventoryItem,
   RetailInventoryResponse,
+  CampaignCreative,
 } from '@/types/domain';
 import { MOCK_REPORT, MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
@@ -121,6 +122,41 @@ export async function importRetailInventory(
   return r.json();
 }
 
+/** Returns `{ ok, db_connected }`. db_connected=false means 503 (no DB) — still treat as success. */
+export async function patchInventoryPrice(
+  skuId: string,
+  retailPriceUsd: number,
+  decisionType: 'clearance' | 'markdown' | 'hold',
+  notes?: string,
+): Promise<{ ok: boolean; db_connected: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}/price`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ retail_price_usd: retailPriceUsd, decision_type: decisionType, notes }),
+  });
+  if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
+  if (!r.ok) throw new Error(await apiError(r, `EEP PATCH /inventory/items/${skuId}/price`));
+  return { ok: true, db_connected: true };
+}
+
+/** Record a non-price retailer decision (e.g. hold acknowledgement). */
+export async function recordDecision(
+  skuId: string,
+  decisionType: 'clearance' | 'markdown' | 'hold' | 'promote',
+  notes?: string,
+): Promise<{ ok: boolean; db_connected: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/decisions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sku_id: skuId, decision_type: decisionType, notes }),
+  });
+  if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
+  if (!r.ok) throw new Error(await apiError(r, 'EEP POST /decisions'));
+  return { ok: true, db_connected: true };
+}
+
 export async function recommend(req: IE2Request): Promise<IE2Result> {
   const { mode, ie2, base, key } = settings();
   const normalizedReq = normalizeRequest(req);
@@ -157,6 +193,67 @@ export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; deta
   } catch (e: any) {
     return { ok: false, latency_ms: Math.round(performance.now() - t0), detail: e?.message || 'unreachable' };
   }
+}
+
+/**
+ * POST {ie3Base}/campaign/generate
+ *
+ * Sends a RecommendationResult-shaped payload to IE3 which generates copy +
+ * image and publishes to Instagram & Facebook atomically in one shot.
+ * Returns a CampaignCreative with social_posts reflecting publish status.
+ */
+export async function generateAndPublishCampaign(
+  skuId: string,
+  productName: string,
+  ie2Result: IE2Result,
+): Promise<CampaignCreative> {
+  const s = useSettings.getState();
+  const ie3 = s.ie3BaseUrl;
+
+  const payload = {
+    sku_id: skuId,
+    product_name: productName,
+    recommendation: ie2Result.recommendation,
+    confidence: ie2Result.confidence,
+    explanation: ie2Result.explanation,
+    shap_top5: ie2Result.shap_top5,
+    rule_override: ie2Result.rule_override ?? null,
+    fallback_used: ie2Result.fallback_used,
+    suggested_discount_pct: ie2Result.suggested_discount_pct ?? null,
+    suggested_price_usd: ie2Result.suggested_price_usd ?? null,
+    margin_after_action_pct: ie2Result.margin_after_action_pct ?? null,
+    model_version: ie2Result.model_version,
+    processing_time_ms: ie2Result.processing_time_ms,
+    requires_human_approval: ie2Result.requires_human_approval,
+  };
+
+  const r = await fetch(`${ie3}/campaign/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!r.ok) throw new Error(await apiError(r, 'IE3 /campaign/generate'));
+
+  const pkg = await r.json();
+
+  // Normalize CampaignPackage → CampaignCreative
+  return {
+    headline: pkg.headline ?? '',
+    subheadline: pkg.ad_copy_short ?? '',
+    ad_copy_short: pkg.ad_copy_short ?? '',
+    ad_copy_long: pkg.ad_copy_long ?? '',
+    instagram_post: pkg.instagram_caption ?? '',
+    facebook_post: pkg.facebook_post ?? '',
+    whatsapp_broadcast: pkg.whatsapp_message ?? '',
+    cta_primary: pkg.cta_primary ?? '',
+    cta_secondary: pkg.cta_secondary ?? '',
+    image_url: pkg.image_url ?? '',
+    tone_used: pkg.tone_used ?? 'aspirational',
+    generation_confidence: 1,
+    fallback_used: pkg.fallback_used ?? false,
+    social_posts: pkg.social_posts ?? [],
+  };
 }
 
 function normalizeRequest(req: IE2Request): any {

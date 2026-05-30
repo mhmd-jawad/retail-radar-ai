@@ -38,6 +38,10 @@ from eep.observability import (
     observe_recommendation,
     observe_scraper_ingest,
 )
+from typing import Literal
+
+from pydantic import Field as PField
+
 from eep.retail_db import (
     DatabaseUnavailable,
     InventoryImportPayload,
@@ -47,9 +51,25 @@ from eep.retail_db import (
     db_status,
     import_inventory,
     list_inventory_items,
+    patch_inventory_price,
+    record_retailer_decision,
     update_inventory_item,
 )
+from pydantic import BaseModel
 from services.decision_intelligence.schemas import CompetitorSignals, RecommendationRequest
+
+
+class PriceDecisionPayload(BaseModel):
+    retail_price_usd: float = PField(gt=0)
+    decision_type: Literal["clearance", "markdown", "hold"]
+    notes: str | None = None
+
+
+class RetailerDecisionPayload(BaseModel):
+    sku_id: str
+    decision_type: Literal["clearance", "markdown", "hold", "promote"]
+    notes: str | None = None
+
 
 app = FastAPI(
     title="StylePulse AI — EEP Executive Platform",
@@ -216,6 +236,31 @@ def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload) -> d
         return update_inventory_item(sku_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/inventory/items/{sku_id}/price")
+def patch_inventory_item_price(sku_id: str, payload: "PriceDecisionPayload") -> dict[str, Any]:
+    try:
+        return patch_inventory_price(
+            sku_id,
+            payload.retail_price_usd,
+            payload.decision_type,
+            payload.notes,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/decisions")
+def record_decision_route(payload: "RetailerDecisionPayload") -> dict[str, Any]:
+    try:
+        return record_retailer_decision(payload.sku_id, payload.decision_type, payload.notes)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"SKU not found: {payload.sku_id}") from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

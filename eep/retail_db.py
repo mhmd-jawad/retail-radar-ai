@@ -266,6 +266,47 @@ def update_inventory_item(sku_id: str, payload: InventoryItemPayload) -> dict[st
     return item
 
 
+def patch_inventory_price(
+    sku_id: str,
+    new_price: float,
+    decision_type: str,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Patch only the retail_price_usd for a SKU and write an audit entry."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            before = _get_inventory_item(cur, ctx, sku_id)
+            if not before:
+                raise KeyError(sku_id)
+            variant_id = before["variant_id"]
+            _set_current_price(cur, ctx["tenant_id"], variant_id, new_price)
+            after = _get_inventory_item(cur, ctx, sku_id)
+            if not after:
+                raise RuntimeError(f"Failed to reload SKU {sku_id} after price patch")
+            actor = f"retailer_decision_{decision_type}"
+            detail: dict[str, Any] = {"decision_type": decision_type, "new_price_usd": new_price}
+            if notes:
+                detail["notes"] = notes
+            _audit(cur, ctx["tenant_id"], "inventory_item", sku_id, actor, before, {**after, **detail})
+    return after
+
+
+def record_retailer_decision(sku_id: str, decision_type: str, notes: str | None = None) -> dict[str, Any]:
+    """Record a non-price retailer decision (e.g. hold acknowledgement) in the audit log."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            item = _get_inventory_item(cur, ctx, sku_id)
+            if not item:
+                raise KeyError(sku_id)
+            detail: dict[str, Any] = {"decision_type": decision_type}
+            if notes:
+                detail["notes"] = notes
+            _audit(cur, ctx["tenant_id"], "inventory_item", sku_id, f"retailer_decision_{decision_type}", None, detail)
+    return {"ok": True, "sku_id": sku_id, "decision_type": decision_type}
+
+
 def archive_inventory_item(sku_id: str) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:

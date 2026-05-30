@@ -141,18 +141,29 @@ export interface Profitability {
   opex_coverage_ratio: number;
 }
 
+export interface SocialPostResult {
+  platform: string;
+  success: boolean;
+  post_id?: string;
+  post_url?: string;
+  error?: string;
+}
+
 export interface CampaignCreative {
   headline: string;
   subheadline: string;
   ad_copy_short: string;
   ad_copy_long: string;
-  instagram_post: string;
+  instagram_post: string;   // maps from instagram_caption
   facebook_post: string;
   whatsapp_broadcast: string;
   cta_primary: string;
   cta_secondary: string;
+  image_url: string;        // from ImgBB / Replicate
+  tone_used: 'urgent' | 'aspirational' | 'value_focused';
   generation_confidence: number;
   fallback_used: boolean;
+  social_posts: SocialPostResult[];
 }
 
 export interface PromoteItem {
