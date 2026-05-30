@@ -1,97 +1,176 @@
+﻿import { useNavigate } from 'react-router-dom';
 import { useReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
-import { Section } from '@/components/shared/Section';
-import { KpiCard } from '@/components/shared/KpiCard';
 import { PageSkeleton } from '@/components/shared/Skeleton';
+import { DataSourceBanner } from '@/components/shared/DataSourceBanner';
 import { fmtPct, fmtUSD } from '@/lib/format';
-import { Wallet, TrendingUp, Activity, AlertTriangle, DollarSign } from 'lucide-react';
-import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend } from 'recharts';
+import {
+  Wallet, TrendingUp, Activity, AlertTriangle, DollarSign,
+  BarChart3, ChevronRight, BadgeDollarSign,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// â”€â”€ hub card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+interface HubCardProps {
+  to: string;
+  icon: React.ElementType;
+  title: string;
+  metric: string;
+  metricLabel: string;
+  status: 'ok' | 'warn' | 'bad' | 'data';
+  statusText: string;
+  description: string;
+}
+
+function HubCard({ to, icon: Icon, title, metric, metricLabel, status, statusText, description }: HubCardProps) {
+  const navigate = useNavigate();
+  const statusColors = {
+    ok:   'text-decision-promote border-decision-promote/20 bg-decision-promote-bg',
+    warn: 'text-decision-markdown border-decision-markdown/20 bg-decision-markdown-bg',
+    bad:  'text-decision-clear border-decision-clear/20 bg-decision-clear-bg',
+    data: 'text-primary border-primary/20 bg-primary/5',
+  };
+  const dotColors = { ok: 'bg-decision-promote', warn: 'bg-decision-markdown', bad: 'bg-decision-clear', data: 'bg-primary' };
+
+  return (
+    <button
+      onClick={() => navigate(to)}
+      className="group text-left rounded-xl border border-border bg-card p-5 hover:border-primary/40 hover:shadow-md transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+          <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+      </div>
+
+      <div className="mb-1">
+        <div className="text-[22px] font-bold font-display leading-none">{metric}</div>
+        <div className="text-[11px] text-muted-foreground mt-1 uppercase tracking-wide">{metricLabel}</div>
+      </div>
+
+      <div className="text-[14px] font-semibold text-foreground mt-3 mb-1">{title}</div>
+      <p className="text-[12px] text-muted-foreground leading-snug mb-3">{description}</p>
+
+      <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full border', statusColors[status])}>
+        <span className={cn('h-1.5 w-1.5 rounded-full', dotColors[status])} />
+        {statusText}
+      </span>
+    </button>
+  );
+}
+
+// â”€â”€ main hub page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Financial() {
   const { data: r, isLoading } = useReport();
+
   if (isLoading || !r) return (<><TopBar title="Financial Health" /><PageSkeleton /></>);
+
   const f = r.financial;
+  const cashRunway   = f.cashflow_health.cash_runway_months;
+  const ratio        = f.balance_sheet_health.current_ratio;
+  const margin       = f.profitability.blended_margin_pct;
+  const revenue      = f.profitability.annual_revenue_projection_usd;
+  const equity       = f.balance_sheet_health.equity_usd;
+  const lollarPct    = f.cashflow_health.lollar_exposure_pct ?? 4;
+  const fixedTotal   = 3500; // TODO(live-data): derive from fetchDetailedProfitability opex_breakdown
+
+  const alerts = f.alerts ?? [];
+  const highAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high').length;
 
   return (
     <>
-      <TopBar title="Financial Health" subtitle="Cash, margin, and balance sheet posture" />
+      <TopBar
+        title="Financial Health"
+        subtitle="Select a section to view detailed analysis"
+      />
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${f.cashflow_health.cash_runway_months.toFixed(1)} mo`} hint={`Cash on hand ${fmtUSD(f.cashflow_health.cash_on_hand_usd, { compact: true })}`} />
-          <KpiCard label="Current Ratio" icon={Activity} value={f.balance_sheet_health.current_ratio.toFixed(2)} hint="Healthy ≥ 1.5" />
-          <KpiCard label="Blended Margin" icon={TrendingUp} variant="success" value={fmtPct(f.profitability.blended_margin_pct)} hint="Floor 35%" />
-          <KpiCard label="Annual Revenue" icon={DollarSign} variant="data" value={fmtUSD(f.profitability.annual_revenue_projection_usd, { compact: true })} hint="Projected 12mo" />
+        <DataSourceBanner />
+
+        {/* Hub cards grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <HubCard
+            to="/financial/balance-sheet"
+            icon={Wallet}
+            title="Balance Sheet"
+            metric={fmtUSD(equity, { compact: true })}
+            metricLabel="Your Net Worth"
+            status={ratio >= 1.5 ? 'ok' : 'warn'}
+            statusText={ratio >= 1.5 ? `Liquidity ${ratio.toFixed(2)}x âœ“` : `Liquidity ${ratio.toFixed(2)}x âš `}
+            description="What you own, what you owe, and what's truly yours. Asset breakdown with health ratios."
+          />
+          <HubCard
+            to="/financial/profitability"
+            icon={TrendingUp}
+            title="Profitability"
+            metric={fmtPct(margin)}
+            metricLabel="Blended Margin"
+            status={margin >= 45 ? 'ok' : margin >= 35 ? 'warn' : 'bad'}
+            statusText={margin >= 45 ? 'Above 45% floor âœ“' : margin >= 35 ? 'Watch margin floor âš ' : 'Below floor âœ•'}
+            description="Margin per category, breakeven formula, and where every $100 in revenue goes."
+          />
+          <HubCard
+            to="/financial/cashflow"
+            icon={BarChart3}
+            title="Cashflow"
+            metric={`${cashRunway.toFixed(1)} mo`}
+            metricLabel="Cash Runway"
+            status={cashRunway >= 4 ? 'ok' : cashRunway >= 2 ? 'warn' : 'bad'}
+            statusText={cashRunway >= 4 ? 'Runway healthy âœ“' : 'Below 4mo threshold âš '}
+            description="Monthly inflow vs outflow, net position trend, and 6-month projection."
+          />
+          <HubCard
+            to="/financial/lollar"
+            icon={BadgeDollarSign}
+            title="Lollar Exposure"
+            metric={`${lollarPct}%`}
+            metricLabel="Lollar Risk"
+            status={lollarPct < 10 ? 'ok' : lollarPct < 25 ? 'warn' : 'bad'}
+            statusText={lollarPct < 10 ? 'Low exposure âœ“' : 'Monitor exposure âš '}
+            description="Lebanese pound trapped in banking system vs fresh USD receivables breakdown."
+          />
+          <HubCard
+            to="/financial/costs"
+            icon={Activity}
+            title="Cost Breakdown"
+            metric={fmtUSD(fixedTotal, { compact: true })}
+            metricLabel="Fixed costs / mo"
+            status="data"
+            statusText="Fixed + variable"
+            description="Full OpEx breakdown â€” fixed monthly costs and variable rates by category."
+          />
+          <HubCard
+            to="/financial/alerts"
+            icon={AlertTriangle}
+            title="Alerts & Risks"
+            metric={String(alerts.length)}
+            metricLabel={alerts.length === 1 ? 'active alert' : 'active alerts'}
+            status={highAlerts > 0 ? 'bad' : alerts.length > 0 ? 'warn' : 'ok'}
+            statusText={highAlerts > 0 ? `${highAlerts} high severity` : alerts.length > 0 ? 'Review recommended' : 'All clear âœ“'}
+            description="Financial risk flags, threshold breaches, and recommended actions."
+          />
         </div>
 
-        <Section title="Monthly Cashflow" subtitle="Inflow, outflow, and net position">
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={f.cashflow_health.series}>
-                <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${Math.round(v/1000)}k`} />
-                <Tooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} formatter={(v: number) => fmtUSD(v, { compact: true })} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="in" fill="hsl(var(--decision-promote))" name="Inflow" radius={[4,4,0,0]} />
-                <Bar dataKey="out" fill="hsl(var(--decision-clear))" name="Outflow" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
+        {/* Quick-view KPIs */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide mb-4">Quick Snapshot</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <Metric label="Annual Revenue" value={fmtUSD(revenue, { compact: true })} />
+            <Metric label="Breakeven / mo" value={fmtUSD(f.profitability.breakeven_revenue_usd, { compact: true })} />
+            <Metric label="OPEX Coverage" value={`${f.profitability.opex_coverage_ratio.toFixed(2)}x`} warn={f.profitability.opex_coverage_ratio < 1.2} />
+            <Metric label="Top-5 Concentration" value={fmtPct(f.balance_sheet_health.inventory_concentration_top5_pct)} warn />
           </div>
-        </Section>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          <Section title="Balance Sheet Health">
-            <div className="space-y-3">
-              <Row label="Total Assets" value={fmtUSD(f.balance_sheet_health.total_assets_usd, { compact: true })} />
-              <Row label="Liabilities" value={fmtUSD(f.balance_sheet_health.liabilities_usd, { compact: true })} />
-              <Row label="Equity" value={fmtUSD(f.balance_sheet_health.equity_usd, { compact: true })} />
-              <Row label="Inventory % of Assets" value={fmtPct(f.balance_sheet_health.inventory_pct_of_assets)} warn={f.balance_sheet_health.inventory_pct_of_assets > 70} />
-              <Row label="Top-5 Concentration" value={fmtPct(f.balance_sheet_health.inventory_concentration_top5_pct)} />
-            </div>
-          </Section>
-          <Section title="Profitability">
-            <div className="space-y-3">
-              <Row label="Blended Margin" value={fmtPct(f.profitability.blended_margin_pct)} good={f.profitability.blended_margin_pct >= 45} />
-              <Row label="Breakeven Revenue" value={fmtUSD(f.profitability.breakeven_revenue_usd, { compact: true }) + '/mo'} />
-              <Row label="Annual Projection" value={fmtUSD(f.profitability.annual_revenue_projection_usd, { compact: true })} />
-              <Row label="OPEX Coverage" value={`${f.profitability.opex_coverage_ratio.toFixed(2)}x`} warn={f.profitability.opex_coverage_ratio < 1.2} />
-            </div>
-          </Section>
-          <Section title="Lollar Exposure" subtitle="Lebanese pound vs fresh USD risk">
-            <div className="rounded-lg p-5 bg-decision-promote-bg">
-              <div className="text-[10.5px] uppercase font-mono text-decision-promote">Exposure</div>
-              <div className="text-data text-[42px] font-bold text-decision-promote leading-none mt-2">{fmtPct(f.cashflow_health.lollar_exposure_pct)}</div>
-              <p className="text-[12.5px] text-muted-foreground mt-3 leading-snug">
-                96% of receivables are in fresh USD. Cash sales dominate. Generator/electricity OPEX hedged through monthly USD pre-pay.
-              </p>
-            </div>
-          </Section>
         </div>
-
-        <Section title="Financial Alerts & Risk Factors">
-          <ul className="space-y-2">
-            {f.alerts.map(a => (
-              <li key={a.id} className="flex items-start gap-3 p-3 rounded-lg border border-border">
-                <AlertTriangle className={cn('h-4 w-4 mt-0.5', a.severity === 'high' ? 'text-decision-clear' : a.severity === 'medium' ? 'text-decision-markdown' : 'text-muted-foreground')} />
-                <div className="flex-1">
-                  <div className="text-[13px] font-semibold">{a.title}</div>
-                  <p className="text-[12.5px] text-muted-foreground">{a.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Section>
       </main>
     </>
   );
 }
 
-function Row({ label, value, good, warn }: { label: string; value: string; good?: boolean; warn?: boolean }) {
+function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
-      <span className="text-[12.5px] text-muted-foreground">{label}</span>
-      <span className={cn('text-data text-[15px] font-semibold', good && 'text-decision-promote', warn && 'text-decision-markdown')}>{value}</span>
+    <div>
+      <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1">{label}</div>
+      <div className={cn('text-[20px] font-bold font-display', warn ? 'text-decision-markdown' : 'text-foreground')}>{value}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useReport } from '@/hooks/useReport';
+import { useLiveReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
 import { KpiCard } from '@/components/shared/KpiCard';
 import { Section } from '@/components/shared/Section';
@@ -62,7 +62,7 @@ AD-RUN-001,Adidas Ultraboost 5,Adidas,footwear,18,180,92,,UB5-BLK,5,12
 NK-TEE-022,Nike Dri-FIT Tee,Nike,apparel,42,45,19,,DRI-TEE,10,24`;
 
 export default function Inventory() {
-  const { data: report, isLoading } = useReport();
+  const { data: report, isLoading } = useLiveReport();
 
   return (
     <>

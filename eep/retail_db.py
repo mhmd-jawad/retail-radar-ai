@@ -106,9 +106,20 @@ def _import_psycopg():
 
 @contextmanager
 def _connect():
+    import socket
+    from urllib.parse import urlparse
+    _url = urlparse(database_url())
+    _host = _url.hostname or "localhost"
+    _port = _url.port or 5432
+    try:
+        s = socket.create_connection((_host, _port), timeout=0.5)
+        s.close()
+    except OSError as exc:
+        raise DatabaseUnavailable(f"Cannot reach PostgreSQL at {_host}:{_port}: {exc}") from exc
+
     psycopg, dict_row = _import_psycopg()
     try:
-        conn = psycopg.connect(database_url(), row_factory=dict_row)
+        conn = psycopg.connect(database_url(), row_factory=dict_row, connect_timeout=3)
     except Exception as exc:  # pragma: no cover - depends on local DB
         raise DatabaseUnavailable(f"Cannot connect to PostgreSQL: {exc}") from exc
 

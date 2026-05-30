@@ -410,6 +410,72 @@ export interface RetailDbStatus {
   error?: string;
 }
 
+// ─── Financial Detail types (Step 2) ─────────────────────────────────────────
+
+export interface OpExItem {
+  label: string;
+  amount_usd: number;
+  type: 'fixed' | 'variable';
+  rate_pct?: number;
+}
+
+export interface CategoryProfitability {
+  category: string;
+  sku_count: number;
+  revenue_usd: number;
+  cogs_usd: number;
+  margin_pct: number;
+}
+
+export interface DetailedBalanceSheet {
+  data_source: 'live-db' | 'static-file';
+  generated_at: string;
+  assets: {
+    inventory_at_cost_usd: number;
+    inventory_at_retail_usd: number;
+    cash_on_hand_usd: number;
+    lollar_face_usd: number;
+    lollar_real_usd: number;
+    other_assets_usd: number;
+    total_usd: number;
+  };
+  liabilities: {
+    supplier_payables_usd: number;
+    other_usd: number;
+    total_usd: number;
+  };
+  equity_usd: number;
+  ratios: {
+    current_ratio: number;
+    inventory_pct_of_assets: number;
+    debt_to_equity: number;
+    top5_concentration_pct: number;
+  };
+}
+
+export interface DetailedProfitability {
+  data_source: 'live-db' | 'static-file';
+  generated_at: string;
+  summary: Profitability;
+  for_every_100_usd: {
+    cogs: number;
+    marketing: number;
+    payment_processing: number;
+    logistics: number;
+    fixed_opex: number;
+    net_profit: number;
+  };
+  opex_breakdown: OpExItem[];
+  category_breakdown: CategoryProfitability[];
+  breakeven: {
+    monthly_fixed_opex_usd: number;
+    blended_margin_pct: number;
+    result_usd: number;
+    plain_english: string;
+    pairs_estimate?: number;
+  };
+}
+
 // Audit
 export interface AuditEntry {
   id: string;

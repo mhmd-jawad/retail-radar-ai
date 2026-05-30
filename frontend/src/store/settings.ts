@@ -31,7 +31,7 @@ interface SettingsState {
 }
 
 const env = import.meta.env;
-const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
+const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8004';
 const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 const defaultIe3BaseUrl = env.PROD ? '/ie3' : 'http://localhost:8003';
 
@@ -63,7 +63,20 @@ export const useSettings = create<SettingsState>()(
       setCampaign: (skuId, creative) =>
         set((s) => ({ campaignCache: { ...s.campaignCache, [skuId]: creative } })),
     }),
-    { name: 'rr-settings-v1' }
+    {
+      name: 'rr-settings-v1',
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        const s = (persistedState ?? {}) as Record<string, unknown>;
+        if (version < 2) {
+          // Port was changed from 8000 → 8004; fix any stale stored URLs
+          if (s.apiBaseUrl === 'http://localhost:8000') {
+            s.apiBaseUrl = 'http://localhost:8004';
+          }
+        }
+        return s;
+      },
+    }
   )
 );
 

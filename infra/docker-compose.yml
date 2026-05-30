@@ -148,8 +148,34 @@ services:
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
 
+  whatsapp_assistant:
+    build:
+      context: ..
+      dockerfile: services/whatsapp_assistant/Dockerfile
+    ports:
+      - "8004:8004"
+    env_file:
+      - ../services/whatsapp_assistant/.env
+    environment:
+      - EEP_BASE_URL=http://eep:8000
+      - IE3_BASE_URL=http://ie3_campaign_creative:8003
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - default
+      - infra_default
+    restart: unless-stopped
+
 volumes:
   retail_radar_pgdata:
   campaign_static:
   prometheus_data:
   grafana_data:
+
+networks:
+  infra_default:
+    external: true

@@ -80,7 +80,90 @@ StylePulse AI replaces manual guesswork with an automated weekly intelligence sy
 
 ---
 
-## Quick Start
+## Local Development (How to Run)
+
+This section documents the **current local dev setup** — three processes run side-by-side without Docker.
+
+### Prerequisites
+
+- Python 3.11+ with a virtual env at `../.venv` (one level above the repo root)
+- Node.js 18+ **or** Bun — use `npx vite` if Bun is not installed
+- AWS RDS reachable (credentials in `.env` at repo root and `services/campaign_creative/.env`)
+
+### Required environment files
+
+**`retail-radar-ai/.env`** (repo root)
+```env
+DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
+```
+
+**`retail-radar-ai/frontend/.env.local`**
+```env
+VITE_API_BASE_URL=http://localhost:8004
+VITE_DATA_MODE=eep-live
+VITE_IE3_BASE_URL=http://localhost:8003
+```
+
+**`retail-radar-ai/services/campaign_creative/.env`**
+```env
+DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
+OPENROUTER_API_KEY=<your-openrouter-key>
+GEMINI_API_KEY=<your-gemini-key>
+FB_PAGE_ACCESS_TOKEN=<token>
+FB_PAGE_ID=<id>
+IG_USER_ID=<id>
+IG_ACCESS_TOKEN=<token>
+IMGBB_API_KEY=<key>
+```
+
+### Terminal 1 — EEP backend (port 8004)
+
+```powershell
+cd "c:\path\to\Radar Ai"
+.venv\Scripts\Activate.ps1
+cd retail-radar-ai
+uvicorn eep.main:app --host 0.0.0.0 --port 8004 --reload
+```
+
+Verify: `curl http://localhost:8004/health`
+
+### Terminal 2 — IE3 Campaign Creative service (port 8003)
+
+```powershell
+cd "c:\path\to\Radar Ai"
+.venv\Scripts\Activate.ps1
+cd retail-radar-ai
+uvicorn services.campaign_creative.main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+Verify: `curl http://localhost:8003/health`
+
+### Terminal 3 — React frontend (port 8082)
+
+```powershell
+cd "c:\path\to\Radar Ai\retail-radar-ai\frontend"
+npx vite --port 8082
+```
+
+> If port 8082 is already in use Vite auto-increments to 8083, etc.
+
+Open: http://localhost:8082
+
+### Key endpoints
+
+| URL | What it shows |
+|---|---|
+| `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
+| `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
+| `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Lollar |
+| `http://localhost:8004/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
+| `http://localhost:8004/report` | Static report JSON (financial pages) |
+| `http://localhost:8004/docs` | FastAPI Swagger UI |
+| `http://localhost:8003/docs` | IE3 campaign service Swagger UI |
+
+---
+
+## Quick Start (Docker)
 
 ### Prerequisites
 

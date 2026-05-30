@@ -20,8 +20,10 @@ import type {
   RetailInventoryItem,
   RetailInventoryResponse,
   CampaignCreative,
+  DetailedBalanceSheet,
+  DetailedProfitability,
 } from '@/types/domain';
-import { MOCK_REPORT, MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
+import { MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
 
 function settings() {
@@ -30,14 +32,17 @@ function settings() {
 }
 
 export async function fetchReport(): Promise<Report> {
-  const { mode, base } = settings();
-  if (mode === 'eep-live') {
-    const r = await fetch(`${base}/report`);
-    if (!r.ok) throw new Error(`EEP /report ${r.status}`);
-    return r.json();
-  }
-  await wait(180);
-  return MOCK_REPORT;
+  const { base } = settings();
+  const r = await fetch(`${base}/report`);
+  if (!r.ok) throw new Error(`/report ${r.status}`);
+  return r.json();
+}
+
+export async function fetchLiveReport(): Promise<Report> {
+  const { base } = settings();
+  const r = await fetch(`${base}/report/live`);
+  if (!r.ok) throw new Error(`/report/live ${r.status}`);
+  return r.json();
 }
 
 export async function fetchScrapeRuns(): Promise<ScrapeRun[]> {
@@ -354,6 +359,33 @@ async function apiError(response: Response, label: string) {
   } catch {
     return `${label} ${response.status}: ${response.statusText}`;
   }
+}
+
+// ─── Financial detail fetchers ────────────────────────────────────────────────
+
+export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/balance-sheet`);
+  if (!r.ok) throw new Error(`/financial/balance-sheet ${r.status}`);
+  return r.json();
+}
+
+export async function fetchDetailedProfitability(): Promise<DetailedProfitability> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/profitability`);
+  if (!r.ok) throw new Error(`/financial/profitability ${r.status}`);
+  return r.json();
+}
+
+export interface CashflowMonth { month: string; in: number; out: number; net: number }
+
+export async function fetchCashflow(): Promise<CashflowMonth[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/cashflow`);
+  if (!r.ok) throw new Error(`/financial/cashflow ${r.status}`);
+  const json = await r.json();
+  // backend wraps series in { series: [...] }, unwrap if needed
+  return Array.isArray(json) ? json : (json.series ?? []);
 }
 
 // Supabase-ready stubs (future)

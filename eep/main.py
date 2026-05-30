@@ -14,7 +14,15 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Any
+
+# Load .env from repo root (no-op if file absent or dotenv not installed)
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
+except ImportError:
+    pass
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +54,8 @@ from eep.retail_db import (
     DatabaseUnavailable,
     InventoryImportPayload,
     InventoryItemPayload,
+    _connect,
+    _context,
     archive_inventory_item,
     create_inventory_item,
     db_status,
@@ -358,6 +368,553 @@ def _strip_competitor_metadata(request_payload: dict[str, Any]) -> dict[str, Any
         if key in allowed_fields
     }
     return {**request_payload, "competitor_signals": cleaned_signals}
+
+
+@app.get("/report/live")
+def report_live() -> dict[str, Any]:
+    """Build the full frontend report from live DB inventory data."""
+    from datetime import datetime, timezone
+    from statistics import median as _median
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur)
+                tenant_id = ctx["tenant_id"]
+
+                # All active SKUs with stock + latest retail price
+                cur.execute(
+                    """
+                    SELECT
+                        v.id AS variant_id,
+                        v.sku_id,
+                        p.name  AS product_name,
+                        p.brand,
+                        p.category,
+                        v.cost_price_usd,
+                        COALESCE(pr.amount, 0)           AS retail_price_usd,
+                        COALESCE(ib.quantity_on_hand, 0) AS current_stock,
+                        v.created_at                     AS variant_created_at
+                    FROM core.sku_variants v
+                    JOIN core.products p ON p.id = v.product_id
+                    LEFT JOIN core.inventory_balances ib ON ib.variant_id = v.id
+                    LEFT JOIN LATERAL (
+                        SELECT amount FROM core.prices
+                        WHERE variant_id = v.id
+                          AND price_type = 'retail'
+                          AND valid_to IS NULL
+                        ORDER BY valid_from DESC LIMIT 1
+                    ) pr ON true
+                    WHERE v.tenant_id = %s AND v.status = 'active'
+                    ORDER BY p.brand, p.name
+                    """,
+                    (tenant_id,),
+                )
+                sku_rows = cur.fetchall() or []
+
+                # Velocity: units sold in last 30 days per variant
+                cur.execute(
+                    """
+                    SELECT variant_id, SUM(-quantity_delta) AS sold_30d
+                    FROM core.inventory_movements
+                    WHERE tenant_id = %s
+                      AND movement_type = 'sale'
+                      AND created_at >= NOW() - INTERVAL '30 days'
+                    GROUP BY variant_id
+                    """,
+                    (tenant_id,),
+                )
+                velocity_map: dict = {r["variant_id"]: max(float(r["sold_30d"] or 0), 0) for r in (cur.fetchall() or [])}
+
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    def _cat(c: str) -> str:
+        labels = {
+            "footwear": "Footwear", "football_boots": "Football Boots",
+            "apparel": "Apparel", "sportswear": "Sportswear",
+            "swimwear": "Swimwear", "accessories": "Accessories",
+            "kids": "Kids", "lifestyle": "Lifestyle",
+        }
+        return labels.get((c or "").lower(), (c or "Other").title())
+
+    now = datetime.now(timezone.utc)
+    inventory_skus: list[dict] = []
+
+    for row in sku_rows:
+        stock = int(row["current_stock"] or 0)
+        retail = float(row["retail_price_usd"] or 0)
+        cost = float(row["cost_price_usd"] or 0)
+        margin = round((retail - cost) / retail * 100, 1) if retail > 0 else 0.0
+        units_sold = velocity_map.get(row["variant_id"], 0.0)
+        velocity = round(units_sold / 30.0, 2)
+        if velocity > 0:
+            dos = round(stock / velocity, 1)
+        elif stock > 0:
+            dos = 999.0
+        else:
+            dos = 0.0
+
+        created_at = row["variant_created_at"]
+        if created_at is not None:
+            if created_at.tzinfo is None:
+                from datetime import timezone as _tz
+                created_at = created_at.replace(tzinfo=_tz.utc)
+            days_since_launch = (now - created_at).days
+        else:
+            days_since_launch = 365
+
+        has_velocity = velocity > 0
+        if has_velocity:
+            if dos > 365:
+                health = "dead"
+            elif dos > 120:
+                health = "excess"
+            elif dos < 7 and stock > 0:
+                health = "critical"
+            else:
+                health = "healthy"
+        else:
+            # No sales data — use margin and age as proxy
+            if stock == 0:
+                health = "healthy"
+            elif days_since_launch > 365:
+                health = "dead"
+            elif days_since_launch > 180 or margin < 5:
+                health = "excess"
+            else:
+                health = "healthy"
+
+        # Decision rules
+        if has_velocity:
+            if dos > 180 or health == "dead":
+                decision = "CLEAR"
+            elif dos > 90 and margin >= 10:
+                decision = "MARKDOWN"
+            elif margin >= 40 and 20 <= dos <= 150 and stock >= 5:
+                decision = "PROMOTE"
+            else:
+                decision = "HOLD"
+        else:
+            # No velocity data — classify by margin percentile tiers
+            # (margin range in this dataset: ~40–64%, median ~54%)
+            if stock == 0:
+                decision = "HOLD"
+            elif margin >= 57:           # top ~25% — high margin: promote
+                decision = "PROMOTE"
+            elif margin >= 50:           # mid-upper — hold current pricing
+                decision = "HOLD"
+            elif margin >= 46:           # mid-lower — nudge with markdown
+                decision = "MARKDOWN"
+            else:                        # bottom tier — recover capital
+                decision = "CLEAR"
+
+        inventory_skus.append({
+            "sku_id": row["sku_id"],
+            "product_name": row["product_name"],
+            "brand": row["brand"] or "Unknown",
+            "category": _cat(row["category"]),
+            "current_stock": stock,
+            "initial_stock": stock,
+            "retail_price_usd": round(retail, 2),
+            "cost_price_usd": round(cost, 2),
+            "margin_pct": margin,
+            "days_of_supply": dos,
+            "days_since_launch": days_since_launch,
+            "days_since_last_discount": 999,
+            "days_at_current_price": 30,
+            "velocity_units_per_day": velocity,
+            "health": health,
+            "decision": decision,
+        })
+
+    # Category summaries
+    from collections import defaultdict as _dd
+    cat_buckets: dict = _dd(list)
+    for s in inventory_skus:
+        cat_buckets[s["category"]].append(s)
+
+    category_summary: dict = {}
+    for cat, items in sorted(cat_buckets.items()):
+        avg_margin = round(sum(i["margin_pct"] for i in items) / len(items), 1) if items else 0.0
+        med_dos_val = float(_median([i["days_of_supply"] for i in items])) if items else 0.0
+        val_usd = round(sum(i["current_stock"] * i["cost_price_usd"] for i in items), 2)
+        score = int(round(max(0, min(100, 100 - abs(med_dos_val - 60) * 0.6 - max(0, 45 - avg_margin) * 1.5))))
+        category_summary[cat] = {
+            "skus": len(items),
+            "units": sum(i["current_stock"] for i in items),
+            "value_usd": val_usd,
+            "avg_margin_pct": avg_margin,
+            "median_dos": round(med_dos_val, 1),
+            "health_score": score,
+        }
+
+    total_units = sum(s["current_stock"] for s in inventory_skus)
+    total_cost = round(sum(s["current_stock"] * s["cost_price_usd"] for s in inventory_skus), 2)
+    total_retail = round(sum(s["current_stock"] * s["retail_price_usd"] for s in inventory_skus), 2)
+    blended_margin = round((total_retail - total_cost) / total_retail * 100, 1) if total_retail > 0 else 0.0
+    all_dos = [s["days_of_supply"] for s in inventory_skus if s["days_of_supply"] < 999]
+    med_dos_global = round(float(_median(all_dos)), 1) if all_dos else 0.0
+
+    # Build promotion lists
+    promote_items = []
+    markdown_items = []
+    clearance_items = []
+    hold_items = []
+
+    for s in inventory_skus:
+        if s["decision"] == "PROMOTE":
+            lift = round(max(s["margin_pct"] - 35, 0) / 5 + 10, 1)
+            dos_disp = int(s["days_of_supply"]) if s["days_of_supply"] < 900 else s["current_stock"]
+            promote_items.append({
+                "sku_id": s["sku_id"],
+                "product_name": s["product_name"],
+                "brand": s["brand"],
+                "category": s["category"],
+                "reason": f"Good margin ({s['margin_pct']:.0f}%) and sufficient stock ({dos_disp} DOS). Push this now.",
+                "expected_lift_pct": lift,
+                "channels": ["Instagram", "WhatsApp", "In-store window"],
+            })
+        elif s["decision"] == "MARKDOWN":
+            discount = 15 if s["margin_pct"] > 40 else 20 if s["margin_pct"] > 30 else 10
+            margin_after = round(s["margin_pct"] - discount * (s["retail_price_usd"] / max(s["retail_price_usd"], 0.01)), 1)
+            margin_after = round(s["margin_pct"] * (1 - discount / 100), 1)
+            suggested_price = round(s["retail_price_usd"] * (1 - discount / 100), 2)
+            dos_disp = int(s["days_of_supply"]) if s["days_of_supply"] < 900 else "high"
+            urgency = "high" if s["days_of_supply"] > 180 else "medium" if s["days_of_supply"] > 120 else "low"
+            markdown_items.append({
+                "sku_id": s["sku_id"],
+                "product_name": s["product_name"],
+                "brand": s["brand"],
+                "current_price_usd": s["retail_price_usd"],
+                "suggested_discount_pct": float(discount),
+                "suggested_price_usd": suggested_price,
+                "margin_after_pct": margin_after,
+                "reason": f"Slow-moving stock ({dos_disp} DOS). A {discount}% markdown accelerates sell-through.",
+                "urgency": urgency,
+            })
+        elif s["decision"] == "CLEAR":
+            discount = 50
+            suggested_price = round(s["retail_price_usd"] * 0.5, 2) if s["retail_price_usd"] > 0 else round(s["cost_price_usd"] * 0.5, 2)
+            recovered = round(suggested_price * s["current_stock"], 2)
+            clearance_items.append({
+                "sku_id": s["sku_id"],
+                "product_name": s["product_name"],
+                "brand": s["brand"],
+                "current_stock": s["current_stock"],
+                "age_days": s["days_since_launch"],
+                "suggested_price_usd": suggested_price,
+                "recovered_cash_usd": recovered,
+                "urgency": "critical" if s["days_of_supply"] > 365 else "high",
+            })
+        else:  # HOLD
+            hold_items.append({
+                "sku_id": s["sku_id"],
+                "product_name": s["product_name"],
+                "brand": s["brand"],
+                "reason": "Healthy velocity and margin. Maintain current pricing.",
+                "margin_pct": s["margin_pct"],
+                "velocity": s["velocity_units_per_day"],
+            })
+
+    return {
+        "inventory": {
+            "metrics": {
+                "total_skus": len(inventory_skus),
+                "total_units": total_units,
+                "inventory_value_at_cost_usd": total_cost,
+                "inventory_value_at_retail_usd": total_retail,
+                "blended_margin_pct": blended_margin,
+                "median_days_of_supply": med_dos_global,
+                "critical_stockouts": sum(1 for s in inventory_skus if s["health"] == "critical"),
+                "dead_stock_skus": sum(1 for s in inventory_skus if s["health"] == "dead"),
+                "excess_stock_skus": sum(1 for s in inventory_skus if s["health"] == "excess"),
+                "healthy_skus": sum(1 for s in inventory_skus if s["health"] == "healthy"),
+            },
+            "sku_analysis": inventory_skus,
+            "category_summary": category_summary,
+            "alerts": [],
+        },
+        "competitor": {
+            "market_overview": {
+                "skus_tracked": len(inventory_skus),
+                "competitor_records": 0,
+                "shops_covered": 0,
+                "avg_price_gap_pct": 0.0,
+                "overpriced_skus": 0,
+                "underpriced_skus": 0,
+                "at_market_skus": len(inventory_skus),
+                "data_freshness_hours": 0.0,
+            },
+            "sku_positioning": [],
+            "brand_summary": {},
+            "category_summary": {},
+            "opportunities": [],
+        },
+        "financial": {
+            "balance_sheet_health": {},
+            "cashflow_health": {"series": []},
+            "profitability": {"blended_margin_pct": blended_margin},
+            "alerts": [],
+        },
+        "promotions": {
+            "hold_pricing": hold_items,
+            "promote": promote_items,
+            "markdown": markdown_items,
+            "clearance": clearance_items,
+            "seasonal_actions": [],
+            "directives": [],
+            "summary": {
+                "hold_count": len(hold_items),
+                "promote_count": len(promote_items),
+                "markdown_count": len(markdown_items),
+                "clearance_count": len(clearance_items),
+            },
+        },
+        "metadata": {
+            "generated_at": generated_at,
+            "engine_version": "live-db-1.0",
+            "market": "Lebanon",
+            "currency": "fresh USD",
+            "data_window_days": 30,
+            "source": "live-db",
+        },
+    }
+
+
+@app.get("/financial/balance-sheet")
+def financial_balance_sheet() -> dict[str, Any]:
+    """Detailed balance sheet — requires live DB."""
+    import csv
+    from datetime import datetime, timezone
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur)
+                tenant_id = ctx["tenant_id"]
+
+                # Inventory at cost and at retail
+                cur.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(ib.quantity_on_hand * v.cost_price_usd), 0)  AS inventory_at_cost,
+                        COALESCE(SUM(ib.quantity_on_hand * p.amount), 0)           AS inventory_at_retail
+                    FROM core.inventory_balances ib
+                    JOIN core.sku_variants v ON v.id = ib.variant_id
+                    LEFT JOIN LATERAL (
+                        SELECT amount FROM core.prices
+                        WHERE variant_id = v.id AND price_type = 'retail' AND valid_to IS NULL
+                        ORDER BY valid_from DESC LIMIT 1
+                    ) p ON true
+                    WHERE ib.tenant_id = %s
+                    """,
+                    (tenant_id,),
+                )
+                inv_row = cur.fetchone() or {}
+                inventory_at_cost = float(inv_row.get("inventory_at_cost") or 0)
+                inventory_at_retail = float(inv_row.get("inventory_at_retail") or 0)
+
+        # Load supplemental fields from static profile
+        _fp = _load_financial_profile()
+        bs = _fp.get("balance_sheet_summary", {})
+        lc = _fp.get("lebanon_context", {})
+        cash_usd = bs.get("total_assets_usd", 0) - (_fp.get("inventory_summary", {}).get("value_at_cost_usd", 0))
+        lollar_face = float(lc.get("lollar_balance_usd", 12000))
+        lollar_real = float(lc.get("lollar_real_value_usd", 1800))
+        other_assets = 0.0
+        total_assets = inventory_at_cost + cash_usd + lollar_real + other_assets
+        supplier_payables = float(bs.get("total_liabilities_usd", 45344)) * (43000 / 45344)
+        other_liabilities = float(bs.get("total_liabilities_usd", 45344)) - supplier_payables
+        total_liabilities = supplier_payables + other_liabilities
+        equity = total_assets - total_liabilities
+        current_ratio = round(total_assets / total_liabilities, 2) if total_liabilities else 0
+        inv_pct = round(inventory_at_cost / total_assets * 100, 1) if total_assets else 0
+        debt_to_equity = round(total_liabilities / equity, 2) if equity else 0
+        top5_pct = float(bs.get("inventory_concentration_top5_pct", 71.0) if "inventory_concentration_top5_pct" in bs else 71.0)
+
+        return {
+            "data_source": "live-db",
+            "generated_at": generated_at,
+            "assets": {
+                "inventory_at_cost_usd": round(inventory_at_cost, 2),
+                "inventory_at_retail_usd": round(inventory_at_retail, 2),
+                "cash_on_hand_usd": round(cash_usd, 2),
+                "lollar_face_usd": lollar_face,
+                "lollar_real_usd": lollar_real,
+                "other_assets_usd": other_assets,
+                "total_usd": round(total_assets, 2),
+            },
+            "liabilities": {
+                "supplier_payables_usd": round(supplier_payables, 2),
+                "other_usd": round(other_liabilities, 2),
+                "total_usd": round(total_liabilities, 2),
+            },
+            "equity_usd": round(equity, 2),
+            "ratios": {
+                "current_ratio": current_ratio,
+                "inventory_pct_of_assets": inv_pct,
+                "debt_to_equity": debt_to_equity,
+                "top5_concentration_pct": top5_pct,
+            },
+        }
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/financial/profitability")
+def financial_profitability() -> dict[str, Any]:
+    """Detailed profitability — requires live DB for category breakdown."""
+    import csv
+    from datetime import datetime, timezone
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    _fp = _load_financial_profile()
+    cs = _fp.get("cashflow_summary", {})
+    inv = _fp.get("inventory_summary", {})
+
+    monthly_fixed_opex = float(cs.get("monthly_fixed_opex_usd", 3500))
+    blended_margin_pct = float(inv.get("blended_margin_pct", 48.6))
+    breakeven_usd = round(monthly_fixed_opex / (blended_margin_pct / 100), 2) if blended_margin_pct else 0
+
+    opex_breakdown = [
+        {"label": "Rent", "amount_usd": 1100, "type": "fixed"},
+        {"label": "Owner Salary", "amount_usd": 800, "type": "fixed"},
+        {"label": "Staff (2 part-time)", "amount_usd": 900, "type": "fixed"},
+        {"label": "Generator Fuel", "amount_usd": 220, "type": "fixed"},
+        {"label": "Internet / Phone", "amount_usd": 150, "type": "fixed"},
+        {"label": "Water", "amount_usd": 40, "type": "fixed"},
+        {"label": "Insurance", "amount_usd": 80, "type": "fixed"},
+        {"label": "Accounting / Legal", "amount_usd": 100, "type": "fixed"},
+        {"label": "Miscellaneous", "amount_usd": 110, "type": "fixed"},
+        {"label": "Payment Processing (1.5% rev)", "amount_usd": 0, "type": "variable", "rate_pct": 1.5},
+        {"label": "Marketing (3.5% rev)", "amount_usd": 0, "type": "variable", "rate_pct": 3.5},
+        {"label": "Logistics (2% COGS)", "amount_usd": 0, "type": "variable", "rate_pct": 2.0},
+        {"label": "Shrinkage (0.8%/yr inventory)", "amount_usd": 0, "type": "variable", "rate_pct": 0.8},
+    ]
+
+    cogs_pct = round(100 - blended_margin_pct, 1)
+    for_every_100 = {
+        "cogs": cogs_pct,
+        "marketing": 3.5,
+        "payment_processing": 1.5,
+        "logistics": 1.0,
+        "fixed_opex": 2.0,
+        "net_profit": round(100 - cogs_pct - 3.5 - 1.5 - 1.0 - 2.0, 1),
+    }
+
+    # --- Live DB for category breakdown ---
+    category_breakdown: list[dict[str, Any]] = []
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur)
+                tenant_id = ctx["tenant_id"]
+                cur.execute(
+                    """
+                    WITH base AS (
+                        SELECT
+                            p.category,
+                            COUNT(DISTINCT v.id) AS sku_count,
+                            COALESCE(SUM(ib.quantity_on_hand * pr.amount), 0)        AS revenue_at_retail,
+                            COALESCE(SUM(ib.quantity_on_hand * v.cost_price_usd), 0) AS cogs
+                        FROM core.sku_variants v
+                        JOIN core.products p ON p.id = v.product_id
+                        JOIN core.inventory_balances ib ON ib.variant_id = v.id
+                        LEFT JOIN LATERAL (
+                            SELECT amount FROM core.prices
+                            WHERE variant_id = v.id AND price_type = 'retail' AND valid_to IS NULL
+                            ORDER BY valid_from DESC LIMIT 1
+                        ) pr ON true
+                        WHERE v.tenant_id = %s
+                        GROUP BY p.category
+                    )
+                    SELECT category, sku_count, revenue_at_retail, cogs
+                    FROM base
+                    ORDER BY (revenue_at_retail - cogs) / NULLIF(revenue_at_retail, 0) DESC
+                    """,
+                    (tenant_id,),
+                )
+                rows = cur.fetchall() or []
+                for row in rows:
+                    rev = float(row.get("revenue_at_retail") or 0)
+                    cg = float(row.get("cogs") or 0)
+                    margin = round((rev - cg) / rev * 100, 1) if rev else 0
+                    category_breakdown.append({
+                        "category": row.get("category") or "Unknown",
+                        "sku_count": int(row.get("sku_count") or 0),
+                        "revenue_usd": round(rev, 2),
+                        "cogs_usd": round(cg, 2),
+                        "margin_pct": margin,
+                    })
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    annual_rev = float(cs.get("annual_revenue_projected_usd", 2116080))
+    breakeven_pairs = round(breakeven_usd / 60, 0) if breakeven_usd else 0  # assume avg ~$60/pair
+
+    return {
+        "data_source": "live-db",
+        "generated_at": generated_at,
+        "summary": {
+            "blended_margin_pct": blended_margin_pct,
+            "breakeven_revenue_usd": breakeven_usd,
+            "annual_revenue_projection_usd": annual_rev,
+            "opex_coverage_ratio": round(annual_rev / 12 / breakeven_usd, 2) if breakeven_usd else 0,
+        },
+        "for_every_100_usd": for_every_100,
+        "opex_breakdown": opex_breakdown,
+        "category_breakdown": category_breakdown,
+        "breakeven": {
+            "monthly_fixed_opex_usd": monthly_fixed_opex,
+            "blended_margin_pct": blended_margin_pct,
+            "result_usd": breakeven_usd,
+            "plain_english": f"You need ~${breakeven_usd:,.0f}/mo in sales to cover your fixed costs.",
+            "pairs_estimate": int(breakeven_pairs),
+        },
+    }
+
+
+@app.get("/financial/cashflow")
+def financial_cashflow() -> dict[str, Any]:
+    """12-month cashflow series — reads cashflow_template.csv."""
+    import csv
+    from datetime import datetime, timezone
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    fp = _load_financial_profile()
+    cf_path = _DATA_REAL / "cashflow_template.csv"
+    series: list[dict[str, Any]] = []
+    if cf_path.exists():
+        with cf_path.open(newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                series.append({
+                    "month": row.get("month_name", row.get("month", "")),
+                    "in": float(row.get("revenue_usd", 0)),
+                    "out": float(row.get("total_opex_usd", 0)) + float(row.get("cogs_usd", 0)),
+                    "net": float(row.get("net_cash_movement_usd", 0)),
+                })
+    return {
+        "data_source": "static-file",
+        "generated_at": generated_at,
+        "series": series,
+        "summary": fp.get("cashflow_summary", {}),
+    }
+
+
+def _load_financial_profile() -> dict[str, Any]:
+    path = _DATA_REAL / "financial_profile.json"
+    if path.exists():
+        import json as _json
+        return _json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
+_DATA_REAL = Path(__file__).resolve().parents[1] / "data" / "real"
 
 
 @app.get("/dashboard/summary")

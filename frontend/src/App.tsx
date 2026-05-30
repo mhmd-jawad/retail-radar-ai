@@ -10,6 +10,12 @@ import Inventory from "./pages/Inventory";
 import Competitive from "./pages/Competitive";
 import Promotions from "./pages/Promotions";
 import Financial from "./pages/Financial";
+import FinancialBalanceSheet from "./pages/financial/BalanceSheet";
+import FinancialProfitability from "./pages/financial/Profitability";
+import FinancialCashflow from "./pages/financial/Cashflow";
+import FinancialLollar from "./pages/financial/Lollar";
+import FinancialCosts from "./pages/financial/Costs";
+import FinancialAlerts from "./pages/financial/Alerts";
 import UploadBatch from "./pages/UploadBatch";
 import Audit from "./pages/Audit";
 import Ops from "./pages/Ops";
@@ -36,6 +42,12 @@ const App = () => (
             <Route path="/competitive" element={<Competitive />} />
             <Route path="/promotions" element={<Promotions />} />
             <Route path="/financial" element={<Financial />} />
+            <Route path="/financial/balance-sheet" element={<FinancialBalanceSheet />} />
+            <Route path="/financial/profitability" element={<FinancialProfitability />} />
+            <Route path="/financial/cashflow" element={<FinancialCashflow />} />
+            <Route path="/financial/lollar" element={<FinancialLollar />} />
+            <Route path="/financial/costs" element={<FinancialCosts />} />
+            <Route path="/financial/alerts" element={<FinancialAlerts />} />
             <Route path="/upload" element={<UploadBatch />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/ops" element={<Ops />} />

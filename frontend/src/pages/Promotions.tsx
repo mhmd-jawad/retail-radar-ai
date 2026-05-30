@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useReport } from '@/hooks/useReport';
+import { useLiveReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
 import { PageSkeleton } from '@/components/shared/Skeleton';
@@ -472,7 +472,7 @@ function HoldRow({ item }: { item: HoldPricingItem }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Promotions() {
-  const { data: r, isLoading } = useReport();
+  const { data: r, isLoading } = useLiveReport();
   const { campaignCache } = useSettings();
   const [generatingAll, setGeneratingAll] = useState(false);
 
