@@ -239,10 +239,21 @@ async def post_to_instagram(caption: str, image_url: str) -> PublishResult:
             d2 = r2.json()
             if r2.status_code == 200 and "id" in d2:
                 pid = d2["id"]
+                # Fetch the human-readable permalink (numeric ID ≠ shortcode)
+                permalink = f"https://www.instagram.com/p/{pid}/"
+                try:
+                    r3 = await client.get(
+                        f"{_GRAPH_BASE}/{pid}",
+                        params={"access_token": token, "fields": "permalink"},
+                    )
+                    if r3.status_code == 200:
+                        permalink = r3.json().get("permalink", permalink)
+                except Exception:
+                    pass  # fall back to numeric URL
                 return PublishResult(
                     "instagram", True,
                     post_id=pid,
-                    post_url=f"https://www.instagram.com/p/{pid}/",
+                    post_url=permalink,
                 )
             logger.warning("Instagram publish failed: %s", d2)
             return PublishResult("instagram", False, error=str(d2))

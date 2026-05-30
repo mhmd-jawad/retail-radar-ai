@@ -91,6 +91,8 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
@@ -125,6 +127,7 @@ class CampaignPackage(BaseModel):
     instagram_caption: str = Field(max_length=300)
     facebook_post: str = Field(max_length=500)
     tiktok_caption: str = Field(max_length=150)
+    whatsapp_message: str = Field(default='', max_length=160)
     headline: str = Field(max_length=60)
     ad_copy_short: str = Field(max_length=150)
     ad_copy_long: str = Field(max_length=400)
@@ -295,33 +298,182 @@ def _urgency_to_tone(urgency: str) -> Literal["urgent", "aspirational", "value_f
 
 
 def _build_fallback_copy(brief: PromotionBrief) -> dict[str, str]:
-    disc = int(brief.suggested_discount_pct or 0)
-    brand = brief.brand
-    name = brief.product_name
-    gender = brief.gender_target or "athletes"
-    brand_tag = brand.replace(" ", "")
+    """
+    Rule-based fallback used when OpenRouter is unavailable.
+    Uses a deterministic template index (hash of product name % 6) so every
+    product consistently gets a structurally different copy — not a cookie-cutter
+    repeated across all items.
+
+    Template styles:
+      0 — scarcity-first    (stock count leads)
+      1 — question opener   (hooks with a question)
+      2 — benefit-led       (performance angle first)
+      3 — price-drop story  (price narrative)
+      4 — occasion/season   (timing angle)
+      5 — editorial pick    (curation voice)
+    """
+    disc       = int(brief.suggested_discount_pct or 0)
+    brand      = brief.brand
+    name       = brief.product_name
+    gender     = brief.gender_target or "athletes"
+    cat        = brief.category.lower()
+    price      = brief.retail_price_usd
+    stock      = brief.current_stock
+    brand_tag  = brand.replace(" ", "")
+    price_now  = f"${price * (1 - disc / 100):.0f}" if disc else f"${price:.0f}"
+    season_word = brief.season or "this season"
+
+    # Deterministic selector — same product always gets same template
+    t = sum(ord(c) for c in name) % 6
+
+    # ── Instagram (max 300) ─────────────────────────────────────────────────
+    ig = [
+        # 0 — scarcity
+        f"Only {stock} left. {name} by {brand} — {disc}% OFF right now. "
+        f"Grab yours before it sells out. 🖤"
+        f" #{brand_tag} #LimitedStock #SportsFashion #SaleNow",
+        # 1 — question
+        f"Ready to level up your {cat.split()[0]}? {brand}'s {name} just dropped "
+        f"{disc}% off. In-store today. 🔥"
+        f" #{brand_tag} #NewDrop #SportsFashion #BeirutStyle",
+        # 2 — benefit-led
+        f"Built for performance. The {name} by {brand} delivers every time. "
+        f"Now {disc}% off — {stock} pairs available. 🏆"
+        f" #{brand_tag} #SportsFashion #AthleticLife #GameOn",
+        # 3 — price story
+        f"Price just dropped. {brand} {name}: was full price, now {price_now}. "
+        f"This {disc}% off deal won't last. 💰"
+        f" #{brand_tag} #SaleAlert #SportsFashion #DealOfTheDay",
+        # 4 — seasonal
+        f"{season_word.capitalize()} update: {name} by {brand}, {disc}% off. "
+        f"Designed for {gender} who move. Limited stock in-store. ☀️"
+        f" #{brand_tag} #SportsFashion #SeasonSale #StylePulse",
+        # 5 — editorial
+        f"This week's pick: {brand} {name}. Clean design, built to last — now at {disc}% off. "
+        f"{stock} pairs left. 👀"
+        f" #{brand_tag} #EditorsPick #SportsFashion #BeirutFashion",
+    ][t]
+
+    # ── Facebook (max 500) ──────────────────────────────────────────────────
+    fb = [
+        # 0 — scarcity + CTA
+        f"Act fast — only {stock} pairs of the {name} by {brand} remain at {disc}% off. "
+        f"Whether you're training hard or keeping it casual, this is the one to grab. "
+        f"Visit us in-store or order online while stock lasts."
+        f" #{brand_tag} #LimitedStock #SportsFashion #SaleNow",
+        # 1 — question + story
+        f"Been thinking about upgrading your {cat.split()[0]} game? Now's the time. "
+        f"We've just dropped {disc}% off the {name} by {brand}. "
+        f"Built for {gender}, perfect for everyday performance. Come in-store or shop online."
+        f" #{brand_tag} #SportsFashion #BeirutStyle #NewDrop",
+        # 2 — product story
+        f"The {name} from {brand} isn't just footwear — it's built around how {gender} move and perform. "
+        f"Right now it's {disc}% off with {stock} units left. "
+        f"Don't let someone else take your size."
+        f" #{brand_tag} #AthleticLife #SportsFashion #GameOn",
+        # 3 — direct price
+        f"Big price drop on the {name} by {brand}. {disc}% off — that's {price_now} today. "
+        f"We have {stock} units in stock. Classic style, serious performance, smarter price. "
+        f"Stop by one of our locations before they're gone."
+        f" #{brand_tag} #DealOfTheDay #SportsFashion #SaleAlert",
+        # 4 — seasonal context
+        f"{season_word.capitalize()} is here and so is a deal worth talking about. "
+        f"{brand}'s {name} is now {disc}% off — perfect for {gender} heading into the new season. "
+        f"{stock} pairs available in-store and online. Grab yours today."
+        f" #{brand_tag} #SeasonSale #StylePulse #SportsFashion",
+        # 5 — editorial
+        f"Our team's pick this week: the {name} by {brand}. "
+        f"It's on sale at {disc}% off and the {stock} we have won't last long. "
+        f"Great {cat}, even better at this price. Head in-store or order now."
+        f" #{brand_tag} #EditorsPick #SportsFashion #BeirutFashion",
+    ][t]
+
+    # ── TikTok (max 150) ────────────────────────────────────────────────────
+    tt = [
+        f"POV: {brand} {name} at {disc}% off and only {stock} left 🚨 no cap #{brand_tag}",
+        f"asking for a friend: why is {brand}'s {name} {disc}% off rn 🤔 lowkey cop #{brand_tag}",
+        f"it's giving performance ✨ {brand} {name} — {disc}% off today only #{brand_tag}",
+        f"the {name} price drop just hit different 💸 {disc}% off, {stock} left #{brand_tag} #fyp",
+        f"{season_word} era ☀️ {brand} {name} {disc}% off, built for {gender.split()[0]} #{brand_tag}",
+        f"lowkey obsessed with this {brand} drop — {name} at {disc}% off, grab it #{brand_tag} #fyp",
+    ][t]
+
+    # ── WhatsApp (max 160) — Lebanese-friendly casual ───────────────────────
+    wa = [
+        f"Mar7aba! 👋 {name} by {brand} — {disc}% off, only {stock} left. Reply with your size to reserve.",
+        f"Ahla! Looking for {cat.split()[0]}? {brand} {name} just dropped {disc}% off. DM us your size 🖤",
+        f"Yalla, don't miss this: {brand} {name} is {disc}% off today. {stock} pairs in-store. Reply to reserve.",
+        f"New deal alert 🚨 {name} by {brand}: now {price_now}. Was full price. Reply SIZE + CITY to hold yours.",
+        f"{season_word.capitalize()} drop: {brand} {name}, {disc}% off. {stock} units left. DM us before it's gone!",
+        f"This week's pick 👀 {brand} {name} at {disc}% off. Available in-store. Reply your size + city.",
+    ][t]
+
+    # ── Headlines (max 60) ──────────────────────────────────────────────────
+    hl = [
+        f"{disc}% OFF — Only {stock} {name} Left",
+        f"{brand} {name} — {disc}% Off Now",
+        f"Perform Better. Pay Less. {name} —{disc}%",
+        f"Price Drop: {name} by {brand}",
+        f"{season_word.capitalize()} Sale: {name} — {disc}% Off",
+        f"{brand}'s {name} — Our Pick at {disc}% Off",
+    ][t]
+
+    # ── Short / Long copy ───────────────────────────────────────────────────
+    short = [
+        f"{stock} pairs. {disc}% off. The {name} by {brand} won't wait for you.",
+        f"Upgrade your {cat.split()[0]} game — {brand} {name}, {disc}% off today only.",
+        f"Performance + style in one. {name} by {brand}, now {disc}% off.",
+        f"The {name} just got {disc}% cheaper. {brand} quality at a smarter price.",
+        f"{season_word.capitalize()} deal: {brand} {name} at {disc}% off for {gender}.",
+        f"Handpicked this week: {brand} {name} at {disc}% off. Limited stock.",
+    ][t]
+
+    long_ = [
+        # 0
+        f"With only {stock} units remaining, the {name} by {brand} is one of those buys you'll regret missing. "
+        f"At {disc}% off, it's built for {gender} who train hard and want gear that keeps up. "
+        f"Don't wait — grab your size before it's gone.",
+        # 1
+        f"The {name} by {brand} is built for serious {cat.split()[0]} performance. "
+        f"With a {disc}% price drop active right now, there's no better time to invest in your training. "
+        f"Available in-store and online while stock lasts.",
+        # 2
+        f"{brand}'s {name} delivers the kind of performance {gender} demand without compromise. "
+        f"We've dropped the price by {disc}% on the {stock} units we have left. "
+        f"Built to move, priced to move.",
+        # 3
+        f"A {disc}% price drop on the {name} by {brand} doesn't come along often. "
+        f"This is premium {cat} at a fraction of the original price — {stock} pairs available today. "
+        f"Visit us in-store or order online before it sells out.",
+        # 4
+        f"{season_word.capitalize()} calls for the right gear, and the {name} by {brand} delivers exactly that. "
+        f"Designed for {gender}, now {disc}% off with {stock} units in stock. "
+        f"Make this your season.",
+        # 5
+        f"Our team picked the {name} by {brand} this week for a reason: {disc}% off, "
+        f"{stock} in stock, and a silhouette that holds up every season. "
+        f"Quality {cat} at a price that makes sense.",
+    ][t]
+
+    cta_map = [
+        ("Grab Yours Before It's Gone", "See All Deals"),
+        ("Shop Now — Limited Stock",    "Browse Full Range"),
+        ("Get It Before It Sells Out",  "View Full Collection"),
+        ("Shop the Price Drop Now",     "See More Deals"),
+        ("Shop the Sale Today",         "Explore the Collection"),
+        ("Pick Yours Today",            "See What's New"),
+    ][t]
+
     return {
-        "instagram_caption": (
-            f"🔥 {name} by {brand} — {disc}% OFF today only. "
-            f"Limited stock. Shop now! #SportsFashion #{brand_tag} #LimitedStock #SaleAlert"
-        )[:300],
-        "facebook_post": (
-            f"Big news! {name} by {brand} is now {disc}% off. "
-            f"Limited stock available. Don't miss out — shop now in store or online. "
-            f"#SportsFashion #{brand_tag} #LimitedStock #SaleAlert"
-        )[:500],
-        "tiktok_caption": (
-            f"POV: {brand} just dropped {disc}% off {name} and stock is almost gone 👟🔥 "
-            f"no cap #SportsFashion #{brand_tag}"
-        )[:150],
-        "headline": f"{disc}% OFF — {name} by {brand}"[:60],
-        "ad_copy_short": f"Limited stock. {disc}% off {name}. Shop now."[:150],
-        "ad_copy_long": (
-            f"Don't miss your chance to own the {name} by {brand} at {disc}% off. "
-            f"Designed for {gender}. Limited units available — grab yours before it's gone."
-        )[:400],
-        "cta_primary": "Shop Now",
-        "cta_secondary": "View Details",
+        "instagram_caption": ig[:300],
+        "facebook_post":     fb[:500],
+        "tiktok_caption":    tt[:150],
+        "whatsapp_message":  wa[:160],
+        "headline":          hl[:60],
+        "ad_copy_short":     short[:150],
+        "ad_copy_long":      long_[:400],
+        "cta_primary":       cta_map[0],
+        "cta_secondary":     cta_map[1],
     }
 
 
@@ -330,6 +482,7 @@ def _truncate_copy_fields(copy: dict) -> dict:
         "instagram_caption": 300,
         "facebook_post": 500,
         "tiktok_caption": 150,
+        "whatsapp_message": 160,
         "headline": 60,
         "ad_copy_short": 150,
         "ad_copy_long": 400,
@@ -343,7 +496,7 @@ def _truncate_copy_fields(copy: dict) -> dict:
 
 def _validate_copy_keys(copy: dict) -> bool:
     required = {
-        "instagram_caption", "facebook_post", "tiktok_caption",
+        "instagram_caption", "facebook_post", "tiktok_caption", "whatsapp_message",
         "headline", "ad_copy_short", "ad_copy_long",
         "cta_primary", "cta_secondary",
     }
@@ -378,6 +531,9 @@ PLATFORM RULES:
 - facebook_post     : max 500 chars — friendly, conversational, engaging — include 3–4 relevant hashtags at the end
 - tiktok_caption    : max 150 chars — Gen-Z tone, emojis, casual ("no cap", \
 "it's giving", "lowkey obsessed")
+- whatsapp_message  : max 160 chars — personal, direct, Lebanese market (English). \
+Feel like a friend texting. Can open with "Mar7aba", "Ahla", or "Yalla". \
+End with a clear action: "Reply with your size", "DM to reserve", or "Available in-store today".
 - headline          : max 60 chars  — bold, punchy, one strong idea
 - ad_copy_short     : max 150 chars — one powerful benefit sentence
 - ad_copy_long      : max 400 chars — story-driven, 2-3 sentences, benefit-led
@@ -393,7 +549,7 @@ RULES:
 not copy-pasted across channels
 
 Return ONLY a raw JSON object with these exact keys:
-instagram_caption, facebook_post, tiktok_caption,
+instagram_caption, facebook_post, tiktok_caption, whatsapp_message,
 headline, ad_copy_short, ad_copy_long, cta_primary, cta_secondary
 
 No markdown. No explanation. Raw JSON only."""
@@ -983,6 +1139,7 @@ async def generate_campaign(recommendation: RecommendationResult):
         instagram_caption=text_copy["instagram_caption"],
         facebook_post=text_copy["facebook_post"],
         tiktok_caption=text_copy["tiktok_caption"],
+        whatsapp_message=text_copy.get("whatsapp_message", ""),
         headline=text_copy["headline"],
         ad_copy_short=text_copy["ad_copy_short"],
         ad_copy_long=text_copy["ad_copy_long"],
