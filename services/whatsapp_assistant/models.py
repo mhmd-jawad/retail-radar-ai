@@ -42,6 +42,7 @@ class ConversationSession(BaseModel):
     flow_context: dict[str, Any] | None = None
     cached_business_data: dict[str, Any] | None = None
     cached_at: datetime | None = None
+    conversation_summary: str | None = None
 
 
 class IntentResult(BaseModel):

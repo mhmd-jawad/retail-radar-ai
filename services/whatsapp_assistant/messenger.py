@@ -5,13 +5,15 @@ Wraps Meta Graph API v20.0 — async, using httpx (mirroring services/campaign_c
 from __future__ import annotations
 
 import os
+import logging
 from datetime import datetime, timezone
 
 import httpx
 
-from services.whatsapp_assistant.schemas import InboundMessage
+from services.whatsapp_assistant.models import InboundMessage
 
 _GRAPH_BASE = "https://graph.facebook.com/v20.0"
+logger = logging.getLogger("whatsapp_assistant.messenger")
 
 
 class WhatsAppClient:
@@ -34,6 +36,8 @@ class WhatsAppClient:
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=body, headers=self._headers)
+            if response.status_code >= 400:
+                logger.error("WhatsApp text send failed: status=%s body=%s", response.status_code, response.text)
             response.raise_for_status()
             data = response.json()
             return data["messages"][0]["id"]
@@ -61,6 +65,8 @@ class WhatsAppClient:
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=body, headers=self._headers)
+            if response.status_code >= 400:
+                logger.error("WhatsApp template send failed: status=%s body=%s", response.status_code, response.text)
             response.raise_for_status()
             data = response.json()
             return data["messages"][0]["id"]
@@ -79,6 +85,12 @@ class WhatsAppClient:
             return None
 
         message = value["messages"][0]
+
+        # Only process text messages — ignore images, audio, reactions, stickers, etc.
+        if message.get("type") != "text":
+            logger.debug("Ignoring non-text message type=%s", message.get("type"))
+            return None
+
         contact = value["contacts"][0]
 
         phone_number: str = contact["wa_id"]

@@ -14,11 +14,138 @@ from uuid import UUID
 
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
 DEFAULT_TENANT_SLUG = "default"
-_MAX_HISTORY = 10
+_MAX_HISTORY = 10       # legacy constant kept for backward compatibility
+_MAX_RECENT = 12        # messages kept verbatim in the sliding window
+_SUMMARIZE_AFTER = 20   # trigger summarization when history reaches this size
+
+
+async def ensure_conversation_tables(db_url: str) -> None:
+    """Idempotent migration: add new columns and helper tables to whatsapp schema."""
+    import psycopg
+
+    conn = await psycopg.AsyncConnection.connect(db_url)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("CREATE SCHEMA IF NOT EXISTS whatsapp")
+            # Main conversations table — idempotent
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp.conversations (
+                    phone_number          TEXT        PRIMARY KEY,
+                    tenant_id             UUID        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+                    message_history       JSONB       NOT NULL DEFAULT '[]',
+                    active_flow           TEXT,
+                    flow_context          JSONB,
+                    cached_business_data  JSONB,
+                    cached_at             TIMESTAMPTZ,
+                    last_message_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_inbound_at       TIMESTAMPTZ,
+                    conversation_summary  TEXT,
+                    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            # New columns added in later migrations — safe to run on existing tables
+            await cur.execute(
+                "ALTER TABLE whatsapp.conversations "
+                "ADD COLUMN IF NOT EXISTS conversation_summary TEXT"
+            )
+            await cur.execute(
+                "ALTER TABLE whatsapp.conversations "
+                "ADD COLUMN IF NOT EXISTS last_inbound_at TIMESTAMPTZ"
+            )
+            # Table: deduplication — prevents processing Meta webhook retries twice
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp.processed_messages (
+                    message_id   TEXT        PRIMARY KEY,
+                    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            await cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_processed_messages_cleanup
+                    ON whatsapp.processed_messages (processed_at)
+                """
+            )
+        await conn.commit()
+    except Exception:
+        # Table may not exist yet (closed_loop creates whatsapp schema); ignore here
+        pass
+    finally:
+        await conn.close()
+
+
+async def is_within_24h_window(db_url: str, phone: str) -> bool:
+    """Return True if the retailer sent an inbound message within the last 24 hours.
+
+    Used by proactive senders to decide whether a free-form text message can be
+    sent without being rejected by Meta's 24-hour conversation window policy.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT last_inbound_at FROM whatsapp.conversations WHERE phone_number = %s",
+                (phone,),
+            )
+            row = await cur.fetchone()
+        if not row or not row.get("last_inbound_at"):
+            return False
+        last = row["last_inbound_at"]
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return (datetime.now(tz=timezone.utc) - last).total_seconds() < 86400
+    except Exception:
+        return True  # Assume in-window on DB error to avoid blocking sends
+    finally:
+        await conn.close()
 
 
 def _database_url() -> str:
     return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+async def _summarize_messages(messages: list[dict]) -> str:
+    """Summarize a batch of old messages into a compact text using Claude Haiku."""
+    try:
+        import anthropic as _anthropic
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if not api_key or "xxxx" in api_key.lower():
+            return _simple_summary(messages)
+
+        text_block = "\n".join(
+            f"{m['role'].upper()}: {m.get('content', '')[:300]}" for m in messages
+        )
+        client = _anthropic.AsyncAnthropic(api_key=api_key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Summarize this WhatsApp retail assistant conversation in 3-4 bullet points. "
+                        "Preserve key decisions, approved/rejected actions, and any business figures mentioned.\n\n"
+                        + text_block
+                    ),
+                }
+            ],
+        )
+        return response.content[0].text if response.content else _simple_summary(messages)
+    except Exception:
+        return _simple_summary(messages)
+
+
+def _simple_summary(messages: list[dict]) -> str:
+    """Fallback: return a plain-text excerpt when LLM is unavailable."""
+    lines = [f"[{m['role']}] {str(m.get('content', ''))[:120]}" for m in messages[-6:]]
+    return "Earlier conversation excerpt:\n" + "\n".join(lines)
 
 
 class ConversationManager:
@@ -53,7 +180,7 @@ class ConversationManager:
     async def get_or_create_session(
         self, phone_number: str, tenant_id: UUID
     ):
-        from services.whatsapp_assistant.schemas import ConversationSession
+        from services.whatsapp_assistant.models import ConversationSession
 
         conn = await self._connect()
         try:
@@ -62,7 +189,8 @@ class ConversationManager:
                     """
                     SELECT phone_number, tenant_id, message_history,
                            active_flow, flow_context,
-                           cached_business_data, cached_at
+                           cached_business_data, cached_at,
+                           conversation_summary
                     FROM whatsapp.conversations
                     WHERE phone_number = %s
                     """,
@@ -79,6 +207,7 @@ class ConversationManager:
                     flow_context=row["flow_context"],
                     cached_business_data=row["cached_business_data"],
                     cached_at=row["cached_at"],
+                    conversation_summary=row.get("conversation_summary"),
                 )
 
             # Not found — insert a fresh session
@@ -122,18 +251,36 @@ class ConversationManager:
                     "ts": datetime.now(tz=timezone.utc).isoformat(),
                 }
             )
-            history = history[-_MAX_HISTORY:]
+
+            # Sliding window with summarization
+            summary_to_store: str | None = None
+            if len(history) >= _SUMMARIZE_AFTER:
+                old_messages = history[:-_MAX_RECENT]
+                history = history[-_MAX_RECENT:]
+                summary_to_store = await _summarize_messages(old_messages)
 
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE whatsapp.conversations
-                    SET message_history = %s::jsonb,
-                        last_message_at = now()
-                    WHERE phone_number = %s
-                    """,
-                    (json.dumps(history), phone_number),
-                )
+                if summary_to_store is not None:
+                    await cur.execute(
+                        """
+                        UPDATE whatsapp.conversations
+                        SET message_history = %s::jsonb,
+                            conversation_summary = %s,
+                            last_message_at = now()
+                        WHERE phone_number = %s
+                        """,
+                        (json.dumps(history), summary_to_store, phone_number),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE whatsapp.conversations
+                        SET message_history = %s::jsonb,
+                            last_message_at = now()
+                        WHERE phone_number = %s
+                        """,
+                        (json.dumps(history), phone_number),
+                    )
             await conn.commit()
         finally:
             await conn.close()

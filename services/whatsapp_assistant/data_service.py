@@ -19,9 +19,9 @@ import psycopg
 from prometheus_client import Gauge
 from psycopg.rows import dict_row
 
-from services.whatsapp_assistant.conversation import ConversationManager, DEFAULT_DATABASE_URL
+from services.whatsapp_assistant.session_manager import ConversationManager, DEFAULT_DATABASE_URL
 
-logger = logging.getLogger("whatsapp_assistant.business_data")
+logger = logging.getLogger("whatsapp_assistant.data_service")
 
 # ── Prometheus gauges ─────────────────────────────────────────────────────────
 retail_cash_runway_months = Gauge("retail_cash_runway_months", "Cash runway in months")
@@ -50,9 +50,9 @@ def _estimate_dos(item: dict[str, Any]) -> float:
 class BusinessDataService:
     def __init__(
         self,
-        eep_base_url: str,
         db_url: str,
         financial_data_path: str,
+        eep_base_url: str = "",  # reserved, unused
     ) -> None:
         self._db_url = db_url
         self._data_dir = Path(financial_data_path)
@@ -202,6 +202,7 @@ class BusinessDataService:
         """
         sql = """
             SELECT
+                r.id,
                 r.recommendation,
                 ROUND(r.confidence * 100)::int   AS confidence_pct,
                 r.suggested_discount_pct,
@@ -410,6 +411,7 @@ class BusinessDataService:
                 recs = await self._fetch_pending_recommendations_from_db(_tenant_id)
                 context["pending_recommendations"] = [
                     {
+                        "recommendation_id": str(r["id"]),
                         "recommendation": r["recommendation"],
                         "sku_id": r["sku_id"],
                         "product_name": r["product_name"],
@@ -418,6 +420,7 @@ class BusinessDataService:
                         "suggested_discount_pct": float(r.get("suggested_discount_pct") or 0),
                         "suggested_price_usd": float(r["suggested_price_usd"]) if r.get("suggested_price_usd") else None,
                         "retail_price_usd": float(r.get("retail_price_usd") or 0),
+                        "cost_price_usd": float(r.get("cost_price_usd") or 0),
                         "explanation": r.get("explanation") or "",
                     }
                     for r in recs
@@ -458,6 +461,379 @@ class BusinessDataService:
     async def get_dead_stock_skus(self) -> list[dict[str, Any]]:
         ctx = await self.get_business_context("__internal__")
         return ctx.get("dead_stock_skus", [])
+
+    # ── Tool-facing public wrappers ────────────────────────────────────────────
+
+    async def get_inventory_overview(self, tenant_id: str) -> dict[str, Any]:
+        """Summary inventory snapshot with proactive_insight field for the LLM."""
+        items = await self._fetch_inventory_from_db(tenant_id)
+        total_sku_count = len(items)
+        total_units = sum(int(i.get("current_stock") or 0) for i in items)
+        total_value = round(
+            sum(float(i.get("current_stock") or 0) * float(i.get("cost_price_usd") or 0) for i in items), 2
+        )
+        low_stock = [
+            {
+                "sku_id": i["sku_id"],
+                "product_name": i["product_name"],
+                "brand": i["brand"],
+                "units": int(i["current_stock"]),
+                "reorder_point": int(i.get("reorder_point") or 0),
+                "retail_price_usd": float(i.get("retail_price_usd") or 0),
+            }
+            for i in items
+            if 0 < int(i.get("current_stock") or 0) <= max(int(i.get("reorder_point") or 5), 5)
+        ][:10]
+        dead_stock = sorted(
+            [
+                {
+                    "sku_id": i["sku_id"],
+                    "product_name": i["product_name"],
+                    "brand": i["brand"],
+                    "units": int(i["current_stock"]),
+                    "value_usd": round(
+                        float(i["current_stock"]) * float(i.get("cost_price_usd") or 0), 2
+                    ),
+                }
+                for i in items
+                if int(i.get("current_stock") or 0) > 30 and float(i.get("retail_price_usd") or 0) == 0
+            ],
+            key=lambda x: x["value_usd"],
+            reverse=True,
+        )[:10]
+
+        dead_value = sum(d["value_usd"] for d in dead_stock)
+        proactive_insight = None
+        if total_value > 0 and dead_value / total_value > 0.15:
+            proactive_insight = (
+                f"Dead stock represents {dead_value / total_value * 100:.0f}% "
+                f"(${dead_value:,.0f}) of your inventory value — consider a markdown bundle."
+            )
+        elif len(low_stock) >= 5:
+            proactive_insight = (
+                f"{len(low_stock)} SKUs are at or below their reorder point. "
+                "Prioritise reorders before the weekend."
+            )
+
+        result: dict[str, Any] = {
+            "total_sku_count": total_sku_count,
+            "total_units": total_units,
+            "total_inventory_value_usd": total_value,
+            "low_stock_count": len(low_stock),
+            "low_stock_skus": low_stock,
+            "dead_stock_count": len(dead_stock),
+            "dead_stock_skus": dead_stock,
+        }
+        if proactive_insight:
+            result["proactive_insight"] = proactive_insight
+        return result
+
+    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
+        """Financial snapshot combining CSV profile and live revenue from DB."""
+        result: dict[str, Any] = {}
+        try:
+            fp = self._load_financial_profile()
+            cf = fp.get("cashflow_summary", {})
+            inv = fp.get("inventory_summary", {})
+            result["cash_runway_months"] = float(cf.get("cash_runway_months", 0))
+            result["monthly_fixed_opex_usd"] = float(cf.get("monthly_fixed_opex_usd", 0))
+            result["blended_margin_pct"] = float(inv.get("blended_margin_pct", 0))
+        except Exception as exc:
+            logger.warning("Failed to load financial_profile.json: %s", exc)
+
+        try:
+            rev = await self._fetch_revenue_from_db(tenant_id)
+            result["revenue_current_month_usd"] = float(rev.get("current_month_usd") or 0)
+            result["revenue_last_7d_usd"] = float(rev.get("last_7d_usd") or 0)
+            result["revenue_last_30d_usd"] = float(rev.get("last_30d_usd") or 0)
+            result["transactions_this_month"] = int(rev.get("txn_count_this_month") or 0)
+            if result.get("revenue_current_month_usd", 0) == 0:
+                try:
+                    result["revenue_current_month_usd"] = self._load_cashflow_current_month()
+                    result["revenue_source"] = "csv_projection"
+                except Exception:
+                    result["revenue_source"] = "unavailable"
+            else:
+                result["revenue_source"] = "live_pos"
+        except Exception as exc:
+            logger.warning("Failed to fetch revenue for financials snapshot: %s", exc)
+
+        runway = result.get("cash_runway_months", 0)
+        if runway > 0 and runway < 2:
+            result["proactive_insight"] = (
+                f"URGENT: Cash runway is only {runway:.1f} months. "
+                "Review OPEX cuts and accelerate collections immediately."
+            )
+        return result
+
+    async def get_competitor_prices(
+        self,
+        tenant_id: str,
+        sku_id: str | None = None,
+        competitor_name: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Competitor price comparison, optionally filtered."""
+        rows = await self._fetch_competitor_intel_from_db(tenant_id)
+        result = [
+            {
+                "our_sku": r["our_sku"],
+                "our_product": r["our_product"],
+                "brand": r["brand"],
+                "our_price_usd": float(r.get("our_price_usd") or 0),
+                "competitor": r["competitor"],
+                "comp_price_usd": float(r.get("comp_price_usd") or 0),
+                "comp_sale_price_usd": float(r["comp_sale_price_usd"]) if r.get("comp_sale_price_usd") else None,
+                "is_on_sale": bool(r.get("is_on_sale")),
+                "price_gap_pct": float(r.get("price_gap_pct") or 0),
+            }
+            for r in rows
+        ]
+        if sku_id:
+            result = [r for r in result if r["our_sku"].lower() == sku_id.lower()]
+        if competitor_name:
+            result = [r for r in result if competitor_name.lower() in r["competitor"].lower()]
+        return result
+
+    # ── New on-demand query methods ────────────────────────────────────────────
+
+    async def _fetch_sku_velocity_trend(
+        self, tenant_id: str, sku_id: str, days: int = 30
+    ) -> dict[str, Any]:
+        """Daily units/revenue for a specific SKU to show trend direction."""
+        days_safe = days if days in (7, 14, 30) else 30
+        sql = f"""
+            SELECT
+                date_trunc('day', st.sold_at)::date AS day,
+                SUM(ti.quantity)::int                AS units_sold,
+                ROUND(SUM(ti.total_amount_usd)::numeric, 2) AS revenue_usd
+            FROM core.sales_transactions st
+            JOIN core.transaction_items ti ON ti.transaction_id = st.id
+            JOIN core.sku_variants sv ON sv.id = ti.variant_id
+            WHERE sv.sku_id = %s
+              AND st.tenant_id = %s
+              AND st.sold_at >= now() - interval '{days_safe} days'
+            GROUP BY 1
+            ORDER BY 1
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (sku_id, tenant_id))
+                rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        daily = [
+            {"day": str(r["day"]), "units_sold": r["units_sold"], "revenue_usd": float(r["revenue_usd"])}
+            for r in rows
+        ]
+        if not daily:
+            return {"sku_id": sku_id, "days": days_safe, "daily": [], "trend": "no_data"}
+
+        mid = len(daily) // 2
+        first_half_avg = sum(d["units_sold"] for d in daily[:mid]) / max(mid, 1)
+        second_half_avg = sum(d["units_sold"] for d in daily[mid:]) / max(len(daily) - mid, 1)
+        if second_half_avg > first_half_avg * 1.1:
+            trend = "accelerating"
+        elif second_half_avg < first_half_avg * 0.9:
+            trend = "decelerating"
+        else:
+            trend = "stable"
+
+        total_units = sum(d["units_sold"] for d in daily)
+        total_revenue = sum(d["revenue_usd"] for d in daily)
+        return {
+            "sku_id": sku_id,
+            "days": days_safe,
+            "total_units_sold": total_units,
+            "total_revenue_usd": round(total_revenue, 2),
+            "daily_avg_units": round(total_units / days_safe, 2),
+            "trend": trend,
+            "first_half_daily_avg": round(first_half_avg, 2),
+            "second_half_daily_avg": round(second_half_avg, 2),
+            "daily": daily,
+        }
+
+    async def _fetch_category_performance(
+        self, tenant_id: str, days: int = 30
+    ) -> list[dict[str, Any]]:
+        """Revenue, units sold, and margin by product category."""
+        days_safe = days if days in (7, 14, 30) else 30
+        sql = f"""
+            SELECT
+                p.category,
+                COUNT(DISTINCT sv.id)                            AS sku_count,
+                SUM(ti.quantity)::int                            AS units_sold,
+                ROUND(SUM(ti.total_amount_usd)::numeric, 2)     AS revenue_usd,
+                ROUND(
+                    AVG(
+                        CASE WHEN ti.unit_price_usd > 0
+                             THEN (ti.unit_price_usd - sv.cost_price_usd) / ti.unit_price_usd * 100
+                        END
+                    )::numeric, 1
+                )                                                AS avg_margin_pct
+            FROM core.sales_transactions st
+            JOIN core.transaction_items ti ON ti.transaction_id = st.id
+            JOIN core.sku_variants sv ON sv.id = ti.variant_id
+            JOIN core.products p ON p.id = sv.product_id
+            WHERE st.tenant_id = %s
+              AND st.sold_at >= now() - interval '{days_safe} days'
+            GROUP BY p.category
+            ORDER BY revenue_usd DESC
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (tenant_id,))
+                rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        return [
+            {
+                "category": r["category"],
+                "sku_count": r["sku_count"],
+                "units_sold": r["units_sold"],
+                "revenue_usd": float(r["revenue_usd"]),
+                "avg_margin_pct": float(r["avg_margin_pct"]) if r["avg_margin_pct"] is not None else None,
+            }
+            for r in rows
+        ]
+
+    async def _fetch_stockout_days(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Estimate days until stockout for low-stock SKUs based on 30-day velocity."""
+        sql = """
+            WITH recent_velocity AS (
+                SELECT sv.id AS variant_id,
+                       COALESCE(SUM(ti.quantity)::float / 30.0, 0) AS daily_velocity
+                FROM core.sku_variants sv
+                LEFT JOIN core.transaction_items ti ON ti.variant_id = sv.id
+                LEFT JOIN core.sales_transactions st ON st.id = ti.transaction_id
+                    AND st.sold_at >= now() - interval '30 days'
+                WHERE sv.tenant_id = %s AND sv.status = 'active'
+                GROUP BY sv.id
+            )
+            SELECT sv.sku_id,
+                   p.name                                          AS product_name,
+                   p.brand,
+                   COALESCE(SUM(ib.quantity_on_hand), 0)::int     AS units_on_hand,
+                   ROUND(rv.daily_velocity::numeric, 2)            AS daily_velocity,
+                   CASE WHEN rv.daily_velocity > 0
+                        THEN ROUND(
+                            COALESCE(SUM(ib.quantity_on_hand), 0) / rv.daily_velocity
+                        )
+                        ELSE NULL
+                   END::int                                        AS days_until_stockout,
+                   sv.reorder_point
+            FROM core.sku_variants sv
+            JOIN core.products p ON p.id = sv.product_id
+            LEFT JOIN core.inventory_balances ib ON ib.variant_id = sv.id
+            LEFT JOIN recent_velocity rv ON rv.variant_id = sv.id
+            WHERE sv.tenant_id = %s AND sv.status = 'active'
+            GROUP BY sv.id, sv.sku_id, p.name, p.brand, sv.reorder_point, rv.daily_velocity
+            HAVING COALESCE(SUM(ib.quantity_on_hand), 0) <= GREATEST(sv.reorder_point, 5)
+               AND COALESCE(SUM(ib.quantity_on_hand), 0) > 0
+            ORDER BY days_until_stockout ASC NULLS LAST
+            LIMIT 15
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (tenant_id, tenant_id))
+                rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        return [
+            {
+                "sku_id": r["sku_id"],
+                "product_name": r["product_name"],
+                "brand": r["brand"],
+                "units_on_hand": r["units_on_hand"],
+                "daily_velocity": float(r["daily_velocity"]),
+                "days_until_stockout": r["days_until_stockout"],
+                "reorder_point": r["reorder_point"],
+            }
+            for r in rows
+        ]
+
+    async def _fetch_reorder_suggestions(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Suggest reorder quantities for SKUs near or at their reorder point."""
+        stockout_rows = await self._fetch_stockout_days(tenant_id)
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT sv.sku_id, sv.cost_price_usd
+                    FROM core.sku_variants sv
+                    WHERE sv.tenant_id = %s AND sv.status = 'active'
+                    """,
+                    (tenant_id,),
+                )
+                cost_rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        cost_map = {r["sku_id"]: float(r.get("cost_price_usd") or 0) for r in cost_rows}
+        suggestions = []
+        for item in stockout_rows:
+            daily_vel = item["daily_velocity"]
+            units_on_hand = item["units_on_hand"]
+            # 14-day coverage at current velocity, with 20% safety buffer
+            needed = max(int(daily_vel * 14 * 1.2) - units_on_hand, 1) if daily_vel > 0 else item["reorder_point"]
+            cost = cost_map.get(item["sku_id"], 0)
+            suggestions.append({
+                "sku_id": item["sku_id"],
+                "product_name": item["product_name"],
+                "brand": item["brand"],
+                "units_on_hand": units_on_hand,
+                "suggested_order_qty": needed,
+                "estimated_cost_usd": round(needed * cost, 2),
+                "days_until_stockout": item["days_until_stockout"],
+                "daily_velocity": daily_vel,
+            })
+        suggestions.sort(key=lambda x: (x["days_until_stockout"] or 999))
+        return suggestions
+
+    async def _fetch_revenue_trend(self, tenant_id: str) -> dict[str, Any]:
+        """This-week vs last-week daily revenue average with trend direction."""
+        sql = """
+            SELECT date_trunc('day', sold_at)::date AS day,
+                   ROUND(SUM(total_amount_usd)::numeric, 2) AS revenue_usd
+            FROM core.sales_transactions
+            WHERE tenant_id = %s
+              AND sold_at >= now() - interval '14 days'
+            GROUP BY 1
+            ORDER BY 1
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (tenant_id,))
+                rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        if not rows:
+            return {"trend": "no_data", "this_week_daily_avg_usd": 0, "last_week_daily_avg_usd": 0, "trend_pct": 0}
+
+        from datetime import date as _date
+        today = _date.today()
+        this_week = [r for r in rows if (today - r["day"]).days < 7]
+        last_week = [r for r in rows if 7 <= (today - r["day"]).days < 14]
+
+        this_avg = sum(float(r["revenue_usd"]) for r in this_week) / max(len(this_week), 1)
+        last_avg = sum(float(r["revenue_usd"]) for r in last_week) / max(len(last_week), 1)
+        trend_pct = ((this_avg - last_avg) / max(last_avg, 1)) * 100 if last_avg else 0
+
+        return {
+            "this_week_daily_avg_usd": round(this_avg, 2),
+            "last_week_daily_avg_usd": round(last_avg, 2),
+            "trend_pct": round(trend_pct, 1),
+            "direction": "up" if trend_pct > 5 else "down" if trend_pct < -5 else "flat",
+            "daily": [{"day": str(r["day"]), "revenue_usd": float(r["revenue_usd"])} for r in rows],
+        }
 
 
 # ── Formatting helper ─────────────────────────────────────────────────────────

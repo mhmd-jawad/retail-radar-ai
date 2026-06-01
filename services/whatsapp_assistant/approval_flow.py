@@ -22,11 +22,13 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
-if TYPE_CHECKING:
-    from services.whatsapp_assistant.conversation import ConversationManager
-    from services.whatsapp_assistant.whatsapp_client import WhatsAppClient
+from services.whatsapp_assistant.outcome_tracker import record_decision_snapshot
 
-logger = logging.getLogger("whatsapp_assistant.promote_flow")
+if TYPE_CHECKING:
+    from services.whatsapp_assistant.session_manager import ConversationManager
+    from services.whatsapp_assistant.messenger import WhatsAppClient
+
+logger = logging.getLogger("whatsapp_assistant.approval_flow")
 
 # ── Notification template ─────────────────────────────────────────────────────
 
@@ -200,10 +202,46 @@ class PromoteFlow:
 
         notification_id = str(notif_row["id"])
 
-        # Set the conversation flow
+        # Create / advance roadmap for this recommendation
+        import os
+        from services.whatsapp_assistant.roadmap import (
+            create_roadmap, advance_stage, generate_rich_context,
+        )
+        try:
+            ctx = await generate_rich_context(
+                anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+                product_name=product_name,
+                decision_type=decision,
+                confidence_pct=float(row["confidence"]),
+                suggested_discount_pct=suggested_discount,
+                explanation=row.get("explanation") or "",
+                retail_price=retail_price,
+                cost_price=cost_price,
+            )
+            roadmap_id = await create_roadmap(
+                db_url=self._db_url,
+                tenant_id=tenant_id,
+                recommendation_id=str(row["id"]),
+                sku_id=sku_id,
+                product_name=product_name,
+                decision_type=decision,
+                confidence_pct=float(row["confidence"]),
+                suggested_discount_pct=suggested_discount,
+                context=ctx,
+            )
+            if roadmap_id > 0:
+                await advance_stage(
+                    self._db_url, roadmap_id, "awaiting_approval", actor="system",
+                    notes="Notification sent to retailer",
+                )
+            logger.info("Roadmap %s created/advanced for recommendation %s", roadmap_id, row["id"])
+        except Exception as exc:
+            logger.warning("Roadmap creation failed for %s: %s", row["id"], exc)
+
+        # Store recommendation context so the LLM can handle natural approval language
         await self._conv.set_flow(
             retailer_phone,
-            "promote",
+            "pending_recommendation",
             {
                 "notification_id": notification_id,
                 "recommendation_id": str(row["id"]),
@@ -234,7 +272,7 @@ class PromoteFlow:
             modification = reply_text[6:].strip()
             return await self._handle_modify(phone, flow_context, modification)
         if upper == "REJECT" or upper.startswith("REJECT"):
-            return await self._handle_reject(phone, flow_context["notification_id"])
+            return await self._handle_reject(phone, flow_context)
         return "Please reply *APPROVE*, *MODIFY [your instruction]*, or *REJECT*."
 
     # ── Approve ───────────────────────────────────────────────────────────────
@@ -269,13 +307,42 @@ class PromoteFlow:
             except Exception as exc:
                 logger.error("IE3 campaign generation failed for sku=%s: %s", sku_id, exc)
 
+        await self._update_recommendation_status(context.get("recommendation_id"), "approved")
+
+        # Advance roadmap: approved → executing
+        from services.whatsapp_assistant.roadmap import (
+            get_roadmap_id_for_recommendation, advance_stage,
+        )
+        try:
+            roadmap_id = await get_roadmap_id_for_recommendation(
+                self._db_url, context.get("recommendation_id", "")
+            )
+            if roadmap_id:
+                await advance_stage(self._db_url, roadmap_id, "approved", actor="retailer")
+                await advance_stage(self._db_url, roadmap_id, "executing", actor="system",
+                                    notes="Campaign generation triggered")
+        except Exception as exc:
+            logger.warning("Roadmap advance on approve failed: %s", exc)
+
+        snapshot_id = await record_decision_snapshot(
+            sku_id=sku_id,
+            decision_type=recommendation,
+            recommendation_id=context.get("recommendation_id"),
+            cost_price_usd=float(context.get("cost_price") or 0),
+        )
         await self._update_notification_outcome(context["notification_id"], "approved")
         await self._conv.clear_flow(phone)
 
+        tracking = (
+            f"Closed-loop tracking started: snapshot *#{snapshot_id}*.\n"
+            if snapshot_id
+            else "Closed-loop tracking could not start because baseline data was unavailable.\n"
+        )
         return (
             "✅ *Campaign is live!*\n\n"
             "Instagram and Facebook posts published.\n"
-            "I'll keep monitoring and flag the next opportunity."
+            f"{tracking}"
+            "I'll notify you at the 7-day and 14-day progress checks."
         )
 
     # ── Modify ────────────────────────────────────────────────────────────────
@@ -310,8 +377,21 @@ class PromoteFlow:
         finally:
             await conn.close()
 
-        # Update flow context with new numbers
-        await self._conv.set_flow(phone, "promote", updated_context)
+        # Advance roadmap to 'modified'
+        from services.whatsapp_assistant.roadmap import (
+            get_roadmap_id_for_recommendation, mark_modification,
+        )
+        try:
+            roadmap_id = await get_roadmap_id_for_recommendation(
+                self._db_url, context.get("recommendation_id", "")
+            )
+            if roadmap_id:
+                await mark_modification(self._db_url, roadmap_id, modification)
+        except Exception as exc:
+            logger.warning("Roadmap mark_modification failed: %s", exc)
+
+        # Update flow context with new numbers — keep the same flow name so APPROVE still works
+        await self._conv.set_flow(phone, "pending_recommendation", updated_context)
 
         product_name = updated_context.get("product_name", updated_context["sku_id"])
         reply = (
@@ -325,9 +405,25 @@ class PromoteFlow:
 
     # ── Reject ────────────────────────────────────────────────────────────────
 
-    async def _handle_reject(self, phone: str, notification_id: str) -> str:
-        await self._update_notification_outcome(notification_id, "rejected")
+    async def _handle_reject(self, phone: str, context: dict) -> str:
+        await self._update_recommendation_status(context.get("recommendation_id"), "rejected")
+        await self._update_notification_outcome(context["notification_id"], "rejected")
         await self._conv.clear_flow(phone)
+
+        # Advance roadmap to 'expired'
+        from services.whatsapp_assistant.roadmap import (
+            get_roadmap_id_for_recommendation, advance_stage,
+        )
+        try:
+            roadmap_id = await get_roadmap_id_for_recommendation(
+                self._db_url, context.get("recommendation_id", "")
+            )
+            if roadmap_id:
+                await advance_stage(self._db_url, roadmap_id, "expired", actor="retailer",
+                                    notes="Rejected by retailer")
+        except Exception as exc:
+            logger.warning("Roadmap advance on reject failed: %s", exc)
+
         return "Noted — skipping this one. I'll flag it again if conditions change."
 
     # ── DB helper ─────────────────────────────────────────────────────────────
@@ -345,6 +441,26 @@ class PromoteFlow:
                     WHERE id = %s
                     """,
                     (outcome, notification_id),
+                )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def _update_recommendation_status(
+        self, recommendation_id: str | None, status: str
+    ) -> None:
+        if not recommendation_id:
+            return
+        conn = await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE marketing.recommendations
+                    SET status = %s, reviewed_at = now(), reviewed_by = 'whatsapp'
+                    WHERE id = %s
+                    """,
+                    (status, recommendation_id),
                 )
             await conn.commit()
         finally:
