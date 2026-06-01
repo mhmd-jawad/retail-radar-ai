@@ -22,6 +22,9 @@ import type {
   CampaignCreative,
   DetailedBalanceSheet,
   DetailedProfitability,
+  OutcomeSnapshot,
+  DailySalesPoint,
+  PortfolioAccuracy,
 } from '@/types/domain';
 import { MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
@@ -200,6 +203,17 @@ export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; deta
   }
 }
 
+export async function pingIE3(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+  const ie3 = useSettings.getState().ie3BaseUrl;
+  const t0 = performance.now();
+  try {
+    const r = await fetch(`${ie3}/health`);
+    return { ok: r.ok, latency_ms: Math.round(performance.now() - t0), detail: r.ok ? 'healthy' : `HTTP ${r.status}` };
+  } catch (e: any) {
+    return { ok: false, latency_ms: Math.round(performance.now() - t0), detail: e?.message || 'unreachable' };
+  }
+}
+
 /**
  * POST {ie3Base}/campaign/generate
  *
@@ -359,6 +373,55 @@ async function apiError(response: Response, label: string) {
   } catch {
     return `${label} ${response.status}: ${response.statusText}`;
   }
+}
+
+// ─── Outcome Tracking ─────────────────────────────────────────────────────────
+
+export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes/${encodeURIComponent(variantId)}`);
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${variantId}`));
+  return r.json();
+}
+
+export async function fetchOutcomesBySku(skuId: string): Promise<OutcomeSnapshot[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes/by-sku/${encodeURIComponent(skuId)}`);
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/by-sku/${skuId}`));
+  return r.json();
+}
+
+export async function triggerMeasurement(
+  snapshotId: number,
+  windowDays: 7 | 14,
+): Promise<unknown> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes/${snapshotId}/measure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ window_days: windowDays }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP POST /outcomes/${snapshotId}/measure`));
+  return r.json();
+}
+
+export async function fetchDailySeries(snapshotId: number): Promise<DailySalesPoint[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes/${snapshotId}/daily-series`);
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${snapshotId}/daily-series`));
+  return r.json();
+}
+
+export async function fetchPortfolioAccuracy(decisionType?: string): Promise<PortfolioAccuracy> {
+  const { base } = settings();
+  const params = decisionType ? `?decision_type=${encodeURIComponent(decisionType)}` : '';
+  const r = await fetch(`${base}/outcomes/portfolio/accuracy${params}`);
+  if (r.status === 503) return { avg_accuracy: null, decision_count: 0, by_type: {} };
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /outcomes/portfolio/accuracy'));
+  return r.json();
 }
 
 // ─── Financial detail fetchers ────────────────────────────────────────────────

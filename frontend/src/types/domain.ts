@@ -154,12 +154,12 @@ export interface CampaignCreative {
   subheadline: string;
   ad_copy_short: string;
   ad_copy_long: string;
-  instagram_post: string;   // maps from instagram_caption
+  instagram_post: string;
   facebook_post: string;
   whatsapp_broadcast: string;
   cta_primary: string;
   cta_secondary: string;
-  image_url: string;        // from ImgBB / Replicate
+  image_url: string;
   tone_used: 'urgent' | 'aspirational' | 'value_focused';
   generation_confidence: number;
   fallback_used: boolean;
@@ -488,4 +488,62 @@ export interface AuditEntry {
   after?: { price_usd: number; discount_pct?: number };
   notes?: string;
   timestamp: string;
+}
+
+// ─── Closed-Loop Outcome Tracking ────────────────────────────────────────────
+
+export interface OutcomeMeasurement {
+  id?: number;
+  window_days: 7 | 14;
+  measured_at: string;
+  actual_velocity_daily: number | null;
+  actual_revenue_total: number | null;
+  actual_qty_sold: number | null;
+  actual_avg_price: number | null;
+  velocity_lift_pct: number | null;
+  revenue_delta_usd: number | null;
+  campaign_roi_usd: number | null;
+  accuracy_score: number | null;
+  narrative: string | null;
+  llm_computed_lift_pct?: number | null;
+  data_available: boolean;
+}
+
+export interface OutcomeSnapshot {
+  id: number;
+  variant_id: string;
+  recommendation_id: string | null;
+  decision_type: Decision;
+  approved_at: string;
+
+  // Real baseline from sales_transaction_lines
+  baseline_velocity_daily: number | null;
+  baseline_revenue_7d: number | null;
+  baseline_avg_price: number | null;
+  baseline_qty_on_hand: number | null;
+  baseline_margin_pct: number | null;
+  baseline_dos: number | null;
+
+  // Prediction
+  predicted_lift_pct: number | null;
+  ie2_confidence: number | null;
+  ie2_explanation: string | null;
+  suggested_discount_pct: number | null;
+
+  check_7d_at: string;
+  check_14d_at: string;
+  status: 'tracking' | 'measured_7d' | 'completed' | 'insufficient_data';
+  measurements: OutcomeMeasurement[] | null;
+}
+
+export interface DailySalesPoint {
+  date: string;
+  units_sold: number;
+  revenue: number;
+}
+
+export interface PortfolioAccuracy {
+  avg_accuracy: number | null;
+  decision_count: number;
+  by_type: Partial<Record<Decision, number>>;
 }

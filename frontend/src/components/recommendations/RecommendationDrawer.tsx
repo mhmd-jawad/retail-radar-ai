@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import type { SkuAnalysis, IE2Result } from '@/types/domain';
 import { useQuery } from '@tanstack/react-query';
-import { recommend } from '@/lib/adapter';
+import { recommend, fetchPortfolioAccuracy } from '@/lib/adapter';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
-import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity } from 'lucide-react';
+import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity, Target } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -19,9 +19,10 @@ interface Props {
 }
 
 export function RecommendationDrawer({ sku, open, onClose }: Props) {
-  const { recState, setRecStatus } = useSettings();
+  const { recState, setRecStatus, mode } = useSettings();
   const { data: report } = useReport();
   const [discount, setDiscount] = useState(15);
+  const isLive = mode === 'eep-live';
 
   const { data: ie2 } = useQuery({
     queryKey: ['ie2', sku?.sku_id],
@@ -49,6 +50,13 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
           timestamp: new Date().toISOString(),
         },
       }),
+  });
+
+  const { data: accuracy } = useQuery({
+    queryKey: ['portfolio-accuracy', ie2?.recommendation],
+    queryFn: () => fetchPortfolioAccuracy(ie2?.recommendation),
+    enabled: isLive && !!ie2?.recommendation,
+    staleTime: 5 * 60_000,
   });
 
   const promo = useMemo(() => sku && report ? report.promotions.promote.find((p) => p.sku_id === sku.sku_id) : null, [sku, report]);
@@ -216,6 +224,22 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
                 </div>
               )}
             </div>
+
+            {/* Portfolio accuracy signal */}
+            {isLive && accuracy && accuracy.decision_count >= 3 && ie2 && (
+              <div className="mx-4 mb-3 flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-500/5 border border-indigo-500/15 text-[11.5px]">
+                <Target className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                <span className="text-muted-foreground">Past accuracy for</span>
+                <span className="font-semibold text-indigo-300">{ie2.recommendation}</span>
+                <span className="text-muted-foreground">decisions:</span>
+                <span className="font-bold text-indigo-400 ml-0.5">
+                  {accuracy.by_type[ie2.recommendation] != null
+                    ? `${accuracy.by_type[ie2.recommendation]}%`
+                    : `${accuracy.avg_accuracy ?? '—'}%`}
+                </span>
+                <span className="text-muted-foreground ml-auto">({accuracy.decision_count} tracked)</span>
+              </div>
+            )}
 
             {/* Sticky actions */}
             <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur p-4 flex items-center gap-2">

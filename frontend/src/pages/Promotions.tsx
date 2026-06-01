@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLiveReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
@@ -14,11 +14,12 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/store/settings';
-import { generateAndPublishCampaign, patchInventoryPrice, recordDecision } from '@/lib/adapter';
+import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, fetchOutcomesBySku } from '@/lib/adapter';
 import type {
   CampaignCreative, ClearanceItem, Decision, HoldPricingItem,
-  MarkdownItem, PromoteItem,
+  MarkdownItem, PromoteItem, OutcomeSnapshot,
 } from '@/types/domain';
+import { OutcomeChip } from '@/components/outcomes/OutcomePanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Micro-components
@@ -75,25 +76,37 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
   onRegenerate: () => void;
   isPending: boolean;
 }) {
+  const [imgError, setImgError] = useState(false);
+
   return (
-    <div className="bg-muted/10 border-t border-border px-5 py-5">
+    <div className="bg-muted/10 border-t border-border px-5 py-5 space-y-5">
+      {/* Top row: image + headline + controls */}
       <div className="flex items-start gap-5">
-        {creative.image_url && (
+        {creative.image_url && !imgError ? (
           <img
             src={creative.image_url}
             alt={item.product_name}
-            className="w-28 h-28 object-cover rounded-lg shrink-0 border border-border"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            className="w-40 h-40 object-cover rounded-xl shrink-0 border border-border shadow-md"
+            onError={() => setImgError(true)}
           />
+        ) : (
+          <div className="w-40 h-40 rounded-xl shrink-0 border border-dashed border-border bg-muted/30 flex items-center justify-center text-[10px] text-muted-foreground font-mono">
+            {imgError ? 'image unavailable' : 'no image'}
+          </div>
         )}
-        <div className="flex-1 min-w-0 space-y-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-4 mb-3">
             <div>
               <div className="text-[15px] font-semibold leading-tight">{creative.headline}</div>
               <div className="text-[12px] text-muted-foreground mt-0.5">{creative.subheadline}</div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {creative.tone_used && <ToneBadge tone={creative.tone_used} />}
+              {creative.fallback_used && (
+                <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  fallback
+                </span>
+              )}
               <button
                 onClick={onRegenerate}
                 disabled={isPending}
@@ -104,27 +117,7 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-            {[
-              { l: 'Instagram', v: creative.instagram_post,    emoji: '📸' },
-              { l: 'Facebook',  v: creative.facebook_post,     emoji: '👥' },
-              { l: 'WhatsApp',  v: creative.whatsapp_broadcast, emoji: '💬' },
-            ].filter(c => c.v).map(c => (
-              <div key={c.l} className="rounded-lg bg-card border border-border/60 p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-mono uppercase text-muted-foreground">{c.emoji} {c.l}</span>
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(c.v); toast.success(`${c.l} copied`); }}
-                    className="text-[10px] inline-flex items-center gap-0.5 text-primary hover:text-primary/70 transition"
-                  >
-                    <Copy className="h-2.5 w-2.5" />Copy
-                  </button>
-                </div>
-                <p className="text-[11.5px] leading-relaxed line-clamp-3">{c.v}</p>
-              </div>
-            ))}
-          </div>
-
+          {/* Social publish status chips */}
           {(creative.social_posts?.length ?? 0) > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">Live on:</span>
@@ -140,7 +133,7 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
                   );
                 }
                 return (
-                  <span key={sp.platform} title={sp.error}
+                  <span key={sp.platform} title={sp.error ?? 'publish failed'}
                     className="h-7 px-3 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/70 text-[11px] inline-flex items-center gap-1 cursor-default">
                     {icon} {sp.platform} ✗
                   </span>
@@ -149,6 +142,28 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Copy grid: Instagram · Facebook · TikTok · WhatsApp */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+        {[
+          { l: 'Instagram', v: creative.instagram_post,    emoji: '📸' },
+          { l: 'Facebook',  v: creative.facebook_post,     emoji: '👥' },
+          { l: 'WhatsApp',  v: creative.whatsapp_broadcast, emoji: '💬' },
+        ].filter(c => c.v).map(c => (
+          <div key={c.l} className="rounded-lg bg-card border border-border/60 p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-mono uppercase text-muted-foreground">{c.emoji} {c.l}</span>
+              <button
+                onClick={() => { navigator.clipboard.writeText(c.v); toast.success(`${c.l} copied`); }}
+                className="text-[10px] inline-flex items-center gap-0.5 text-primary hover:text-primary/70 transition"
+              >
+                <Copy className="h-2.5 w-2.5" />Copy
+              </button>
+            </div>
+            <p className="text-[11.5px] leading-relaxed line-clamp-4">{c.v}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -159,12 +174,21 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
-  const { campaignCache, setCampaign, whatsappNumber } = useSettings();
+  const { campaignCache, setCampaign, whatsappNumber, mode } = useSettings();
   const [creative, setCreative] = useState<CampaignCreative | null>(
     campaignCache[item.sku_id] ?? item.creative ?? null,
   );
   const [expanded, setExpanded] = useState(false);
   void whatsappNumber;
+
+  const isLive = mode === 'eep-live';
+  const { data: outcomes = [] } = useQuery<OutcomeSnapshot[]>({
+    queryKey: ['outcomes-by-sku', item.sku_id],
+    queryFn: () => fetchOutcomesBySku(item.sku_id),
+    enabled: isLive,
+    staleTime: 5 * 60_000,
+  });
+  const latestOutcome = outcomes[0] ?? null;
 
   const mutation = useMutation({
     mutationFn: () => generateAndPublishCampaign(item.sku_id, item.product_name, {
@@ -187,14 +211,14 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
   });
 
   const hasCreative = !!creative;
-  const isLive = hasCreative && (creative!.social_posts?.length ?? 0) > 0;
+  const isPosted = hasCreative && (creative!.social_posts?.some(p => p.success) ?? false);
 
   return (
     <div className={cn('border-b border-border last:border-0 transition-colors', expanded && 'bg-card/60')}>
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-accent/20 transition min-w-0">
         <span className="text-[10px] font-mono text-muted-foreground/40 w-5 shrink-0 text-right">{index + 1}</span>
         <div className={cn('h-2 w-2 rounded-full shrink-0',
-          isLive ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
+          isPosted ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
           : hasCreative ? 'bg-blue-400/70'
           : 'bg-muted-foreground/20',
         )} />
@@ -205,6 +229,11 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
             <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0 hidden md:inline">{item.sku_id}</span>
           </div>
           <p className="text-[11px] text-muted-foreground truncate mt-0.5">{item.reason}</p>
+          {isPosted && latestOutcome && (
+            <div className="mt-1">
+              <OutcomeChip snapshot={latestOutcome} />
+            </div>
+          )}
         </div>
         <div className="text-emerald-400 font-bold text-[12.5px] tabular-nums shrink-0 inline-flex items-center gap-0.5">
           <TrendingUp className="h-3 w-3" />+{item.expected_lift_pct}%
@@ -219,7 +248,7 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
             onClick={() => setExpanded(e => !e)}
             className="h-7 px-3 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-medium inline-flex items-center gap-1 shrink-0 transition"
           >
-            {isLive
+            {isPosted
               ? <span className="text-emerald-400 inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Live</span>
               : 'Campaign'
             }

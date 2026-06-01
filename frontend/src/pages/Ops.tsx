@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
-import { pingIE2, fetchScrapeRuns, fetchCompetitorLatest } from '@/lib/adapter';
+import { pingIE2, pingIE3, fetchScrapeRuns, fetchCompetitorLatest } from '@/lib/adapter';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { Activity, Database, Radio, Zap } from 'lucide-react';
@@ -10,16 +10,20 @@ import { relativeTime, fmtNum, fmtUSD } from '@/lib/format';
 const services = [
   { key: 'ie2', name: 'IE2 Decision Intelligence', desc: 'Active · port 8002', state: 'live' },
   { key: 'ie1', name: 'IE1 Inventory Intelligence', desc: 'Planned', state: 'planned' },
-  { key: 'ie3', name: 'IE3 Creative Intelligence', desc: 'Planned', state: 'planned' },
+  { key: 'ie3', name: 'IE3 Creative Intelligence', desc: 'Active · port 8003', state: 'live' },
   { key: 'eep', name: 'EEP Orchestrator', desc: 'Active dashboard API · port 8000', state: 'live' },
 ];
 
 export default function Ops() {
   const [ie2Health, setIe2Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
+  const [ie3Health, setIe3Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
   const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: fetchScrapeRuns });
   const { data: latest } = useQuery({ queryKey: ['latest'], queryFn: fetchCompetitorLatest });
 
-  useEffect(() => { pingIE2().then(setIe2Health); }, []);
+  useEffect(() => {
+    pingIE2().then(setIe2Health);
+    pingIE3().then(setIe3Health);
+  }, []);
 
   return (
     <>
@@ -28,21 +32,25 @@ export default function Ops() {
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {services.map(s => {
             const isIe2 = s.key === 'ie2';
-            const live = isIe2 && ie2Health?.ok;
+            const isIe3 = s.key === 'ie3';
+            const health = isIe2 ? ie2Health : isIe3 ? ie3Health : null;
+            const live = (isIe2 || isIe3) ? health?.ok : s.state === 'live';
+            const checking = (isIe2 || isIe3) && !health;
             return (
               <div key={s.key} className={cn('rounded-xl border p-5 shadow-sm-soft', s.state === 'live' ? 'bg-card border-border' : 'bg-surface-sunken border-dashed border-border')}>
                 <div className="flex items-center justify-between">
                   <Radio className={cn('h-5 w-5', live ? 'text-decision-promote' : 'text-muted-foreground')} />
                   <span className={cn('text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded',
                     live ? 'bg-decision-promote-bg text-decision-promote' :
-                    isIe2 ? 'bg-decision-clear-bg text-decision-clear' : 'bg-secondary text-secondary-foreground')}>
-                    {live ? 'live' : isIe2 ? (ie2Health ? 'down' : 'checking') : 'planned'}
+                    checking ? 'bg-secondary text-secondary-foreground' :
+                    (isIe2 || isIe3) ? 'bg-decision-clear-bg text-decision-clear' : 'bg-secondary text-secondary-foreground')}>
+                    {checking ? 'checking' : live ? 'live' : (isIe2 || isIe3) ? 'down' : 'planned'}
                   </span>
                 </div>
                 <div className="mt-3 text-[14px] font-semibold">{s.name}</div>
                 <div className="text-[11.5px] text-muted-foreground mt-1">{s.desc}</div>
-                {isIe2 && ie2Health && (
-                  <div className="text-[11px] font-mono text-muted-foreground mt-2">{ie2Health.latency_ms}ms · {ie2Health.detail}</div>
+                {health && (
+                  <div className="text-[11px] font-mono text-muted-foreground mt-2">{health.latency_ms}ms · {health.detail}</div>
                 )}
               </div>
             );
