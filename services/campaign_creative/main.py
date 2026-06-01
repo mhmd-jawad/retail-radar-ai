@@ -3,9 +3,9 @@ IE3 — Campaign Creative Service.
 Owner: Mohammad Farhat.
 
 Receives a PROMOTE RecommendationResult from IE2 and generates a full campaign package:
-  - Text copy (Instagram, Facebook, TikTok, headline, ad copy) via OpenRouter (Claude)
-  - Image generation prompt via OpenRouter (Claude)
-  - Product image via Replicate (Stable Diffusion)
+  - Text copy (Instagram, Facebook, TikTok, headline, ad copy) via Anthropic Claude (direct API)
+  - Image generation prompt via Anthropic Claude (direct API)
+  - Product image via OpenAI gpt-image-1 → Replicate → Pillow (fallback chain)
   - Writes one campaign row per channel to marketing.campaigns
 
 Port: 8003
@@ -13,8 +13,9 @@ Run:
     uvicorn services.campaign_creative.main:app --port 8003 --reload
 
 Environment variables required:
-    OPENROUTER_API_KEY   — OpenRouter API key
-    REPLICATE_API_KEY    — Replicate API key
+    ANTHROPIC_API_KEY    — Anthropic API key (text copy + image prompt via Claude)
+    OPENAI_API_KEY       — OpenAI API key (DALL-E 3 image generation)
+    REPLICATE_API_KEY    — Replicate API key (Stable Diffusion fallback)
     DATABASE_URL         — PostgreSQL connection string (default: local)
 """
 
@@ -29,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+import anthropic
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
@@ -60,7 +62,11 @@ DEFAULT_STORE_CODE = "MAIN"
 FALLBACK_IMAGE_URL = "https://placehold.co/1024x1024/FF6B35/FFFFFF?text=Sale+Now"
 
 _REPLICATE_API_KEY = os.getenv("REPLICATE_API_KEY") or os.getenv("REPLICATE_API_TOKEN", "")
-_GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
+_OPENAI_IMAGE_API_KEY  = os.getenv("OPENAI_API_KEY", "")
+_ANTHROPIC_API_KEY     = os.getenv("ANTHROPIC_API_KEY", "")
+
+_anthropic_client    = anthropic.AsyncAnthropic(api_key=_ANTHROPIC_API_KEY or "not-set")
+_openai_image_client = AsyncOpenAI(api_key=_OPENAI_IMAGE_API_KEY or "not-set")
 _REPLICATE_MODEL_VERSION = "db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
 
 _OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -564,22 +570,32 @@ _TEXT_RETRY_SUFFIX = (
 )
 
 _IMAGE_SYSTEM_PROMPT = """\
-You are a creative director for a sports fashion brand.
-Generate a vivid, unique Stable Diffusion image prompt for a social media ad.
+You are a creative director writing image prompts for DALL-E 3 to generate \
+square (1024×1024) retail promotional ads for Instagram and TikTok.
 
-Rules:
-- Every prompt must be visually different — vary backgrounds, lighting, \
-composition, color schemes, and camera angles
-- Match the brand vibe: Adidas = modern/clean, Nike = bold/dynamic, \
-Puma = edgy/street
-- Match urgency: high = dramatic/dark/high-contrast, \
-medium = energetic/outdoor, low = clean/minimal/studio
-- Always describe: product, background style, lighting mood, \
-color palette, photo style (lifestyle shot vs product shot)
-- Suitable for Instagram/TikTok square or vertical format
-- Max 100 words
+DALL-E 3 understands natural language — write a vivid scene description, NOT \
+a token list.
 
-Return ONLY the image prompt text. Nothing else."""
+Requirements:
+- Include a clear SALE visual element as a graphic shape — a bold red corner \
+  ribbon, a gold circular badge, or a price-tag silhouette. Do NOT include \
+  readable text in the image (DALL-E renders text inaccurately); use shapes \
+  and colors to convey the sale mood instead
+- Describe the product prominently: exact name, colorway, and category
+- Set the scene: background style, lighting mood, color palette, composition
+- Match brand identity: Adidas = sleek/minimalist/three-stripe, \
+  Nike = bold/dynamic/swoosh, Puma = edgy/streetwear, \
+  New Balance = clean/heritage
+- Match urgency: high = bold red-and-black palette, dramatic studio lighting, \
+  "Limited Stock" urgency feel; medium = vibrant outdoor energy; \
+  low = clean white studio with soft shadows
+- If an event is provided (Ramadan, Back-to-School, Summer Sale, etc.), \
+  weave thematic visuals into the background
+- Style: photorealistic retail advertising photography, premium quality, \
+  professional product shot, Instagram square format
+- Max 130 words
+
+Return ONLY the image prompt. No explanation, no JSON, no extra text."""
 
 
 def _text_user_message(brief: PromotionBrief) -> str:
@@ -599,34 +615,40 @@ def _text_user_message(brief: PromotionBrief) -> str:
 
 
 def _image_user_message(brief: PromotionBrief) -> str:
+    disc = int(brief.suggested_discount_pct or 0)
+    sale_price = brief.retail_price_usd * (1 - disc / 100)
     return (
         f"Product: {brief.product_name}\n"
         f"Brand: {brief.brand}\n"
+        f"Category: {brief.category}\n"
         f"Color: {brief.color or 'N/A'}\n"
-        f"Urgency: {brief.urgency_level}\n"
-        f"Discount: {int(brief.suggested_discount_pct or 0)}%\n"
-        f"Platform: Instagram and TikTok ad"
+        f"Target audience: {brief.gender_target or 'unisex'}\n"
+        f"Original price: ${brief.retail_price_usd:.2f}\n"
+        f"Discount: {disc}% OFF — Sale price: ${sale_price:.2f}\n"
+        f"Stock remaining: {brief.current_stock} units\n"
+        f"Urgency level: {brief.urgency_level}\n"
+        f"Season / upcoming event: {brief.upcoming_event or brief.season or 'none'}\n"
+        f"Platform: Instagram & TikTok square ad"
     )
 
 
 # ── LLM Callers ───────────────────────────────────────────────────────────────
 
 
-async def _call_openrouter_text(brief: PromotionBrief, retry: bool = False) -> dict[str, str]:
+async def _call_anthropic_text(brief: PromotionBrief, retry: bool = False) -> dict[str, str]:
+    """Generate all ad copy using Anthropic Claude directly."""
     system = _TEXT_SYSTEM_PROMPT + (_TEXT_RETRY_SUFFIX if retry else "")
     response = await asyncio.wait_for(
-        _openrouter_client.chat.completions.create(
-            model="anthropic/claude-3.5-sonnet",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": _text_user_message(brief)},
-            ],
-            temperature=0.7,
+        _anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
             max_tokens=1200,
+            system=system,
+            messages=[{"role": "user", "content": _text_user_message(brief)}],
         ),
-        timeout=8.0,
+        timeout=15.0,
     )
-    raw = (response.choices[0].message.content or "").strip()
+    block = next((b for b in response.content if b.type == "text"), None)
+    raw = block.text.strip() if block else ""
     # Strip markdown code fences if the model wraps the JSON
     if raw.startswith("```"):
         raw = raw.split("```", 2)[1]
@@ -636,67 +658,63 @@ async def _call_openrouter_text(brief: PromotionBrief, retry: bool = False) -> d
     return json.loads(raw)
 
 
-async def _call_openrouter_image_prompt(brief: PromotionBrief) -> str:
+async def _call_anthropic_image_prompt(brief: PromotionBrief) -> str:
+    """Generate a DALL-E 3 image prompt using Anthropic Claude directly."""
     response = await asyncio.wait_for(
-        _openrouter_client.chat.completions.create(
-            model="anthropic/claude-3.5-sonnet",
-            messages=[
-                {"role": "system", "content": _IMAGE_SYSTEM_PROMPT},
-                {"role": "user", "content": _image_user_message(brief)},
-            ],
-            temperature=0.9,
-            max_tokens=200,
+        _anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=400,
+            system=_IMAGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": _image_user_message(brief)}],
         ),
-        timeout=5.0,
+        timeout=10.0,
     )
-    return (response.choices[0].message.content or "").strip()
+    block = next((b for b in response.content if b.type == "text"), None)
+    return block.text.strip() if block else ""
 
 
-async def _generate_image_gemini(image_prompt: str) -> str:
-    """
-    Generate a promotional image using Google Gemini 2.0 Flash image generation.
-    Free tier: 15 RPM / 1500 RPD via Google AI Studio.
-    Get a free key at: https://aistudio.google.com/apikey
-    """
-    if not _GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set")
+async def _generate_image_openai(image_prompt: str) -> str:
+    """Generate a promotional image using OpenAI gpt-image-1 via direct HTTP."""
+    if not _OPENAI_IMAGE_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not set")
 
-    # Enhance prompt for a well-designed social media promo image
+    import base64
+
     enhanced_prompt = (
         f"{image_prompt}. "
         "Professional social media advertisement, high-end retail photography style, "
-        "clean modern layout, bold typography, vibrant brand colors, "
+        "clean modern layout, vibrant brand colors, "
         "1:1 square format, Instagram-ready, premium quality product shot."
     )
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Call the OpenAI API directly with httpx — the SDK always injects
+    # response_format which gpt-image-1 does not accept.
+    async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.5-flash-image:generateContent",
-            params={"key": _GEMINI_API_KEY},
-            headers={"Content-Type": "application/json"},
+            "https://api.openai.com/v1/images/generations",
+            headers={
+                "Authorization": f"Bearer {_OPENAI_IMAGE_API_KEY}",
+                "Content-Type": "application/json",
+            },
             json={
-                "contents": [{"parts": [{"text": enhanced_prompt}]}],
-                "generationConfig": {"responseModalities": ["IMAGE"]},
+                "model": "gpt-image-1",
+                "prompt": enhanced_prompt,
+                "size": "1024x1024",
+                "quality": "high",
+                "n": 1,
             },
         )
 
     if resp.status_code != 200:
-        raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:300]}")
+        raise RuntimeError(f"OpenAI image API error {resp.status_code}: {resp.text[:300]}")
 
     data = resp.json()
-    try:
-        parts = data["candidates"][0]["content"]["parts"]
-        for part in parts:
-            if "inlineData" in part:
-                import base64
-                img_bytes = base64.b64decode(part["inlineData"]["data"])
-                # Upload to imgbb for a public URL
-                return await _upload_imgbb(img_bytes)
-    except (KeyError, IndexError) as exc:
-        raise RuntimeError(f"Unexpected Gemini response structure: {data}") from exc
+    b64 = data.get("data", [{}])[0].get("b64_json")
+    if not b64:
+        raise RuntimeError(f"gpt-image-1 returned no image data: {data}")
 
-    raise RuntimeError("Gemini returned no image data")
+    img_bytes = base64.b64decode(b64)
+    return await _upload_imgbb(img_bytes)
 
 
 async def _generate_image_replicate(image_prompt: str) -> str:
@@ -800,20 +818,20 @@ async def _generate_image_full(
     """
     Generate a promo image and upload to ImgBB for a direct public URL.
 
-    Chain: Gemini → Replicate → Pillow (all upload to ImgBB).
+    Chain: OpenAI DALL-E 3 → Replicate → Pillow (all upload to ImgBB).
     Returns (image_url, fallback_used) where image_url is always a
     direct public https://i.ibb.co/... URL.
     Raises RuntimeError if no public URL can be obtained.
     """
-    # ── 1. Gemini (free tier, high quality) ───────────────────────────────────
-    if _GEMINI_API_KEY:
+    # ── 1. OpenAI DALL-E 3 ────────────────────────────────────────────────────
+    if _OPENAI_IMAGE_API_KEY:
         try:
-            url = await _generate_image_gemini(image_prompt)
-            logger.info("Gemini image generated for sku=%s", brief.product_name)
+            url = await _generate_image_openai(image_prompt)
+            logger.info("OpenAI image generated for sku=%s", brief.product_name)
             return url, False
         except Exception as exc:
             logger.warning(
-                "Gemini image failed for sku=%s: %s — trying Replicate",
+                "OpenAI image failed for sku=%s: %s — trying Replicate",
                 brief.product_name, exc,
             )
 
@@ -1012,7 +1030,7 @@ async def generate_campaign(recommendation: RecommendationResult):
       1. Gate: only PROMOTE decisions proceed
       2. DB lookup: fetch brand, category, stock, price for the SKU
       3. In parallel: generate text copy + image prompt via OpenRouter (Claude)
-      4. Generate promo image (Gemini → Replicate → Pillow)
+      4. Generate promo image (OpenAI gpt-image-1 → Replicate → Pillow)
       5. Upload image to ImgBB — obtain direct public URL
       6. Validate image URL is publicly accessible
       7. Publish to Instagram and Facebook
@@ -1086,7 +1104,7 @@ async def generate_campaign(recommendation: RecommendationResult):
     async def _get_text_copy() -> tuple[dict[str, str], bool]:
         """Returns (copy_dict, used_fallback)."""
         try:
-            raw = await _call_openrouter_text(brief)
+            raw = await _call_anthropic_text(brief)
             if not _validate_copy_keys(raw):
                 raise ValueError("Response missing required copy keys")
             return _truncate_copy_fields(raw), False
@@ -1096,7 +1114,7 @@ async def generate_campaign(recommendation: RecommendationResult):
                 recommendation.sku_id, exc,
             )
         try:
-            raw = await _call_openrouter_text(brief, retry=True)
+            raw = await _call_anthropic_text(brief, retry=True)
             if not _validate_copy_keys(raw):
                 raise ValueError("Response missing required copy keys on retry")
             return _truncate_copy_fields(raw), False
@@ -1109,7 +1127,7 @@ async def generate_campaign(recommendation: RecommendationResult):
 
     async def _get_image_prompt() -> str:
         try:
-            return await _call_openrouter_image_prompt(brief)
+            return await _call_anthropic_image_prompt(brief)
         except Exception as exc:
             logger.warning(
                 "Image prompt generation failed for sku=%s: %s — using fallback prompt",
