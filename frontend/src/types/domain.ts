@@ -358,6 +358,8 @@ export interface RetailInventoryItem {
   size?: string | null;
   gender_target?: string | null;
   season?: string | null;
+  supplier_name?: string | null;
+  notes?: string | null;
   updated_at?: string;
 }
 

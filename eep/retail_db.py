@@ -21,6 +21,8 @@ DEFAULT_STORE_CODE = "MAIN"
 
 _SCHEMA_READY = False
 _SCHEMA_LOCK = threading.Lock()
+_DETAIL_COLUMNS_READY = False
+_DETAIL_COLUMNS_LOCK = threading.Lock()
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -125,6 +127,7 @@ def _connect():
 
     try:
         _ensure_schema(conn)
+        _ensure_inventory_detail_columns(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -147,6 +150,35 @@ def _ensure_schema(conn) -> None:
             cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.commit()
         _SCHEMA_READY = True
+
+
+def _ensure_inventory_detail_columns(conn) -> None:
+    """Apply additive inventory columns on live DBs where full auto-init is disabled."""
+    global _DETAIL_COLUMNS_READY
+    if _DETAIL_COLUMNS_READY:
+        return
+    with _DETAIL_COLUMNS_LOCK:
+        if _DETAIL_COLUMNS_READY:
+            return
+        with conn.cursor() as cur:
+            cur.execute("select to_regclass('core.sku_variants') as table_name")
+            if not cur.fetchone()["table_name"]:
+                return
+            cur.execute(
+                """
+                alter table core.sku_variants
+                    add column if not exists supplier_id uuid references core.suppliers(id) on delete set null,
+                    add column if not exists notes text
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_sku_variants_supplier
+                    on core.sku_variants (tenant_id, supplier_id)
+                """
+            )
+        conn.commit()
+        _DETAIL_COLUMNS_READY = True
 
 
 def _context(cur) -> dict[str, Any]:
@@ -206,9 +238,14 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     " or lower(p.name) like %s"
                     " or lower(p.brand) like %s"
                     " or lower(coalesce(v.style_code, '')) like %s"
+                    " or lower(coalesce(p.gender_target, '')) like %s"
+                    " or lower(coalesce(p.season, '')) like %s"
+                    " or lower(coalesce(v.color, '')) like %s"
+                    " or lower(coalesce(v.size, '')) like %s"
+                    " or lower(coalesce(sup.name, '')) like %s"
                     ")"
                 )
-                params.extend([search_param, search_param, search_param, search_param])
+                params.extend([search_param] * 9)
             params.append(limit)
             where = " and ".join(conditions)
             cur.execute(
@@ -221,11 +258,13 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     v.style_code,
                     v.color,
                     v.size,
+                    v.notes,
                     p.name as product_name,
                     p.brand,
                     p.category,
                     p.gender_target,
                     p.season,
+                    sup.name as supplier_name,
                     coalesce(b.quantity_on_hand, 0) as current_stock,
                     coalesce(v.cost_price_usd, 0) as cost_price_usd,
                     coalesce(pr.amount, 0) as retail_price_usd,
@@ -234,6 +273,7 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     greatest(p.updated_at, v.updated_at, coalesce(b.updated_at, v.updated_at)) as updated_at
                 from core.sku_variants v
                 join core.products p on p.id = v.product_id
+                left join core.suppliers sup on sup.id = v.supplier_id
                 left join core.inventory_balances b
                     on b.variant_id = v.id and b.store_id = %s
                 left join lateral (
@@ -260,8 +300,9 @@ def create_inventory_item(payload: InventoryItemPayload) -> dict[str, Any]:
         with conn.cursor() as cur:
             ctx = _context(cur)
             item = _upsert_inventory_item(cur, ctx, payload, actor="frontend", movement_type="initial_stock")
-            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "upsert", None, item)
-    return item
+            item_with_context = _attach_payload_context(item, payload)
+            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "upsert", None, item_with_context)
+    return item_with_context
 
 
 def update_inventory_item(sku_id: str, payload: InventoryItemPayload) -> dict[str, Any]:
@@ -273,8 +314,9 @@ def update_inventory_item(sku_id: str, payload: InventoryItemPayload) -> dict[st
             if not before:
                 raise KeyError(sku_id)
             item = _upsert_inventory_item(cur, ctx, data, actor="frontend", movement_type="adjustment_in")
-            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "update", before, item)
-    return item
+            item_with_context = _attach_payload_context(item, data)
+            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "update", before, item_with_context)
+    return item_with_context
 
 
 def patch_inventory_price(
@@ -352,8 +394,9 @@ def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
                     actor="bulk_import",
                     movement_type="full_import_adjustment",
                 )
-                seen.add(item["sku_id"])
-                items.append(item)
+                item_with_context = _attach_payload_context(item, entry)
+                seen.add(item_with_context["sku_id"])
+                items.append(item_with_context)
 
             archived_count = 0
             if payload.mode == "replace":
@@ -382,6 +425,7 @@ def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
 def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPayload, actor: str, movement_type: str) -> dict[str, Any]:
     data = payload.model_dump()
     sku_id = data["sku_id"]
+    supplier_id = _upsert_supplier(cur, ctx["tenant_id"], data.get("supplier_name"))
     cur.execute(
         """
         select v.id as variant_id, p.id as product_id
@@ -416,7 +460,8 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
             """
             update core.sku_variants
             set barcode = %s, style_code = %s, color = %s, size = %s, cost_price_usd = %s,
-                reorder_point = %s, reorder_quantity = %s, status = 'active', updated_at = now()
+                reorder_point = %s, reorder_quantity = %s, supplier_id = %s, notes = %s,
+                status = 'active', updated_at = now()
             where id = %s
             """,
             (
@@ -427,6 +472,8 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
                 data["cost_price_usd"],
                 data["reorder_point"],
                 data["reorder_quantity"],
+                supplier_id,
+                data["notes"],
                 variant_id,
             ),
         )
@@ -451,9 +498,9 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
             """
             insert into core.sku_variants (
                 tenant_id, product_id, sku_id, barcode, style_code, color, size,
-                cost_price_usd, reorder_point, reorder_quantity
+                cost_price_usd, reorder_point, reorder_quantity, supplier_id, notes
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             returning id
             """,
             (
@@ -467,12 +514,23 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
                 data["cost_price_usd"],
                 data["reorder_point"],
                 data["reorder_quantity"],
+                supplier_id,
+                data["notes"],
             ),
         )
         variant_id = cur.fetchone()["id"]
 
     _set_current_price(cur, ctx["tenant_id"], variant_id, data["retail_price_usd"])
-    _set_current_stock(cur, ctx, variant_id, data["current_stock"], data["cost_price_usd"], actor, movement_type)
+    _set_current_stock(
+        cur,
+        ctx,
+        variant_id,
+        data["current_stock"],
+        data["cost_price_usd"],
+        actor,
+        movement_type,
+        data.get("notes"),
+    )
     item = _get_inventory_item(cur, ctx, sku_id)
     if not item:
         raise RuntimeError(f"Failed to load upserted SKU {sku_id}")
@@ -511,6 +569,7 @@ def _set_current_stock(
     unit_cost: float,
     actor: str,
     movement_type: str,
+    notes: str | None = None,
 ) -> None:
     cur.execute(
         """
@@ -547,9 +606,18 @@ def _set_current_stock(
             tenant_id, store_id, variant_id, movement_type, quantity_delta,
             unit_cost_usd, reference_type, notes, created_by
         )
-        values (%s, %s, %s, %s, %s, %s, 'inventory_ui', 'Set current stock from frontend', %s)
+        values (%s, %s, %s, %s, %s, %s, 'inventory_ui', %s, %s)
         """,
-        (ctx["tenant_id"], ctx["store_id"], variant_id, movement, delta, unit_cost, actor),
+        (
+            ctx["tenant_id"],
+            ctx["store_id"],
+            variant_id,
+            movement,
+            delta,
+            unit_cost,
+            notes or "Set current stock from frontend",
+            actor,
+        ),
     )
     cur.execute(
         """
@@ -572,11 +640,13 @@ def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any]
             v.style_code,
             v.color,
             v.size,
+            v.notes,
             p.name as product_name,
             p.brand,
             p.category,
             p.gender_target,
             p.season,
+            sup.name as supplier_name,
             coalesce(b.quantity_on_hand, 0) as current_stock,
             coalesce(v.cost_price_usd, 0) as cost_price_usd,
             coalesce(pr.amount, 0) as retail_price_usd,
@@ -585,6 +655,7 @@ def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any]
             greatest(p.updated_at, v.updated_at, coalesce(b.updated_at, v.updated_at)) as updated_at
         from core.sku_variants v
         join core.products p on p.id = v.product_id
+        left join core.suppliers sup on sup.id = v.supplier_id
         left join core.inventory_balances b
             on b.variant_id = v.id and b.store_id = %s
         left join lateral (
@@ -617,6 +688,33 @@ def _serialize_item(row: dict[str, Any]) -> dict[str, Any]:
         "stock_value_usd": stock_value,
         "needs_reorder": stock <= int(row.get("reorder_point") or 0),
     }
+
+
+def _upsert_supplier(cur, tenant_id: Any, supplier_name: str | None) -> Any | None:
+    if not supplier_name:
+        return None
+    cur.execute(
+        """
+        insert into core.suppliers (tenant_id, name, is_active)
+        values (%s, %s, true)
+        on conflict (tenant_id, name) do update set
+            is_active = true,
+            updated_at = now()
+        returning id
+        """,
+        (tenant_id, supplier_name),
+    )
+    return cur.fetchone()["id"]
+
+
+def _attach_payload_context(item: dict[str, Any], payload: InventoryItemPayload) -> dict[str, Any]:
+    data = payload.model_dump()
+    context = {
+        key: data.get(key)
+        for key in ("supplier_name", "notes")
+        if data.get(key) is not None
+    }
+    return {**item, **context}
 
 
 def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:

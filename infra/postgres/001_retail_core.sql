@@ -68,6 +68,8 @@ create table if not exists core.sku_variants (
     cost_price_usd numeric(12,2) not null default 0,
     reorder_point integer not null default 0,
     reorder_quantity integer not null default 0,
+    supplier_id uuid references core.suppliers(id) on delete set null,
+    notes text,
     status text not null default 'active' check (status in ('active', 'archived')),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
@@ -76,6 +78,9 @@ create table if not exists core.sku_variants (
 
 create index if not exists idx_sku_variants_style_code
     on core.sku_variants (tenant_id, style_code);
+
+create index if not exists idx_sku_variants_supplier
+    on core.sku_variants (tenant_id, supplier_id);
 
 create unique index if not exists ux_sku_variants_barcode
     on core.sku_variants (tenant_id, barcode)
