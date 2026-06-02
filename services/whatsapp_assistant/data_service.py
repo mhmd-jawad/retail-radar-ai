@@ -917,7 +917,7 @@ if __name__ == "__main__":
     _env_file = _Path(__file__).parent / ".env"
     if _env_file.exists():
         from dotenv import load_dotenv
-        load_dotenv(_env_file, override=True)
+        load_dotenv(_env_file, override=False)
 
     _DB_URL = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     _DATA_DIR = str(_Path(__file__).resolve().parents[2] / "data" / "real")

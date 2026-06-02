@@ -367,7 +367,7 @@ if __name__ == "__main__":
     if _env_file.exists():
         from dotenv import load_dotenv
 
-        load_dotenv(_env_file, override=True)
+        load_dotenv(_env_file, override=False)
 
     TEST_PHONE = "+96170000000"
 

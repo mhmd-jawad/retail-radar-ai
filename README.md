@@ -99,7 +99,7 @@ DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.a
 
 **`retail-radar-ai/frontend/.env.local`**
 ```env
-VITE_API_BASE_URL=http://localhost:8004
+VITE_API_BASE_URL=http://localhost:8000
 VITE_DATA_MODE=eep-live
 VITE_IE3_BASE_URL=http://localhost:8003
 ```
@@ -116,16 +116,16 @@ IG_ACCESS_TOKEN=<token>
 IMGBB_API_KEY=<key>
 ```
 
-### Terminal 1 — EEP backend (port 8004)
+### Terminal 1 — EEP backend (port 8000)
 
 ```powershell
 cd "c:\path\to\Radar Ai"
 .venv\Scripts\Activate.ps1
 cd retail-radar-ai
-uvicorn eep.main:app --host 0.0.0.0 --port 8004 --reload
+uvicorn eep.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Verify: `curl http://localhost:8004/health`
+Verify: `curl http://localhost:8000/health`
 
 ### Terminal 2 — IE3 Campaign Creative service (port 8003)
 
@@ -156,9 +156,9 @@ Open: http://localhost:8082
 | `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
 | `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
 | `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Lollar |
-| `http://localhost:8004/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
-| `http://localhost:8004/report` | Static report JSON (financial pages) |
-| `http://localhost:8004/docs` | FastAPI Swagger UI |
+| `http://localhost:8000/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
+| `http://localhost:8000/report` | Static report JSON (financial pages) |
+| `http://localhost:8000/docs` | FastAPI Swagger UI |
 | `http://localhost:8003/docs` | IE3 campaign service Swagger UI |
 
 ---
@@ -181,13 +181,19 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-### 2. Start the Full Stack Locally
+### 2. Start the Docker App Stack
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-This starts EEP (8000), IE1 (8001), IE2 (8002), IE3 (8003), the dashboard (4173), PostgreSQL (5432), Adminer (8080), Prometheus (9090), and Grafana (3001).
+This starts EEP (8000), IE1 (8001), IE2 (8002), IE3 (8003), the dashboard (4173), Prometheus (9090), Grafana (3001), and uses `DATABASE_URL` from the repo root `.env`.
+
+Local PostgreSQL and Adminer are optional now. Start them only when your `.env` points to a local database:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile local-db up -d postgres adminer
+```
 
 For the Lightsail/RDS deployment flow, see `docs/full-stack-docker-deployment.md`.
 

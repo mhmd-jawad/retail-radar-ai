@@ -31,14 +31,14 @@ interface SettingsState {
 }
 
 const env = import.meta.env;
-const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8004';
+const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
 const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 const defaultIe3BaseUrl = env.PROD ? '/ie3' : 'http://localhost:8003';
 
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
-      mode: (env.VITE_DATA_MODE as DataMode) || 'mock-report',
+      mode: (env.VITE_DATA_MODE as DataMode) || 'eep-live',
       apiBaseUrl: env.VITE_API_BASE_URL ?? defaultApiBaseUrl,
       ie2BaseUrl: env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl,
       ie3BaseUrl: env.VITE_IE3_BASE_URL ?? defaultIe3BaseUrl,
@@ -65,13 +65,16 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'rr-settings-v1',
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         const s = (persistedState ?? {}) as Record<string, unknown>;
-        if (version < 2) {
-          // Port was changed from 8000 → 8004; fix any stale stored URLs
-          if (s.apiBaseUrl === 'http://localhost:8000') {
-            s.apiBaseUrl = 'http://localhost:8004';
+        if (version < 3) {
+          // Keep persisted browser settings aligned with the Docker EEP port.
+          if (s.apiBaseUrl === 'http://localhost:8004') {
+            s.apiBaseUrl = 'http://localhost:8000';
+          }
+          if (s.mode === 'mock-report') {
+            s.mode = 'eep-live';
           }
         }
         return s;

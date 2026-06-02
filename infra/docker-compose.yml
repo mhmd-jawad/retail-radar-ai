@@ -2,6 +2,7 @@ name: retail-radar-local
 
 services:
   postgres:
+    profiles: ["local-db"]
     image: postgres:16
     environment:
       POSTGRES_DB: retail_radar
@@ -20,6 +21,7 @@ services:
     restart: unless-stopped
 
   adminer:
+    profiles: ["local-db"]
     image: adminer:4
     depends_on:
       postgres:
@@ -34,14 +36,8 @@ services:
       dockerfile: eep/Dockerfile
       args:
         INSTALL_IE2: "true"
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
       - ../.env
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/retail_radar
-      RETAIL_AUTO_INIT_DB: "true"
     ports:
       - "8000:8000"
     healthcheck:
@@ -60,6 +56,7 @@ services:
         VITE_DATA_MODE: eep-live
         VITE_API_BASE_URL: http://localhost:8000
         VITE_IE2_BASE_URL: http://localhost:8002
+        VITE_IE3_BASE_URL: http://localhost:8003
         VITE_API_KEY: ${IE2_API_KEY:-ie2-local-postman-key}
         VITE_GRAFANA_URL: http://localhost:3001
     depends_on:
@@ -73,11 +70,8 @@ services:
     build:
       context: ..
       dockerfile: services/market_intelligence/Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/retail_radar
+    env_file:
+      - ../.env
     ports:
       - "8001:8001"
     restart: unless-stopped
@@ -86,9 +80,10 @@ services:
     build:
       context: ..
       dockerfile: services/decision_intelligence/Dockerfile
+    env_file:
+      - ../.env
     environment:
       IE2_API_KEY: ${IE2_API_KEY:-ie2-local-postman-key}
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/retail_radar
     ports:
       - "8002:8002"
     healthcheck:
@@ -103,13 +98,8 @@ services:
     build:
       context: ..
       dockerfile: services/campaign_creative/Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
       - ../.env
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/retail_radar
     ports:
       - "8003:8003"
     volumes:
@@ -155,11 +145,12 @@ services:
     ports:
       - "8004:8004"
     env_file:
+      - ../.env
       - ../services/whatsapp_assistant/.env
     environment:
-      - EEP_BASE_URL=http://eep:8000
-      - IE3_BASE_URL=http://ie3_campaign_creative:8003
-      - PYTHONUNBUFFERED=1
+      EEP_BASE_URL: http://eep:8000
+      IE3_BASE_URL: http://ie3_campaign_creative:8003
+      PYTHONUNBUFFERED: "1"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s

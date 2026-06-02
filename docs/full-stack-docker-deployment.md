@@ -5,7 +5,7 @@ containers:
 
 | File | Purpose | Database |
 | --- | --- | --- |
-| `infra/docker-compose.yml` | Full local development stack | Local PostgreSQL container |
+| `infra/docker-compose.yml` | Full local development stack | `DATABASE_URL` from repo `.env` |
 | `infra/docker-compose.aws.yml` | Lightsail deployment stack | Existing Amazon RDS PostgreSQL |
 
 Do not run a PostgreSQL container on Lightsail for the AWS deployment. The
@@ -66,7 +66,7 @@ From the repository root in PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
-# Put real local testing secrets in .env if testing Apify or IE3.
+# Put your real DATABASE_URL and testing secrets in .env.
 docker compose -f infra\docker-compose.yml up -d --build
 docker compose -f infra\docker-compose.yml ps
 ```
@@ -84,9 +84,13 @@ Open:
 | Prometheus | `http://localhost:9090` |
 | Grafana | `http://localhost:3001` |
 
-The local Compose file creates the complete `core`, `intel`, and `marketing`
-schema because it is a development database, not the deployed scraping-only
-RDS database.
+The local Compose file now points app services at `DATABASE_URL` from `.env`.
+If you want a disposable local PostgreSQL instead, start the optional database
+profile and set `.env` to `postgresql://postgres:postgres@localhost:5432/retail_radar`:
+
+```powershell
+docker compose -f infra\docker-compose.yml --profile local-db up -d postgres adminer
+```
 
 ## Update The Existing Lightsail Deployment
 

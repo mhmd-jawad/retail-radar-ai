@@ -43,7 +43,7 @@ from services.decision_intelligence.schemas import RecommendationResult
 
 # ── Load .env from the service directory ─────────────────────────────────────
 _SERVICE_DIR = Path(__file__).parent
-load_dotenv(_SERVICE_DIR / ".env", override=True)
+load_dotenv(_SERVICE_DIR / ".env", override=False)
 
 # ── Static directory (locally generated Pillow images) ───────────────────────
 _STATIC_DIR = _SERVICE_DIR / "static"
