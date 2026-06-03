@@ -24,7 +24,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from eep.apify_ingest import (
@@ -214,6 +214,13 @@ def scrape_runs() -> list[dict[str, Any]]:
 @app.get("/ops/competitor-latest")
 def competitor_latest(limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
     return build_competitor_latest(limit=limit)
+
+
+@app.get("/evaluation/live-rds/metrics")
+def live_rds_evaluation_metrics() -> Response:
+    from services.decision_intelligence.evaluation.live_rds_metrics import render_prometheus_metrics
+
+    return Response(render_prometheus_metrics(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/inventory/db/status")

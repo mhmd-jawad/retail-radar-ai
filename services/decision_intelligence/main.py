@@ -683,13 +683,16 @@ def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float,
     return decision, round(confidence, 3), _build_rule_explanations(features, decision)
 
 
-def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
-    t_start = time.time()
+def _recommend_with_features(
+    req: RecommendationRequest,
+    features: dict,
+    t_start: float | None = None,
+) -> RecommendationResult:
+    t_start = t_start or time.time()
     margin_pct = (
         (req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd * 100
         if req.retail_price_usd > 0 else 0.0
     )
-    features = _build_model_features(req)
     rule_result = run_rules(features)
 
     rule_override = None
@@ -767,6 +770,12 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         model_version=MODEL_VERSION,
         processing_time_ms=int((time.time() - t_start) * 1000),
     )
+
+
+def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
+    t_start = time.time()
+    features = _build_model_features(req)
+    return _recommend_with_features(req, features, t_start=t_start)
 
 
 @app.get("/health")

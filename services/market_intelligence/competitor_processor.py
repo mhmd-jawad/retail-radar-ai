@@ -147,6 +147,14 @@ def _as_clean_rows(competitor_rows: list[dict[str, Any]] | pd.DataFrame | None) 
     if competitor_rows is None:
         return load_live_competitor_rows()
     frame = competitor_rows.copy() if isinstance(competitor_rows, pd.DataFrame) else pd.DataFrame(competitor_rows)
+    clean_markers = {
+        "product_key",
+        "effective_competitor_price_usd",
+        "category_normalized",
+        "gender_normalized",
+    }
+    if clean_markers.issubset(set(frame.columns)):
+        return frame
     frame = matcher.normalize_columns(frame)
     for optional_col in matcher.RELEVANT_SCRAPE_COLUMNS:
         if optional_col not in frame.columns:

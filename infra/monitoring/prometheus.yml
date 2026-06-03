@@ -8,3 +8,9 @@ scrape_configs:
     static_configs:
       - targets:
           - eep:8000
+
+  - job_name: live_rds_evaluation
+    metrics_path: /evaluation/live-rds/metrics
+    static_configs:
+      - targets:
+          - eep:8000

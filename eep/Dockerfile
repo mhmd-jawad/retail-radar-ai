@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r /tmp/eep-requirements.txt \
 COPY eep ./eep
 COPY infra ./infra
 COPY data ./data
-COPY scraping/data/output ./scraping/data/output
+RUN mkdir -p ./scraping/data/output
 COPY stylepulse ./stylepulse
 COPY services ./services
 
