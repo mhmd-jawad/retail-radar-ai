@@ -1,5 +1,6 @@
 import { Search, Command, Bell, ChevronDown } from 'lucide-react';
 import { useSettings } from '@/store/settings';
+import { useAuth } from '@/store/auth';
 import { modeLabel } from '@/lib/adapter';
 import { cn } from '@/lib/utils';
 import {
@@ -25,6 +26,7 @@ const modeColor: Record<DataMode, string> = {
 
 export function TopBar({ title, subtitle, actions }: Props) {
   const { mode, setMode } = useSettings();
+  const user = useAuth((state) => state.user);
 
   return (
     <header className="sticky top-0 z-40 backdrop-blur-md bg-background/85 border-b border-border">
@@ -85,10 +87,20 @@ export function TopBar({ title, subtitle, actions }: Props) {
 
         <div className="hidden md:flex items-center gap-2 pl-3 border-l border-border">
           <div className="h-9 w-9 rounded-full bg-gradient-data text-primary-foreground flex items-center justify-center text-[12px] font-semibold">
-            NK
+            {initials(user?.full_name || user?.email || 'RR')}
           </div>
         </div>
       </div>
     </header>
   );
+}
+
+function initials(value: string) {
+  return value
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }

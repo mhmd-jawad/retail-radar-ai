@@ -2,8 +2,12 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
   Upload, ScrollText, Activity, Settings, Radio, Home, ExternalLink,
+  User, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { logoutAccount } from '@/lib/adapter';
+import { useAuth } from '@/store/auth';
+import { useReport } from '@/hooks/useReport';
 
 const grafanaUrl = import.meta.env.VITE_GRAFANA_URL ?? 'http://localhost:3001';
 
@@ -13,7 +17,7 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
     items: [
       { to: '/', label: 'Home', icon: Home },
       { to: '/overview', label: 'Overview', icon: LayoutDashboard },
-      { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: '350' },
+      { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: 'queue' },
     ],
   },
   {
@@ -31,12 +35,30 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
       { to: '/upload', label: 'Upload & Batch', icon: Upload },
       { to: '/audit', label: 'Audit Trail', icon: ScrollText },
       { to: '/ops', label: 'Ops & Pipeline', icon: Activity },
+      { to: '/shop-profile', label: 'Shop Profile', icon: User },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];
 
 export function AppSidebar() {
+  const user = useAuth((state) => state.user);
+  const clearSession = useAuth((state) => state.clearSession);
+  const { data: report } = useReport();
+  const skuCount = report?.inventory.sku_analysis.length ?? 0;
+  const queueBadge = report ? String(skuCount) : '...';
+
+  async function handleLogout() {
+    try {
+      await logoutAccount();
+    } catch {
+      // Local logout should still clear a stale or expired token.
+    } finally {
+      clearSession();
+      window.location.href = '/login';
+    }
+  }
+
   return (
     <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
@@ -83,7 +105,7 @@ export function AppSidebar() {
                         <span className="flex-1">{it.label}</span>
                         {it.badge && (
                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sidebar-accent/60 text-sidebar-foreground/70">
-                            {it.badge}
+                            {it.badge === 'queue' ? queueBadge : it.badge}
                           </span>
                         )}
                       </>
@@ -98,13 +120,26 @@ export function AppSidebar() {
 
       <div className="px-4 py-4 border-t border-sidebar-border">
         <div className="rounded-lg bg-sidebar-accent/40 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-gradient-data text-primary-foreground flex items-center justify-center text-[11px] font-semibold">
+              {initials(user?.full_name || user?.email || 'RR')}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold text-sidebar-foreground">
+                {user?.tenant_name || user?.full_name || 'Account'}
+              </div>
+              <div className="truncate text-[10.5px] uppercase tracking-wider text-sidebar-foreground/50">
+                {user?.global_role || 'shop'}
+              </div>
+            </div>
+          </div>
           <div>
             <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/60 mb-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" />
               ANALYTICS ENGINE
             </div>
             <div className="text-[12px] text-sidebar-foreground/85 leading-snug">
-              350 SKUs - 37,102 competitor records - synced 6h ago
+              {report ? `${skuCount} SKUs - tenant data synced` : 'Syncing tenant data'}
             </div>
           </div>
           <a
@@ -116,8 +151,25 @@ export function AppSidebar() {
             Monitoring
             <ExternalLink className="h-3 w-3" />
           </a>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-sidebar-foreground/70 hover:text-sidebar-foreground transition"
+          >
+            <LogOut className="h-3 w-3" />
+            Logout
+          </button>
         </div>
       </div>
     </aside>
   );
+}
+
+function initials(value: string) {
+  return value
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import threading
+import time
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
@@ -21,6 +22,8 @@ DEFAULT_STORE_CODE = "MAIN"
 
 _SCHEMA_READY = False
 _SCHEMA_LOCK = threading.Lock()
+_DETAIL_COLUMNS_READY = False
+_DETAIL_COLUMNS_LOCK = threading.Lock()
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -106,25 +109,32 @@ def _import_psycopg():
 
 @contextmanager
 def _connect():
-    import socket
     from urllib.parse import urlparse
     _url = urlparse(database_url())
     _host = _url.hostname or "localhost"
     _port = _url.port or 5432
-    try:
-        s = socket.create_connection((_host, _port), timeout=0.5)
-        s.close()
-    except OSError as exc:
-        raise DatabaseUnavailable(f"Cannot reach PostgreSQL at {_host}:{_port}: {exc}") from exc
-
+    _tcp_timeout = float(os.environ.get("DATABASE_TCP_TIMEOUT_SECONDS", "10"))
     psycopg, dict_row = _import_psycopg()
-    try:
-        conn = psycopg.connect(database_url(), row_factory=dict_row, connect_timeout=3)
-    except Exception as exc:  # pragma: no cover - depends on local DB
-        raise DatabaseUnavailable(f"Cannot connect to PostgreSQL: {exc}") from exc
+    conn = None
+    last_connect_error: Exception | None = None
+    last_connect_message = f"Cannot connect to PostgreSQL at {_host}:{_port}"
+    retries = max(1, int(os.environ.get("DATABASE_CONNECT_RETRIES", "3")))
+    retry_delay = float(os.environ.get("DATABASE_CONNECT_RETRY_DELAY_SECONDS", "1"))
+    for attempt in range(retries):
+        try:
+            conn = psycopg.connect(database_url(), row_factory=dict_row, connect_timeout=max(5, int(_tcp_timeout)))
+            break
+        except Exception as exc:  # pragma: no cover - depends on local DB
+            last_connect_error = exc
+            last_connect_message = f"Cannot connect to PostgreSQL: {exc}"
+        if attempt < retries - 1:
+            time.sleep(retry_delay)
+    if conn is None:
+        raise DatabaseUnavailable(f"{last_connect_message} (attempted {retries} times)") from last_connect_error
 
     try:
         _ensure_schema(conn)
+        _ensure_inventory_detail_columns(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -149,36 +159,77 @@ def _ensure_schema(conn) -> None:
         _SCHEMA_READY = True
 
 
-def _context(cur) -> dict[str, Any]:
-    cur.execute(
-        """
-        select t.id as tenant_id, s.id as store_id
-        from core.tenants t
-        join core.stores s on s.tenant_id = t.id
-        where t.slug = %s and s.code = %s and s.is_active = true
-        """,
-        (tenant_slug(), store_code()),
-    )
+def _ensure_inventory_detail_columns(conn) -> None:
+    """Apply additive inventory columns on live DBs where full auto-init is disabled."""
+    global _DETAIL_COLUMNS_READY
+    if _DETAIL_COLUMNS_READY:
+        return
+    with _DETAIL_COLUMNS_LOCK:
+        if _DETAIL_COLUMNS_READY:
+            return
+        with conn.cursor() as cur:
+            cur.execute("select to_regclass('core.sku_variants') as table_name")
+            if not cur.fetchone()["table_name"]:
+                return
+            cur.execute(
+                """
+                alter table core.sku_variants
+                    add column if not exists supplier_id uuid references core.suppliers(id) on delete set null,
+                    add column if not exists notes text
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_sku_variants_supplier
+                    on core.sku_variants (tenant_id, supplier_id)
+                """
+            )
+        conn.commit()
+        _DETAIL_COLUMNS_READY = True
+
+
+def _context(cur, tenant_id: Any | None = None, store_code_override: str | None = None) -> dict[str, Any]:
+    desired_store = store_code_override or store_code()
+    if tenant_id:
+        cur.execute(
+            """
+            select t.id as tenant_id, t.slug as tenant_slug, s.id as store_id, s.code as store_code
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.id = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_id, desired_store),
+        )
+    else:
+        cur.execute(
+            """
+            select t.id as tenant_id, t.slug as tenant_slug, s.id as store_id, s.code as store_code
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.slug = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_slug(), desired_store),
+        )
     row = cur.fetchone()
     if not row:
         raise DatabaseUnavailable(
-            f"Default tenant/store not found: {tenant_slug()}/{store_code()}. Run the schema first."
+            f"Tenant/store not found: {tenant_id or tenant_slug()}/{desired_store}. Run the schema first."
         )
     return row
 
 
-def db_status() -> dict[str, Any]:
+def db_status(tenant_id: Any | None = None) -> dict[str, Any]:
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                ctx = _context(cur)
+                ctx = _context(cur, tenant_id=tenant_id)
                 cur.execute("select count(*) as item_count from core.sku_variants where tenant_id = %s", (ctx["tenant_id"],))
                 count = cur.fetchone()["item_count"]
         return {
             "connected": True,
             "database_url_hint": _safe_database_url(),
-            "tenant": tenant_slug(),
-            "store": store_code(),
+            "tenant": ctx["tenant_slug"],
+            "store": ctx["store_code"],
             "item_count": int(count),
             "schema_auto_init": os.environ.get("RETAIL_AUTO_INIT_DB", "true"),
         }
@@ -186,16 +237,16 @@ def db_status() -> dict[str, Any]:
         return {
             "connected": False,
             "database_url_hint": _safe_database_url(),
-            "tenant": tenant_slug(),
+            "tenant": str(tenant_id) if tenant_id else tenant_slug(),
             "store": store_code(),
             "error": str(exc),
         }
 
 
-def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[str, Any]:
+def list_inventory_items(search: str | None = None, limit: int = 500, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             params: list[Any] = [ctx["tenant_id"]]
             conditions = ["v.tenant_id = %s", "v.status = 'active'"]
             if search:
@@ -206,9 +257,14 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     " or lower(p.name) like %s"
                     " or lower(p.brand) like %s"
                     " or lower(coalesce(v.style_code, '')) like %s"
+                    " or lower(coalesce(p.gender_target, '')) like %s"
+                    " or lower(coalesce(p.season, '')) like %s"
+                    " or lower(coalesce(v.color, '')) like %s"
+                    " or lower(coalesce(v.size, '')) like %s"
+                    " or lower(coalesce(sup.name, '')) like %s"
                     ")"
                 )
-                params.extend([search_param, search_param, search_param, search_param])
+                params.extend([search_param] * 9)
             params.append(limit)
             where = " and ".join(conditions)
             cur.execute(
@@ -221,11 +277,13 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     v.style_code,
                     v.color,
                     v.size,
+                    v.notes,
                     p.name as product_name,
                     p.brand,
                     p.category,
                     p.gender_target,
                     p.season,
+                    sup.name as supplier_name,
                     coalesce(b.quantity_on_hand, 0) as current_stock,
                     coalesce(v.cost_price_usd, 0) as cost_price_usd,
                     coalesce(pr.amount, 0) as retail_price_usd,
@@ -234,6 +292,7 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
                     greatest(p.updated_at, v.updated_at, coalesce(b.updated_at, v.updated_at)) as updated_at
                 from core.sku_variants v
                 join core.products p on p.id = v.product_id
+                left join core.suppliers sup on sup.id = v.supplier_id
                 left join core.inventory_balances b
                     on b.variant_id = v.id and b.store_id = %s
                 left join lateral (
@@ -255,26 +314,28 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
     return {"items": items, "summary": _summary(items)}
 
 
-def create_inventory_item(payload: InventoryItemPayload) -> dict[str, Any]:
+def create_inventory_item(payload: InventoryItemPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             item = _upsert_inventory_item(cur, ctx, payload, actor="frontend", movement_type="initial_stock")
-            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "upsert", None, item)
-    return item
+            item_with_context = _attach_payload_context(item, payload)
+            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "upsert", None, item_with_context)
+    return item_with_context
 
 
-def update_inventory_item(sku_id: str, payload: InventoryItemPayload) -> dict[str, Any]:
+def update_inventory_item(sku_id: str, payload: InventoryItemPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     data = payload.model_copy(update={"sku_id": sku_id})
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
             item = _upsert_inventory_item(cur, ctx, data, actor="frontend", movement_type="adjustment_in")
-            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "update", before, item)
-    return item
+            item_with_context = _attach_payload_context(item, data)
+            _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "update", before, item_with_context)
+    return item_with_context
 
 
 def patch_inventory_price(
@@ -282,11 +343,12 @@ def patch_inventory_price(
     new_price: float,
     decision_type: str,
     notes: str | None = None,
+    tenant_id: Any | None = None,
 ) -> dict[str, Any]:
     """Patch only the retail_price_usd for a SKU and write an audit entry."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
@@ -303,11 +365,16 @@ def patch_inventory_price(
     return after
 
 
-def record_retailer_decision(sku_id: str, decision_type: str, notes: str | None = None) -> dict[str, Any]:
+def record_retailer_decision(
+    sku_id: str,
+    decision_type: str,
+    notes: str | None = None,
+    tenant_id: Any | None = None,
+) -> dict[str, Any]:
     """Record a non-price retailer decision (e.g. hold acknowledgement) in the audit log."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             item = _get_inventory_item(cur, ctx, sku_id)
             if not item:
                 raise KeyError(sku_id)
@@ -318,10 +385,10 @@ def record_retailer_decision(sku_id: str, decision_type: str, notes: str | None 
     return {"ok": True, "sku_id": sku_id, "decision_type": decision_type}
 
 
-def archive_inventory_item(sku_id: str) -> dict[str, Any]:
+def archive_inventory_item(sku_id: str, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
@@ -338,12 +405,12 @@ def archive_inventory_item(sku_id: str) -> dict[str, Any]:
     return after
 
 
-def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
+def import_inventory(payload: InventoryImportPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     seen: set[str] = set()
     items: list[dict[str, Any]] = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             for entry in payload.items:
                 item = _upsert_inventory_item(
                     cur,
@@ -352,8 +419,9 @@ def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
                     actor="bulk_import",
                     movement_type="full_import_adjustment",
                 )
-                seen.add(item["sku_id"])
-                items.append(item)
+                item_with_context = _attach_payload_context(item, entry)
+                seen.add(item_with_context["sku_id"])
+                items.append(item_with_context)
 
             archived_count = 0
             if payload.mode == "replace":
@@ -382,6 +450,7 @@ def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
 def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPayload, actor: str, movement_type: str) -> dict[str, Any]:
     data = payload.model_dump()
     sku_id = data["sku_id"]
+    supplier_id = _upsert_supplier(cur, ctx["tenant_id"], data.get("supplier_name"))
     cur.execute(
         """
         select v.id as variant_id, p.id as product_id
@@ -416,7 +485,8 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
             """
             update core.sku_variants
             set barcode = %s, style_code = %s, color = %s, size = %s, cost_price_usd = %s,
-                reorder_point = %s, reorder_quantity = %s, status = 'active', updated_at = now()
+                reorder_point = %s, reorder_quantity = %s, supplier_id = %s, notes = %s,
+                status = 'active', updated_at = now()
             where id = %s
             """,
             (
@@ -427,6 +497,8 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
                 data["cost_price_usd"],
                 data["reorder_point"],
                 data["reorder_quantity"],
+                supplier_id,
+                data["notes"],
                 variant_id,
             ),
         )
@@ -451,9 +523,9 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
             """
             insert into core.sku_variants (
                 tenant_id, product_id, sku_id, barcode, style_code, color, size,
-                cost_price_usd, reorder_point, reorder_quantity
+                cost_price_usd, reorder_point, reorder_quantity, supplier_id, notes
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             returning id
             """,
             (
@@ -467,12 +539,23 @@ def _upsert_inventory_item(cur, ctx: dict[str, Any], payload: InventoryItemPaylo
                 data["cost_price_usd"],
                 data["reorder_point"],
                 data["reorder_quantity"],
+                supplier_id,
+                data["notes"],
             ),
         )
         variant_id = cur.fetchone()["id"]
 
     _set_current_price(cur, ctx["tenant_id"], variant_id, data["retail_price_usd"])
-    _set_current_stock(cur, ctx, variant_id, data["current_stock"], data["cost_price_usd"], actor, movement_type)
+    _set_current_stock(
+        cur,
+        ctx,
+        variant_id,
+        data["current_stock"],
+        data["cost_price_usd"],
+        actor,
+        movement_type,
+        data.get("notes"),
+    )
     item = _get_inventory_item(cur, ctx, sku_id)
     if not item:
         raise RuntimeError(f"Failed to load upserted SKU {sku_id}")
@@ -511,6 +594,7 @@ def _set_current_stock(
     unit_cost: float,
     actor: str,
     movement_type: str,
+    notes: str | None = None,
 ) -> None:
     cur.execute(
         """
@@ -547,9 +631,18 @@ def _set_current_stock(
             tenant_id, store_id, variant_id, movement_type, quantity_delta,
             unit_cost_usd, reference_type, notes, created_by
         )
-        values (%s, %s, %s, %s, %s, %s, 'inventory_ui', 'Set current stock from frontend', %s)
+        values (%s, %s, %s, %s, %s, %s, 'inventory_ui', %s, %s)
         """,
-        (ctx["tenant_id"], ctx["store_id"], variant_id, movement, delta, unit_cost, actor),
+        (
+            ctx["tenant_id"],
+            ctx["store_id"],
+            variant_id,
+            movement,
+            delta,
+            unit_cost,
+            notes or "Set current stock from frontend",
+            actor,
+        ),
     )
     cur.execute(
         """
@@ -572,11 +665,13 @@ def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any]
             v.style_code,
             v.color,
             v.size,
+            v.notes,
             p.name as product_name,
             p.brand,
             p.category,
             p.gender_target,
             p.season,
+            sup.name as supplier_name,
             coalesce(b.quantity_on_hand, 0) as current_stock,
             coalesce(v.cost_price_usd, 0) as cost_price_usd,
             coalesce(pr.amount, 0) as retail_price_usd,
@@ -585,6 +680,7 @@ def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any]
             greatest(p.updated_at, v.updated_at, coalesce(b.updated_at, v.updated_at)) as updated_at
         from core.sku_variants v
         join core.products p on p.id = v.product_id
+        left join core.suppliers sup on sup.id = v.supplier_id
         left join core.inventory_balances b
             on b.variant_id = v.id and b.store_id = %s
         left join lateral (
@@ -617,6 +713,33 @@ def _serialize_item(row: dict[str, Any]) -> dict[str, Any]:
         "stock_value_usd": stock_value,
         "needs_reorder": stock <= int(row.get("reorder_point") or 0),
     }
+
+
+def _upsert_supplier(cur, tenant_id: Any, supplier_name: str | None) -> Any | None:
+    if not supplier_name:
+        return None
+    cur.execute(
+        """
+        insert into core.suppliers (tenant_id, name, is_active)
+        values (%s, %s, true)
+        on conflict (tenant_id, name) do update set
+            is_active = true,
+            updated_at = now()
+        returning id
+        """,
+        (tenant_id, supplier_name),
+    )
+    return cur.fetchone()["id"]
+
+
+def _attach_payload_context(item: dict[str, Any], payload: InventoryItemPayload) -> dict[str, Any]:
+    data = payload.model_dump()
+    context = {
+        key: data.get(key)
+        for key in ("supplier_name", "notes")
+        if data.get(key) is not None
+    }
+    return {**item, **context}
 
 
 def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -692,3 +815,358 @@ def _safe_database_url() -> str:
         return url
     scheme, rest = url.split("://", 1)
     return f"{scheme}://***@{rest.split('@', 1)[1]}"
+
+
+# ─── Outcome Tracking DB helpers ─────────────────────────────────────────────
+
+def get_variant_id_for_sku(sku_id: str) -> str | None:
+    """Return the UUID variant_id for a given sku_id string."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                "select id from core.sku_variants where tenant_id = %s and sku_id = %s and status = 'active'",
+                (ctx["tenant_id"], sku_id),
+            )
+            row = cur.fetchone()
+            return str(row["id"]) if row else None
+
+
+def get_tenant_id() -> str:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            return str(ctx["tenant_id"])
+
+
+def query_velocity_window(
+    variant_id: str,
+    window_start: "datetime",
+    window_end: "datetime",
+) -> dict[str, Any]:
+    """
+    Compute real velocity metrics from sales_transactions + sales_transaction_lines
+    for a specific variant_id over [window_start, window_end).
+
+    Returns dict with keys:
+        total_units, total_revenue, avg_unit_price, velocity_daily, data_available
+    """
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(SUM(stl.quantity), 0)              AS total_units,
+                    COALESCE(SUM(stl.quantity * stl.unit_price_usd), 0) AS total_revenue,
+                    CASE WHEN SUM(stl.quantity) > 0
+                         THEN SUM(stl.quantity * stl.unit_price_usd) / SUM(stl.quantity)
+                         ELSE 0 END                             AS avg_unit_price
+                FROM core.sales_transactions st
+                JOIN core.sales_transaction_lines stl ON st.id = stl.sales_transaction_id
+                WHERE stl.variant_id = %s
+                  AND st.tenant_id = %s
+                  AND st.sold_at >= %s
+                  AND st.sold_at < %s
+                """,
+                (variant_id, ctx["tenant_id"], window_start, window_end),
+            )
+            row = cur.fetchone()
+
+    total_units = int(row["total_units"] or 0)
+    total_revenue = _number(row["total_revenue"])
+    avg_price = _number(row["avg_unit_price"])
+    window_days = max((window_end - window_start).days, 1)
+    velocity_daily = round(total_units / window_days, 4)
+
+    return {
+        "total_units": total_units,
+        "total_revenue": total_revenue,
+        "avg_unit_price": avg_price,
+        "velocity_daily": velocity_daily,
+        "window_days": window_days,
+        "data_available": total_units > 0,
+    }
+
+
+def query_daily_sales_series(
+    variant_id: str,
+    series_start: "datetime",
+    series_end: "datetime",
+) -> list[dict[str, Any]]:
+    """
+    Return day-by-day units sold and revenue for a variant.
+    Used for the velocity timeline chart in OutcomePanel.
+    Returns list of { date: str, units_sold: int, revenue: float }.
+    """
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                SELECT
+                    DATE(st.sold_at)                            AS sale_date,
+                    COALESCE(SUM(stl.quantity), 0)              AS units_sold,
+                    COALESCE(SUM(stl.quantity * stl.unit_price_usd), 0) AS revenue
+                FROM core.sales_transactions st
+                JOIN core.sales_transaction_lines stl ON st.id = stl.sales_transaction_id
+                WHERE stl.variant_id = %s
+                  AND st.tenant_id = %s
+                  AND st.sold_at >= %s
+                  AND st.sold_at < %s
+                GROUP BY DATE(st.sold_at)
+                ORDER BY sale_date
+                """,
+                (variant_id, ctx["tenant_id"], series_start, series_end),
+            )
+            rows = cur.fetchall() or []
+
+    return [
+        {
+            "date": row["sale_date"].isoformat(),
+            "units_sold": int(row["units_sold"] or 0),
+            "revenue": _number(row["revenue"]),
+        }
+        for row in rows
+    ]
+
+
+def get_current_stock_for_variant(variant_id: str) -> int:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                SELECT COALESCE(quantity_on_hand, 0) AS qty
+                FROM core.inventory_balances
+                WHERE tenant_id = %s AND store_id = %s AND variant_id = %s
+                """,
+                (ctx["tenant_id"], ctx["store_id"], variant_id),
+            )
+            row = cur.fetchone()
+            return int(row["qty"]) if row else 0
+
+
+def get_recommendation_by_id(recommendation_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                SELECT id, recommendation, confidence, explanation,
+                       suggested_discount_pct, suggested_price_usd, status
+                FROM marketing.recommendations
+                WHERE tenant_id = %s AND id = %s
+                """,
+                (ctx["tenant_id"], recommendation_id),
+            )
+            row = cur.fetchone()
+            return {k: _jsonable(v) for k, v in row.items()} if row else None
+
+
+def insert_decision_snapshot(data: dict[str, Any]) -> int:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                INSERT INTO outcome_tracking.decision_snapshots (
+                    tenant_id, variant_id, recommendation_id, decision_type, approved_at,
+                    baseline_velocity_daily, baseline_revenue_7d, baseline_avg_price,
+                    baseline_qty_on_hand, baseline_margin_pct, baseline_dos,
+                    predicted_lift_pct, ie2_confidence, ie2_explanation, suggested_discount_pct,
+                    check_7d_at, check_14d_at, status
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                RETURNING id
+                """,
+                (
+                    ctx["tenant_id"],
+                    data["variant_id"],
+                    data.get("recommendation_id"),
+                    data["decision_type"],
+                    data["approved_at"],
+                    data.get("baseline_velocity_daily"),
+                    data.get("baseline_revenue_7d"),
+                    data.get("baseline_avg_price"),
+                    data.get("baseline_qty_on_hand"),
+                    data.get("baseline_margin_pct"),
+                    data.get("baseline_dos"),
+                    data.get("predicted_lift_pct"),
+                    data.get("ie2_confidence"),
+                    data.get("ie2_explanation"),
+                    data.get("suggested_discount_pct"),
+                    data.get("check_7d_at"),
+                    data.get("check_14d_at"),
+                    data.get("status", "tracking"),
+                ),
+            )
+            snapshot_id = cur.fetchone()["id"]
+    return snapshot_id
+
+
+def get_snapshot_by_id(snapshot_id: int) -> dict[str, Any] | None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM outcome_tracking.decision_snapshots WHERE id = %s",
+                (snapshot_id,),
+            )
+            row = cur.fetchone()
+            return {k: _jsonable(v) for k, v in row.items()} if row else None
+
+
+def get_snapshots_for_variant(variant_id: str) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            cur.execute(
+                """
+                SELECT s.*, json_agg(
+                    json_build_object(
+                        'id', m.id,
+                        'window_days', m.window_days,
+                        'measured_at', m.measured_at,
+                        'actual_velocity_daily', m.actual_velocity_daily,
+                        'actual_revenue_total', m.actual_revenue_total,
+                        'actual_qty_sold', m.actual_qty_sold,
+                        'actual_avg_price', m.actual_avg_price,
+                        'velocity_lift_pct', m.velocity_lift_pct,
+                        'revenue_delta_usd', m.revenue_delta_usd,
+                        'campaign_roi_usd', m.campaign_roi_usd,
+                        'accuracy_score', m.accuracy_score,
+                        'narrative', m.narrative,
+                        'data_available', m.data_available
+                    ) ORDER BY m.window_days
+                ) FILTER (WHERE m.id IS NOT NULL) AS measurements
+                FROM outcome_tracking.decision_snapshots s
+                LEFT JOIN outcome_tracking.outcome_measurements m ON m.snapshot_id = s.id
+                WHERE s.tenant_id = %s AND s.variant_id = %s
+                GROUP BY s.id
+                ORDER BY s.approved_at DESC
+                """,
+                (ctx["tenant_id"], variant_id),
+            )
+            rows = cur.fetchall() or []
+            return [{k: _jsonable(v) for k, v in row.items()} for row in rows]
+
+
+def insert_outcome_measurement(data: dict[str, Any]) -> int:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO outcome_tracking.outcome_measurements (
+                    snapshot_id, window_days,
+                    actual_velocity_daily, actual_revenue_total, actual_qty_sold, actual_avg_price,
+                    velocity_lift_pct, revenue_delta_usd, campaign_roi_usd, accuracy_score,
+                    narrative, llm_computed_lift_pct, llm_computed_revenue_delta, data_available
+                ) VALUES (
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s
+                )
+                ON CONFLICT (snapshot_id, window_days) DO UPDATE SET
+                    actual_velocity_daily = EXCLUDED.actual_velocity_daily,
+                    actual_revenue_total = EXCLUDED.actual_revenue_total,
+                    actual_qty_sold = EXCLUDED.actual_qty_sold,
+                    actual_avg_price = EXCLUDED.actual_avg_price,
+                    velocity_lift_pct = EXCLUDED.velocity_lift_pct,
+                    revenue_delta_usd = EXCLUDED.revenue_delta_usd,
+                    campaign_roi_usd = EXCLUDED.campaign_roi_usd,
+                    accuracy_score = EXCLUDED.accuracy_score,
+                    narrative = EXCLUDED.narrative,
+                    llm_computed_lift_pct = EXCLUDED.llm_computed_lift_pct,
+                    llm_computed_revenue_delta = EXCLUDED.llm_computed_revenue_delta,
+                    data_available = EXCLUDED.data_available,
+                    measured_at = now()
+                RETURNING id
+                """,
+                (
+                    data["snapshot_id"],
+                    data["window_days"],
+                    data.get("actual_velocity_daily"),
+                    data.get("actual_revenue_total"),
+                    data.get("actual_qty_sold"),
+                    data.get("actual_avg_price"),
+                    data.get("velocity_lift_pct"),
+                    data.get("revenue_delta_usd"),
+                    data.get("campaign_roi_usd"),
+                    data.get("accuracy_score"),
+                    data.get("narrative"),
+                    data.get("llm_computed_lift_pct"),
+                    data.get("llm_computed_revenue_delta"),
+                    data.get("data_available", True),
+                ),
+            )
+            return cur.fetchone()["id"]
+
+
+def update_snapshot_status(snapshot_id: int, status: str) -> None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE outcome_tracking.decision_snapshots SET status = %s WHERE id = %s",
+                (status, snapshot_id),
+            )
+
+
+def get_portfolio_accuracy(decision_type: str | None = None) -> dict[str, Any]:
+    """Aggregate accuracy scores across all completed measurements."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur)
+            if decision_type:
+                cur.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS decision_count,
+                        AVG(m.accuracy_score) AS avg_accuracy,
+                        s.decision_type
+                    FROM outcome_tracking.outcome_measurements m
+                    JOIN outcome_tracking.decision_snapshots s ON s.id = m.snapshot_id
+                    WHERE s.tenant_id = %s AND m.data_available = true
+                      AND s.decision_type = %s AND m.window_days = 7
+                    GROUP BY s.decision_type
+                    """,
+                    (ctx["tenant_id"], decision_type),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS decision_count,
+                        AVG(m.accuracy_score) AS avg_accuracy,
+                        s.decision_type
+                    FROM outcome_tracking.outcome_measurements m
+                    JOIN outcome_tracking.decision_snapshots s ON s.id = m.snapshot_id
+                    WHERE s.tenant_id = %s AND m.data_available = true AND m.window_days = 7
+                    GROUP BY s.decision_type
+                    """,
+                    (ctx["tenant_id"],),
+                )
+            rows = cur.fetchall() or []
+
+    by_type: dict[str, float] = {}
+    total_count = 0
+    total_acc_sum = 0.0
+    for row in rows:
+        dt = row["decision_type"]
+        acc = float(row["avg_accuracy"] or 0)
+        cnt = int(row["decision_count"] or 0)
+        by_type[dt] = round(acc * 100, 1)
+        total_count += cnt
+        total_acc_sum += acc * cnt
+
+    avg_acc = round((total_acc_sum / total_count) * 100, 1) if total_count > 0 else None
+    return {
+        "avg_accuracy": avg_acc,
+        "decision_count": total_count,
+        "by_type": by_type,
+    }

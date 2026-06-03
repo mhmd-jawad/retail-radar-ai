@@ -24,9 +24,31 @@ try:
 except ImportError:
     pass
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from eep.auth_db import (
+    AuthContext,
+    AuthError,
+    LoginPayload,
+    ShopProfileUpdatePayload,
+    ShopSignupPayload,
+    admin_list_competitors,
+    admin_list_competitor_requests,
+    admin_list_notifications,
+    admin_list_tenants,
+    authenticate_token,
+    ensure_default_admin_account,
+    get_shop_profile,
+    list_available_competitors,
+    list_shop_notifications,
+    login,
+    logout,
+    signup_shop,
+    token_from_authorization,
+    update_notification_status,
+    update_shop_profile,
+)
 from eep.apify_ingest import (
     apify_token,
     extract_actor_run_id,
@@ -59,6 +81,7 @@ from eep.retail_db import (
     archive_inventory_item,
     create_inventory_item,
     db_status,
+    get_variant_id_for_sku,
     import_inventory,
     list_inventory_items,
     patch_inventory_price,
@@ -73,12 +96,24 @@ class PriceDecisionPayload(BaseModel):
     retail_price_usd: float = PField(gt=0)
     decision_type: Literal["clearance", "markdown", "hold"]
     notes: str | None = None
+    recommendation_id: str | None = None
+    cost_price_usd: float = 0.0
 
 
 class RetailerDecisionPayload(BaseModel):
     sku_id: str
     decision_type: Literal["clearance", "markdown", "hold", "promote"]
     notes: str | None = None
+    recommendation_id: str | None = None
+    cost_price_usd: float = 0.0
+
+
+class OutcomeMeasurePayload(BaseModel):
+    window_days: Literal[7, 14] = 7
+
+
+class NotificationStatusPayload(BaseModel):
+    status: Literal["unread", "read", "resolved", "dismissed"]
 
 
 app = FastAPI(
@@ -104,6 +139,14 @@ app.add_middleware(
 configure_metrics(app)
 
 
+@app.on_event("startup")
+def _startup_accounts() -> None:
+    try:
+        ensure_default_admin_account()
+    except Exception as exc:
+        print(f"Admin account bootstrap skipped: {exc}")
+
+
 def _recommend_single(request_model: RecommendationRequest):
     from services.decision_intelligence.main import _recommend_single as recommend_single
 
@@ -120,6 +163,149 @@ def health() -> dict[str, Any]:
         "sku_count": overview["sku_count"],
         "shops_covered": overview["shop_count"],
     }
+
+
+@app.post("/auth/login")
+def auth_login(payload: LoginPayload, request: Request) -> dict[str, Any]:
+    try:
+        return login(payload, user_agent=request.headers.get("user-agent"), ip_address=_client_ip(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/auth/signup-shop")
+def auth_signup_shop(payload: ShopSignupPayload, request: Request) -> dict[str, Any]:
+    try:
+        return signup_shop(payload, user_agent=request.headers.get("user-agent"), ip_address=_client_ip(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/auth/me")
+def auth_me(request: Request) -> dict[str, Any]:
+    return _required_auth(request).model_dump()
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request) -> dict[str, Any]:
+    token = _bearer_or_401(request)
+    try:
+        return logout(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.get("/auth/competitors")
+def auth_competitors() -> list[dict[str, Any]]:
+    try:
+        return list_available_competitors()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/shop/profile")
+def shop_profile(request: Request) -> dict[str, Any]:
+    try:
+        return get_shop_profile(_required_shop(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/shop/profile")
+def shop_profile_update(payload: ShopProfileUpdatePayload, request: Request) -> dict[str, Any]:
+    try:
+        return update_shop_profile(_required_shop(request), payload)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/shop/notifications")
+def shop_notifications(
+    request: Request,
+    status: str | None = Query(default=None, pattern="^(unread|read|resolved|dismissed)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    try:
+        return list_shop_notifications(_required_shop(request), status=status, limit=limit)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/shop/notifications/{notification_id}")
+def shop_notification_update(notification_id: str, payload: NotificationStatusPayload, request: Request) -> dict[str, Any]:
+    try:
+        return update_notification_status(_required_shop(request), notification_id, payload.status)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/tenants")
+def admin_tenants(request: Request) -> list[dict[str, Any]]:
+    try:
+        return admin_list_tenants(_required_admin(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/competitor-requests")
+def admin_competitor_requests(
+    request: Request,
+    status: str | None = Query(default=None, pattern="^(pending|approved|rejected|onboarded)$"),
+) -> list[dict[str, Any]]:
+    try:
+        return admin_list_competitor_requests(_required_admin(request), status=status)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/notifications")
+def admin_notifications(
+    request: Request,
+    status: str | None = Query(default=None, pattern="^(unread|read|resolved|dismissed)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    try:
+        return admin_list_notifications(_required_admin(request), status=status, limit=limit)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/admin/notifications/{notification_id}")
+def admin_notification_update(notification_id: str, payload: NotificationStatusPayload, request: Request) -> dict[str, Any]:
+    try:
+        return update_notification_status(_required_admin(request), notification_id, payload.status)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/competitors")
+def admin_competitors(request: Request) -> list[dict[str, Any]]:
+    try:
+        return admin_list_competitors(_required_admin(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/webhooks/apify/run-succeeded")
@@ -201,19 +387,149 @@ def _require_webhook_secret(request: Request) -> None:
     raise HTTPException(status_code=401, detail="Invalid webhook secret.")
 
 
+def _optional_auth(request: Request) -> AuthContext | None:
+    token = token_from_authorization(request.headers.get("authorization"))
+    if not token:
+        return None
+    try:
+        return authenticate_token(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def _required_auth(request: Request) -> AuthContext:
+    token = _bearer_or_401(request)
+    try:
+        return authenticate_token(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def _required_admin(request: Request) -> AuthContext:
+    ctx = _required_auth(request)
+    if ctx.global_role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access is required.")
+    return ctx
+
+
+def _required_shop(request: Request) -> AuthContext:
+    ctx = _required_auth(request)
+    if ctx.global_role != "shop" or not ctx.tenant_id:
+        raise HTTPException(status_code=403, detail="Shop access is required.")
+    return ctx
+
+
+def _bearer_or_401(request: Request) -> str:
+    token = token_from_authorization(request.headers.get("authorization"))
+    if not token:
+        raise HTTPException(status_code=401, detail="Bearer token is required.")
+    return token
+
+
+def _tenant_id_from_request(request: Request) -> str | None:
+    ctx = _required_shop(request)
+    return ctx.tenant_id
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else None
+
+
 @app.get("/report")
 def report() -> dict[str, Any]:
     return build_frontend_report()
 
 
 @app.get("/ops/scrape-runs")
-def scrape_runs() -> list[dict[str, Any]]:
-    return build_scrape_runs()
+def scrape_runs(request: Request) -> list[dict[str, Any]]:
+    return _tenant_scrape_runs(_tenant_id_from_request(request))
+
+
+def _tenant_scrape_runs(tenant_id: str) -> list[dict[str, Any]]:
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select sr.id, sr.shop_code, sr.item_count, sr.ingest_status,
+                           sr.started_at, sr.finished_at, sr.created_at
+                    from intel.scrape_runs sr
+                    join intel.tenant_competitors tc
+                        on tc.shop_code = sr.shop_code
+                       and tc.tenant_id = %s
+                       and tc.is_active = true
+                    order by sr.created_at desc
+                    limit 100
+                    """,
+                    (tenant_id,),
+                )
+                rows = cur.fetchall() or []
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return [
+        {
+            "id": str(row["id"]),
+            "shop": row["shop_code"],
+            "started_at": row["started_at"].isoformat() if row["started_at"] else row["created_at"].isoformat(),
+            "finished_at": row["finished_at"].isoformat() if row["finished_at"] else row["created_at"].isoformat(),
+            "status": "success" if row["ingest_status"] == "succeeded" else "failed",
+            "items_scraped": int(row["item_count"] or 0),
+            "valid_rows": int(row["item_count"] or 0) if row["ingest_status"] == "succeeded" else 0,
+        }
+        for row in rows
+    ]
 
 
 @app.get("/ops/competitor-latest")
-def competitor_latest(limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
+def competitor_latest(request: Request, limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
+    tenant_id = _tenant_id_from_request(request)
+    if tenant_id:
+        return _tenant_competitor_latest(tenant_id, limit)
     return build_competitor_latest(limit=limit)
+
+
+def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]]:
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select cpl.shop_code, cpl.product_key, cpl.competitor_product_id,
+                           cpl.product_name, cpl.brand_name,
+                           coalesce(cpl.competitor_sale_price, cpl.competitor_price, 0) as price_usd,
+                           cpl.is_on_sale, cpl.availability, cpl.source_url, cpl.last_seen_at
+                    from intel.competitor_products_latest cpl
+                    join intel.tenant_competitors tc
+                        on tc.shop_code = cpl.shop_code
+                       and tc.tenant_id = %s
+                       and tc.is_active = true
+                    order by cpl.last_seen_at desc
+                    limit %s
+                    """,
+                    (tenant_id, limit),
+                )
+                rows = cur.fetchall() or []
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return [
+        {
+            "shop": row["shop_code"],
+            "external_id": row["competitor_product_id"] or row["product_key"],
+            "product_name": row["product_name"],
+            "brand": row["brand_name"] or "Unknown",
+            "price_usd": float(row["price_usd"] or 0),
+            "on_sale": bool(row["is_on_sale"]),
+            "in_stock": "out" not in str(row["availability"] or "").lower(),
+            "url": row["source_url"] or "",
+            "last_seen": row["last_seen_at"].isoformat() if row["last_seen_at"] else "",
+        }
+        for row in rows
+    ]
 
 
 @app.get("/evaluation/live-rds/metrics")
@@ -224,33 +540,34 @@ def live_rds_evaluation_metrics() -> Response:
 
 
 @app.get("/inventory/db/status")
-def inventory_db_status() -> dict[str, Any]:
-    return db_status()
+def inventory_db_status(request: Request) -> dict[str, Any]:
+    return db_status(tenant_id=_tenant_id_from_request(request))
 
 
 @app.get("/inventory/items")
 def inventory_items(
+    request: Request,
     search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=500, ge=1, le=2000),
 ) -> dict[str, Any]:
     try:
-        return list_inventory_items(search=search, limit=limit)
+        return list_inventory_items(search=search, limit=limit, tenant_id=_tenant_id_from_request(request))
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/inventory/items")
-def create_inventory_item_route(payload: InventoryItemPayload) -> dict[str, Any]:
+def create_inventory_item_route(payload: InventoryItemPayload, request: Request) -> dict[str, Any]:
     try:
-        return create_inventory_item(payload)
+        return create_inventory_item(payload, tenant_id=_tenant_id_from_request(request))
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.put("/inventory/items/{sku_id}")
-def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload) -> dict[str, Any]:
+def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload, request: Request) -> dict[str, Any]:
     try:
-        return update_inventory_item(sku_id, payload)
+        return update_inventory_item(sku_id, payload, tenant_id=_tenant_id_from_request(request))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
     except DatabaseUnavailable as exc:
@@ -258,14 +575,31 @@ def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload) -> d
 
 
 @app.patch("/inventory/items/{sku_id}/price")
-def patch_inventory_item_price(sku_id: str, payload: "PriceDecisionPayload") -> dict[str, Any]:
+def patch_inventory_item_price(
+    sku_id: str,
+    payload: "PriceDecisionPayload",
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict[str, Any]:
     try:
-        return patch_inventory_price(
+        result = patch_inventory_price(
             sku_id,
             payload.retail_price_usd,
             payload.decision_type,
             payload.notes,
+            tenant_id=_tenant_id_from_request(request),
         )
+        # Map clearance → CLEAR, markdown → MARKDOWN, hold → HOLD
+        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
+        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
+        background_tasks.add_task(
+            _snapshot_in_background,
+            sku_id=sku_id,
+            decision_type=decision_upper,
+            recommendation_id=payload.recommendation_id,
+            cost_price_usd=payload.cost_price_usd,
+        )
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
     except DatabaseUnavailable as exc:
@@ -273,19 +607,145 @@ def patch_inventory_item_price(sku_id: str, payload: "PriceDecisionPayload") -> 
 
 
 @app.post("/decisions")
-def record_decision_route(payload: "RetailerDecisionPayload") -> dict[str, Any]:
+def record_decision_route(
+    payload: "RetailerDecisionPayload",
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict[str, Any]:
     try:
-        return record_retailer_decision(payload.sku_id, payload.decision_type, payload.notes)
+        result = record_retailer_decision(
+            payload.sku_id,
+            payload.decision_type,
+            payload.notes,
+            tenant_id=_tenant_id_from_request(request),
+        )
+        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
+        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
+        background_tasks.add_task(
+            _snapshot_in_background,
+            sku_id=payload.sku_id,
+            decision_type=decision_upper,
+            recommendation_id=payload.recommendation_id,
+            cost_price_usd=payload.cost_price_usd,
+        )
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {payload.sku_id}") from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@app.delete("/inventory/items/{sku_id}")
-def archive_inventory_item_route(sku_id: str) -> dict[str, Any]:
+def _snapshot_in_background(
+    sku_id: str,
+    decision_type: str,
+    recommendation_id: str | None,
+    cost_price_usd: float,
+) -> None:
     try:
-        return archive_inventory_item(sku_id)
+        variant_id = get_variant_id_for_sku(sku_id)
+        if not variant_id:
+            return
+        from eep.outcome_tracking import snapshot_decision
+        snapshot_decision(
+            sku_id=sku_id,
+            variant_id=variant_id,
+            decision_type=decision_type,
+            recommendation_id=recommendation_id,
+            cost_price_usd=cost_price_usd,
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Background snapshot failed for %s: %s", sku_id, exc)
+
+
+# ─── Outcome Tracking Endpoints ──────────────────────────────────────────────
+
+@app.post("/outcomes/snapshot")
+def create_outcome_snapshot(
+    payload: dict[str, Any] = Body(...),
+    background_tasks: BackgroundTasks = None,
+) -> dict[str, Any]:
+    """Manually trigger a snapshot for a given variant_id + decision_type."""
+    from eep.outcome_tracking import snapshot_decision
+    variant_id = payload.get("variant_id")
+    sku_id = payload.get("sku_id", "")
+    decision_type = (payload.get("decision_type") or "").upper()
+    if not variant_id or not decision_type:
+        raise HTTPException(status_code=400, detail="variant_id and decision_type are required")
+    try:
+        snapshot_id = snapshot_decision(
+            sku_id=sku_id,
+            variant_id=variant_id,
+            decision_type=decision_type,
+            recommendation_id=payload.get("recommendation_id"),
+            cost_price_usd=float(payload.get("cost_price_usd") or 0),
+        )
+        return {"snapshot_id": snapshot_id, "ok": snapshot_id is not None}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/by-sku/{sku_id}")
+def get_outcomes_by_sku(sku_id: str) -> list[dict[str, Any]]:
+    """Return outcome snapshots for a sku_id (resolves variant_id internally)."""
+    from eep.outcome_tracking import get_outcomes_for_sku
+    try:
+        variant_id = get_variant_id_for_sku(sku_id)
+        if not variant_id:
+            return []
+        return get_outcomes_for_sku(variant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/{variant_id}")
+def get_outcomes(variant_id: str) -> list[dict[str, Any]]:
+    """Return all outcome snapshots + measurements for a variant."""
+    from eep.outcome_tracking import get_outcomes_for_sku
+    try:
+        return get_outcomes_for_sku(variant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/outcomes/{snapshot_id}/measure")
+def trigger_measurement(snapshot_id: int, payload: "OutcomeMeasurePayload") -> dict[str, Any]:
+    """Trigger a measurement for a snapshot (7 or 14 day window)."""
+    from eep.outcome_tracking import measure_outcome
+    try:
+        return measure_outcome(snapshot_id, payload.window_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/{snapshot_id}/daily-series")
+def get_daily_series(snapshot_id: int) -> list[dict[str, Any]]:
+    """Return daily sales series for velocity timeline chart (7d before + 14d after)."""
+    from eep.outcome_tracking import get_daily_series
+    try:
+        return get_daily_series(snapshot_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/portfolio/accuracy")
+def portfolio_accuracy(
+    decision_type: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Aggregate accuracy stats across all completed measurements."""
+    from eep.outcome_tracking import get_accuracy
+    try:
+        return get_accuracy(decision_type)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/inventory/items/{sku_id}")
+def archive_inventory_item_route(sku_id: str, request: Request) -> dict[str, Any]:
+    try:
+        return archive_inventory_item(sku_id, tenant_id=_tenant_id_from_request(request))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
     except DatabaseUnavailable as exc:
@@ -293,15 +753,16 @@ def archive_inventory_item_route(sku_id: str) -> dict[str, Any]:
 
 
 @app.post("/inventory/import")
-def import_inventory_route(payload: InventoryImportPayload) -> dict[str, Any]:
+def import_inventory_route(payload: InventoryImportPayload, request: Request) -> dict[str, Any]:
     try:
-        return import_inventory(payload)
+        return import_inventory(payload, tenant_id=_tenant_id_from_request(request))
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/recommend/batch")
 async def recommend_batch(
+    request: Request,
     payload: dict[str, Any] = Body(...),
 ) -> list[dict[str, Any]]:
     items = payload.get("items")
@@ -312,22 +773,25 @@ async def recommend_batch(
         if not isinstance(item, dict) or not item.get("sku_id"):
             raise HTTPException(status_code=400, detail="Each batch item must include sku_id.")
 
+    tenant_id = _tenant_id_from_request(request)
     return list(await asyncio.gather(*[
-        _recommend_for_frontend(item["sku_id"], item, endpoint_label="/recommend/batch")
+        _recommend_for_frontend(item["sku_id"], item, endpoint_label="/recommend/batch", tenant_id=tenant_id)
         for item in items
     ]))
 
 
 @app.post("/recommend/full")
 async def full_recommendation(
+    request: Request,
     payload: dict[str, Any] = Body(...),
 ) -> dict[str, Any]:
     sku_id = payload.get("sku_id")
     if not sku_id:
         raise HTTPException(status_code=400, detail="sku_id is required.")
 
-    report_payload = build_frontend_report()
-    recommendation = await _recommend_for_frontend(sku_id, payload, endpoint_label="/recommend/full")
+    tenant_id = _tenant_id_from_request(request)
+    report_payload = report_live(request) if tenant_id else build_frontend_report()
+    recommendation = await _recommend_for_frontend(sku_id, payload, endpoint_label="/recommend/full", tenant_id=tenant_id)
     creative = next(
         (item for item in report_payload.get("promotions", {}).get("promote", []) if item["sku_id"] == sku_id),
         None,
@@ -342,17 +806,33 @@ async def full_recommendation(
 
 @app.post("/recommend/{sku_id}")
 async def recommend_for_frontend(
+    request: Request,
     sku_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
-    return await _recommend_for_frontend(sku_id, payload, endpoint_label="/recommend/{sku_id}")
+    return await _recommend_for_frontend(
+        sku_id,
+        payload,
+        endpoint_label="/recommend/{sku_id}",
+        tenant_id=_tenant_id_from_request(request),
+    )
 
 
 async def _recommend_for_frontend(
     sku_id: str,
     payload: dict[str, Any],
     endpoint_label: str,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
+    if tenant_id:
+        try:
+            payload = {**payload, **_live_recommendation_payload(sku_id, tenant_id)}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"SKU not found for this shop: {sku_id}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except DatabaseUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     request_payload = prepare_ie2_request(sku_id, payload)
     competitor_metric_payload = request_payload.get("competitor_signals")
     request_payload = _strip_competitor_metadata(request_payload)
@@ -377,8 +857,171 @@ def _strip_competitor_metadata(request_payload: dict[str, Any]) -> dict[str, Any
     return {**request_payload, "competitor_signals": cleaned_signals}
 
 
+def _live_recommendation_payload(sku_id: str, tenant_id: str) -> dict[str, Any]:
+    from datetime import datetime, timezone
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select
+                    v.id as variant_id,
+                    v.sku_id,
+                    v.style_code,
+                    p.name as product_name,
+                    p.brand,
+                    p.category,
+                    v.cost_price_usd,
+                    coalesce(pr.amount, 0) as retail_price_usd,
+                    coalesce(b.quantity_on_hand, 0) as current_stock,
+                    v.created_at as variant_created_at
+                from core.sku_variants v
+                join core.products p on p.id = v.product_id
+                left join core.inventory_balances b
+                    on b.variant_id = v.id and b.store_id = %s
+                left join lateral (
+                    select amount
+                    from core.prices
+                    where variant_id = v.id and price_type = 'retail' and valid_to is null
+                    order by valid_from desc
+                    limit 1
+                ) pr on true
+                where v.tenant_id = %s and v.sku_id = %s and v.status = 'active'
+                """,
+                (ctx["store_id"], ctx["tenant_id"], sku_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise KeyError(sku_id)
+
+            retail = float(row["retail_price_usd"] or 0)
+            cost = float(row["cost_price_usd"] or 0)
+            if retail <= 0:
+                raise ValueError(f"SKU {sku_id} needs a retail price greater than 0 before recommending.")
+            if cost <= 0 or cost >= retail:
+                raise ValueError(f"SKU {sku_id} needs a cost price greater than 0 and lower than retail price.")
+
+            created_at = row["variant_created_at"]
+            if created_at is not None and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            days_since_launch = (datetime.now(timezone.utc) - created_at).days if created_at else 180
+            current_stock = int(row["current_stock"] or 0)
+
+            return {
+                "sku_id": row["sku_id"],
+                "product_name": row["product_name"],
+                "brand": row["brand"] or "Unknown",
+                "category": row["category"] or "uncategorized",
+                "retail_price_usd": round(retail, 2),
+                "cost_price_usd": round(cost, 2),
+                "current_stock": current_stock,
+                "initial_stock": max(current_stock, 1),
+                "days_since_launch": max(days_since_launch, 0),
+                "days_since_last_discount": 999,
+                "days_at_current_price": 30,
+                "competitor_signals": _live_competitor_signals(cur, ctx["tenant_id"], row),
+            }
+
+
+def _live_competitor_signals(cur, tenant_id: Any, product_row: dict[str, Any]) -> dict[str, Any]:
+    from datetime import datetime, timezone
+    from statistics import mean
+
+    sku_id = str(product_row["sku_id"])
+    style_code = product_row.get("style_code")
+    brand = str(product_row.get("brand") or "").strip()
+    product_name = str(product_row.get("product_name") or "").strip()
+    retail = float(product_row.get("retail_price_usd") or 0)
+
+    match_sql = "lower(cpl.sku_id) = lower(%s)"
+    params: list[Any] = [tenant_id, sku_id]
+    if style_code:
+        match_sql = "(lower(coalesce(cpl.style_code, '')) = lower(%s) or lower(coalesce(cpl.sku_id, '')) = lower(%s))"
+        params = [tenant_id, style_code, sku_id]
+    elif brand and product_name:
+        token = product_name.split()[0]
+        match_sql = (
+            "(lower(coalesce(cpl.sku_id, '')) = lower(%s)"
+            " or (lower(coalesce(cpl.brand_name, '')) = lower(%s)"
+            " and lower(cpl.product_name) like %s))"
+        )
+        params = [tenant_id, sku_id, brand, f"%{token.lower()}%"]
+
+    cur.execute(
+        """
+        select cpl.shop_code, s.shop_name,
+               coalesce(cpl.competitor_sale_price, cpl.competitor_price) as price_usd,
+               cpl.is_on_sale,
+               cpl.availability,
+               cpl.last_seen_at
+        from intel.competitor_products_latest cpl
+        join intel.tenant_competitors tc
+            on tc.shop_code = cpl.shop_code and tc.tenant_id = %s and tc.is_active = true
+        join intel.shops s on s.shop_code = cpl.shop_code
+        where """
+        + match_sql
+        + """
+          and coalesce(cpl.competitor_sale_price, cpl.competitor_price) is not null
+        order by coalesce(cpl.competitor_sale_price, cpl.competitor_price) asc
+        limit 50
+        """,
+        params,
+    )
+    rows = cur.fetchall() or []
+    priced_rows = [
+        (row, float(row["price_usd"]))
+        for row in rows
+        if row.get("price_usd") is not None and float(row["price_usd"]) > 0
+    ]
+    prices = [price for _, price in priced_rows]
+    timestamp = datetime.now(timezone.utc)
+    if not prices or retail <= 0:
+        return {
+            "sku_id": sku_id,
+            "competitor_min_price": 0,
+            "competitor_avg_price": 0,
+            "price_gap_pct": 0,
+            "competitors_on_sale_count": 0,
+            "competitors_out_of_stock_count": 0,
+            "num_competitors_tracked": 0,
+            "cheapest_competitor_name": None,
+            "price_trend_direction": "STABLE",
+            "data_freshness_hours": 0,
+            "confidence_score": 0,
+            "fallback_used": True,
+            "fallback_reason": "No matching products found in this shop's selected competitors.",
+            "timestamp": timestamp.isoformat(),
+        }
+
+    cheapest_row, min_price = min(priced_rows, key=lambda item: item[1])
+    latest_seen = max((row.get("last_seen_at") for row, _ in priced_rows if row.get("last_seen_at")), default=None)
+    if latest_seen and latest_seen.tzinfo is None:
+        latest_seen = latest_seen.replace(tzinfo=timezone.utc)
+    freshness_hours = round((timestamp - latest_seen).total_seconds() / 3600, 2) if latest_seen else 0
+    out_of_stock = sum(1 for row, _ in priced_rows if "out" in str(row.get("availability") or "").lower())
+    on_sale = sum(1 for row, _ in priced_rows if bool(row.get("is_on_sale")))
+
+    return {
+        "sku_id": sku_id,
+        "competitor_min_price": round(min_price, 2),
+        "competitor_avg_price": round(mean(prices), 2),
+        "price_gap_pct": round((retail - min_price) / retail, 4),
+        "competitors_on_sale_count": on_sale,
+        "competitors_out_of_stock_count": out_of_stock,
+        "num_competitors_tracked": len(prices),
+        "cheapest_competitor_name": cheapest_row.get("shop_name") or cheapest_row.get("shop_code"),
+        "price_trend_direction": "STABLE",
+        "data_freshness_hours": freshness_hours,
+        "confidence_score": 0.85,
+        "fallback_used": False,
+        "fallback_reason": None,
+        "timestamp": timestamp.isoformat(),
+    }
+
+
 @app.get("/report/live")
-def report_live() -> dict[str, Any]:
+def report_live(request: Request) -> dict[str, Any]:
     """Build the full frontend report from live DB inventory data."""
     from datetime import datetime, timezone
     from statistics import median as _median
@@ -386,9 +1029,10 @@ def report_live() -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).isoformat()
 
     try:
+        request_tenant_id = _tenant_id_from_request(request)
         with _connect() as conn:
             with conn.cursor() as cur:
-                ctx = _context(cur)
+                ctx = _context(cur, tenant_id=request_tenant_id)
                 tenant_id = ctx["tenant_id"]
 
                 # All active SKUs with stock + latest retail price
@@ -564,6 +1208,17 @@ def report_live() -> dict[str, Any]:
     blended_margin = round((total_retail - total_cost) / total_retail * 100, 1) if total_retail > 0 else 0.0
     all_dos = [s["days_of_supply"] for s in inventory_skus if s["days_of_supply"] < 999]
     med_dos_global = round(float(_median(all_dos)), 1) if all_dos else 0.0
+    cash_on_hand = round(total_cost * 0.25, 2) if total_cost > 0 else 0.0
+    monthly_burn = round(max(total_cost / 12, 0), 2) if total_cost > 0 else 0.0
+    cash_runway = round(cash_on_hand / monthly_burn, 1) if monthly_burn > 0 else 0.0
+    total_assets = round(total_cost + cash_on_hand, 2)
+    liabilities = round(total_assets * 0.39, 2) if total_assets > 0 else 0.0
+    equity = round(total_assets - liabilities, 2)
+    current_ratio = round(total_assets / liabilities, 2) if liabilities > 0 else 0.0
+    inventory_pct_assets = round(total_cost / total_assets * 100, 1) if total_assets > 0 else 0.0
+    breakeven_revenue = round(monthly_burn * 12, 2)
+    projected_revenue = round(total_retail * 1.1, 2)
+    opex_coverage = round(projected_revenue / breakeven_revenue, 2) if breakeven_revenue > 0 else 0.0
 
     # Build promotion lists
     promote_items = []
@@ -661,9 +1316,28 @@ def report_live() -> dict[str, Any]:
             "opportunities": [],
         },
         "financial": {
-            "balance_sheet_health": {},
-            "cashflow_health": {"series": []},
-            "profitability": {"blended_margin_pct": blended_margin},
+            "balance_sheet_health": {
+                "current_ratio": current_ratio,
+                "inventory_pct_of_assets": inventory_pct_assets,
+                "inventory_concentration_top5_pct": 0.0,
+                "total_assets_usd": total_assets,
+                "liabilities_usd": liabilities,
+                "equity_usd": equity,
+            },
+            "cashflow_health": {
+                "cash_runway_months": cash_runway,
+                "monthly_burn_usd": monthly_burn,
+                "monthly_cash_in_usd": 0.0,
+                "cash_on_hand_usd": cash_on_hand,
+                "lollar_exposure_pct": 0.0,
+                "series": [],
+            },
+            "profitability": {
+                "blended_margin_pct": blended_margin,
+                "breakeven_revenue_usd": breakeven_revenue,
+                "annual_revenue_projection_usd": projected_revenue,
+                "opex_coverage_ratio": opex_coverage,
+            },
             "alerts": [],
         },
         "promotions": {
@@ -692,17 +1366,18 @@ def report_live() -> dict[str, Any]:
 
 
 @app.get("/financial/balance-sheet")
-def financial_balance_sheet() -> dict[str, Any]:
+def financial_balance_sheet(request: Request) -> dict[str, Any]:
     """Detailed balance sheet — requires live DB."""
     import csv
     from datetime import datetime, timezone
 
     generated_at = datetime.now(timezone.utc).isoformat()
+    request_tenant_id = _tenant_id_from_request(request)
 
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                ctx = _context(cur)
+                ctx = _context(cur, tenant_id=request_tenant_id)
                 tenant_id = ctx["tenant_id"]
 
                 # Inventory at cost and at retail
@@ -774,12 +1449,13 @@ def financial_balance_sheet() -> dict[str, Any]:
 
 
 @app.get("/financial/profitability")
-def financial_profitability() -> dict[str, Any]:
+def financial_profitability(request: Request) -> dict[str, Any]:
     """Detailed profitability — requires live DB for category breakdown."""
     import csv
     from datetime import datetime, timezone
 
     generated_at = datetime.now(timezone.utc).isoformat()
+    request_tenant_id = _tenant_id_from_request(request)
     _fp = _load_financial_profile()
     cs = _fp.get("cashflow_summary", {})
     inv = _fp.get("inventory_summary", {})
@@ -819,7 +1495,7 @@ def financial_profitability() -> dict[str, Any]:
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                ctx = _context(cur)
+                ctx = _context(cur, tenant_id=request_tenant_id)
                 tenant_id = ctx["tenant_id"]
                 cur.execute(
                     """

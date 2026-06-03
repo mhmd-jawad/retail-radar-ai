@@ -5,6 +5,7 @@ scraping/data/test_identifier_fix_outputs/
 scraping_new/
 __pycache__/
 *.pyc
+.venv*/
 .env
 .env.*
 !.env.example

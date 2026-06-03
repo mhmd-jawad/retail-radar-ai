@@ -6,6 +6,118 @@ export type RecommendationStatus = 'pending' | 'approved' | 'edited' | 'rejected
 export type PricePosition = 'premium' | 'above_market' | 'at_market' | 'below_market' | 'deep_value';
 export type DataMode = 'mock-report' | 'ie2-live' | 'eep-live' | 'supabase-ready';
 
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  full_name: string;
+  global_role: 'admin' | 'shop';
+  tenant_id?: string | null;
+  tenant_slug?: string | null;
+  tenant_name?: string | null;
+  member_role?: 'owner' | 'manager' | 'staff' | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: 'bearer';
+  user: AuthUser;
+}
+
+export interface CompetitorOption {
+  shop_code: string;
+  shop_name: string;
+  is_active?: boolean;
+}
+
+export interface CompetitorRequest {
+  id: string;
+  tenant_id?: string;
+  shop_name?: string;
+  competitor_name: string;
+  website_url?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'onboarded';
+  requested_by_email?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface AdminTenant {
+  id: string;
+  name: string;
+  slug: string;
+  contact_email?: string | null;
+  phone?: string | null;
+  onboarding_status?: string | null;
+  sku_count: number;
+  competitor_count: number;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  recipient_role: 'admin' | 'shop';
+  recipient_user_id?: string | null;
+  tenant_id?: string | null;
+  shop_name?: string | null;
+  shop_slug?: string | null;
+  actor_user_id?: string | null;
+  actor_email?: string | null;
+  actor_name?: string | null;
+  type: 'competitor_request' | 'setup_help' | 'billing' | 'system' | string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
+  status: 'unread' | 'read' | 'resolved' | 'dismissed';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  created_at: string;
+  read_at?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface ShopProfile {
+  tenant_id: string;
+  tenant_slug: string;
+  business_name: string;
+  legal_name?: string | null;
+  contact_email?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country: string;
+  timezone: string;
+  onboarding_status: 'pending' | 'active' | 'suspended' | 'archived';
+  selected_competitors: CompetitorOption[];
+  competitor_requests: CompetitorRequest[];
+}
+
+export interface ShopSignupInput {
+  owner_name: string;
+  email: string;
+  password: string;
+  shop_name: string;
+  legal_name?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country?: string;
+  timezone?: string;
+  selected_competitor_codes: string[];
+  requested_competitor_names: string[];
+}
+
+export interface ShopProfileInput {
+  business_name?: string | null;
+  legal_name?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country?: string | null;
+  timezone?: string | null;
+  selected_competitor_codes?: string[];
+  requested_competitor_names?: string[];
+}
+
 export interface InventoryMetrics {
   total_skus: number;
   total_units: number;
@@ -154,12 +266,12 @@ export interface CampaignCreative {
   subheadline: string;
   ad_copy_short: string;
   ad_copy_long: string;
-  instagram_post: string;   // maps from instagram_caption
+  instagram_post: string;
   facebook_post: string;
   whatsapp_broadcast: string;
   cta_primary: string;
   cta_secondary: string;
-  image_url: string;        // from ImgBB / Replicate
+  image_url: string;
   tone_used: 'urgent' | 'aspirational' | 'value_focused';
   generation_confidence: number;
   fallback_used: boolean;
@@ -358,6 +470,8 @@ export interface RetailInventoryItem {
   size?: string | null;
   gender_target?: string | null;
   season?: string | null;
+  supplier_name?: string | null;
+  notes?: string | null;
   updated_at?: string;
 }
 
@@ -488,4 +602,62 @@ export interface AuditEntry {
   after?: { price_usd: number; discount_pct?: number };
   notes?: string;
   timestamp: string;
+}
+
+// ─── Closed-Loop Outcome Tracking ────────────────────────────────────────────
+
+export interface OutcomeMeasurement {
+  id?: number;
+  window_days: 7 | 14;
+  measured_at: string;
+  actual_velocity_daily: number | null;
+  actual_revenue_total: number | null;
+  actual_qty_sold: number | null;
+  actual_avg_price: number | null;
+  velocity_lift_pct: number | null;
+  revenue_delta_usd: number | null;
+  campaign_roi_usd: number | null;
+  accuracy_score: number | null;
+  narrative: string | null;
+  llm_computed_lift_pct?: number | null;
+  data_available: boolean;
+}
+
+export interface OutcomeSnapshot {
+  id: number;
+  variant_id: string;
+  recommendation_id: string | null;
+  decision_type: Decision;
+  approved_at: string;
+
+  // Real baseline from sales_transaction_lines
+  baseline_velocity_daily: number | null;
+  baseline_revenue_7d: number | null;
+  baseline_avg_price: number | null;
+  baseline_qty_on_hand: number | null;
+  baseline_margin_pct: number | null;
+  baseline_dos: number | null;
+
+  // Prediction
+  predicted_lift_pct: number | null;
+  ie2_confidence: number | null;
+  ie2_explanation: string | null;
+  suggested_discount_pct: number | null;
+
+  check_7d_at: string;
+  check_14d_at: string;
+  status: 'tracking' | 'measured_7d' | 'completed' | 'insufficient_data';
+  measurements: OutcomeMeasurement[] | null;
+}
+
+export interface DailySalesPoint {
+  date: string;
+  units_sold: number;
+  revenue: number;
+}
+
+export interface PortfolioAccuracy {
+  avg_accuracy: number | null;
+  decision_count: number;
+  by_type: Partial<Record<Decision, number>>;
 }

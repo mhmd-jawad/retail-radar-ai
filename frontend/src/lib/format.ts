@@ -1,15 +1,20 @@
 import type { Decision, RecommendationStatus, PricePosition } from '@/types/domain';
 
-export const fmtUSD = (n: number, opts: { decimals?: number; compact?: boolean } = {}) => {
+function safeNumber(n: number | null | undefined): number {
+  return Number.isFinite(n) ? Number(n) : 0;
+}
+
+export const fmtUSD = (n: number | null | undefined, opts: { decimals?: number; compact?: boolean } = {}) => {
+  const value = safeNumber(n);
   const { decimals = 0, compact } = opts;
-  if (compact && Math.abs(n) >= 1000) {
-    return `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k`;
+  if (compact && Math.abs(value) >= 1000) {
+    return `$${(value / 1000).toFixed(value >= 100000 ? 0 : 1)}k`;
   }
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
-export const fmtPct = (n: number, decimals = 1) => `${n.toFixed(decimals)}%`;
-export const fmtNum = (n: number) => n.toLocaleString('en-US');
+export const fmtPct = (n: number | null | undefined, decimals = 1) => `${safeNumber(n).toFixed(decimals)}%`;
+export const fmtNum = (n: number | null | undefined) => safeNumber(n).toLocaleString('en-US');
 
 export const decisionStyles: Record<Decision, { label: string; chip: string; ring: string; dot: string; gradient: string; text: string }> = {
   HOLD: {

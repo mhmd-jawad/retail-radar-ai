@@ -16,7 +16,7 @@ import {
   updateRetailInventoryItem,
 } from '@/lib/adapter';
 import { parseInventoryCsv } from '@/lib/inventoryCsv';
-import type { Report, RetailInventoryInput, RetailInventoryItem } from '@/types/domain';
+import type { Report, RetailInventoryInput, RetailInventoryItem, RetailInventoryResponse } from '@/types/domain';
 import { AlertTriangle, Archive, Boxes, Database, Pencil, Plus, RefreshCw, Save, Search, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -110,19 +110,29 @@ function InventoryManager() {
   const parsed = useMemo(() => parseInventoryCsv(csvText), [csvText]);
   const items = inventory.data?.items || [];
   const summary = inventory.data?.summary;
+  const canWrite = status.data?.connected === true;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (editing) return updateRetailInventoryItem(editing.sku_id, normalizedForm(form));
       return createRetailInventoryItem(normalizedForm(form));
     },
-    onSuccess: () => {
+    onSuccess: (savedItem) => {
+      const wasEditing = Boolean(editing);
+      queryClient.setQueryData<RetailInventoryResponse>(
+        ['retail-inventory', search],
+        (current) => upsertInventoryCache(current, savedItem, search),
+      );
       queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['retail-db-status'] });
+      queryClient.invalidateQueries({ queryKey: ['report-live'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
-      toast.success('Inventory item saved');
+      toast.success(wasEditing ? 'Inventory item saved to DB' : 'Inventory item added to DB', {
+        description: `${savedItem.sku_id} persisted in core inventory tables.`,
+      });
     },
     onError: (error: Error) => toast.error('Save failed', { description: error.message }),
   });
@@ -132,6 +142,8 @@ function InventoryManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['retail-db-status'] });
+      queryClient.invalidateQueries({ queryKey: ['report-live'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
       toast.success('SKU archived');
     },
     onError: (error: Error) => toast.error('Archive failed', { description: error.message }),
@@ -140,8 +152,16 @@ function InventoryManager() {
   const importMutation = useMutation({
     mutationFn: () => importRetailInventory(parsed.rows, importMode),
     onSuccess: (result) => {
+      if (!search.trim()) {
+        queryClient.setQueryData<RetailInventoryResponse>(['retail-inventory', search], {
+          items: result.items,
+          summary: result.summary,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['retail-db-status'] });
+      queryClient.invalidateQueries({ queryKey: ['report-live'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
       toast.success('Inventory imported', { description: `${result.imported} rows imported, ${result.archived} archived.` });
     },
     onError: (error: Error) => toast.error('Import failed', { description: error.message }),
@@ -171,6 +191,8 @@ function InventoryManager() {
       season: item.season || '',
       reorder_point: String(item.reorder_point ?? ''),
       reorder_quantity: String(item.reorder_quantity ?? ''),
+      supplier_name: item.supplier_name || '',
+      notes: item.notes || '',
     });
     setDialogOpen(true);
   };
@@ -184,7 +206,7 @@ function InventoryManager() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="DB status" icon={Database} value={status.data?.connected ? 'Online' : 'Offline'} hint={status.data?.store || 'MAIN'} />
         <KpiCard label="Managed SKUs" icon={Boxes} value={fmtNum(summary?.total_skus || 0)} hint={`${fmtNum(summary?.total_units || 0)} units`} />
-        <KpiCard label="Cost value" icon={Boxes} value={fmtUSD(summary?.inventory_value_at_cost_usd || 0, { compact: true })} hint="local PostgreSQL" />
+        <KpiCard label="Cost value" icon={Boxes} value={fmtUSD(summary?.inventory_value_at_cost_usd || 0, { compact: true })} hint="live PostgreSQL" />
         <KpiCard label="Reorder flags" icon={AlertTriangle} variant="warning" value={fmtNum(summary?.reorder_count || 0)} hint="stock <= reorder point" />
       </div>
 
@@ -217,7 +239,7 @@ function InventoryManager() {
               <Button size="sm" variant="outline" onClick={() => inventory.refetch()}>
                 <RefreshCw className="h-3.5 w-3.5" /> Refresh
               </Button>
-              <Button size="sm" onClick={openCreate}>
+              <Button size="sm" onClick={openCreate} disabled={!canWrite} title={canWrite ? 'Add SKU' : 'Database must be online before adding inventory'}>
                 <Plus className="h-3.5 w-3.5" /> Add SKU
               </Button>
             </div>
@@ -232,6 +254,7 @@ function InventoryManager() {
                   <th className="px-4 py-3 text-left">Product</th>
                   <th className="px-4 py-3 text-left">Brand</th>
                   <th className="px-4 py-3 text-left">Category</th>
+                  <th className="px-4 py-3 text-left">Details</th>
                   <th className="px-4 py-3 text-right">Stock</th>
                   <th className="px-4 py-3 text-right">Retail</th>
                   <th className="px-4 py-3 text-right">Cost</th>
@@ -241,36 +264,53 @@ function InventoryManager() {
               </thead>
               <tbody>
                 {inventory.isLoading && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Loading inventory...</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Loading inventory...</td></tr>
                 )}
                 {!inventory.isLoading && items.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No inventory rows yet.</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No inventory rows yet.</td></tr>
                 )}
-                {items.map((item) => (
-                  <tr key={item.sku_id} className="border-t border-border hover:bg-accent/40">
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">{item.sku_id}</td>
-                    <td className="px-4 py-2.5 min-w-[240px]">
-                      <div className="font-medium">{item.product_name}</div>
-                      <div className="text-[11px] text-muted-foreground font-mono">{item.style_code || item.barcode || 'no identifier'}</div>
-                    </td>
-                    <td className="px-4 py-2.5">{item.brand}</td>
-                    <td className="px-4 py-2.5">{item.category}</td>
-                    <td className={cn('px-4 py-2.5 text-right font-mono', item.needs_reorder ? 'text-decision-markdown' : '')}>{fmtNum(item.current_stock)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(item.retail_price_usd)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(item.cost_price_usd)}</td>
-                    <td className={cn('px-4 py-2.5 text-right font-mono', item.margin_pct < 35 ? 'text-decision-clear' : item.margin_pct >= 45 ? 'text-decision-promote' : '')}>{fmtPct(item.margin_pct, 0)}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" title="Edit SKU" onClick={() => openEdit(item)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" title="Archive SKU" onClick={() => archiveMutation.mutate(item.sku_id)}>
-                          <Archive className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((item) => {
+                  const details = inventoryDetailPairs(item);
+                  return (
+                    <tr key={item.sku_id} className="border-t border-border hover:bg-accent/40">
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">{item.sku_id}</td>
+                      <td className="px-4 py-2.5 min-w-[240px]">
+                        <div className="font-medium">{item.product_name}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{item.style_code || item.barcode || 'no identifier'}</div>
+                        {item.notes && <div className="mt-1 max-w-[280px] truncate text-[11px] text-muted-foreground">{item.notes}</div>}
+                      </td>
+                      <td className="px-4 py-2.5">{item.brand}</td>
+                      <td className="px-4 py-2.5">{item.category}</td>
+                      <td className="px-4 py-2.5 min-w-[220px]">
+                        {details.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {details.map(([label, value]) => (
+                              <span key={label} className="rounded-full bg-secondary/70 px-2 py-0.5 text-[10.5px] text-secondary-foreground">
+                                <span className="text-muted-foreground">{label}:</span> {value}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">Not set</span>
+                        )}
+                      </td>
+                      <td className={cn('px-4 py-2.5 text-right font-mono', item.needs_reorder ? 'text-decision-markdown' : '')}>{fmtNum(item.current_stock)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(item.retail_price_usd)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(item.cost_price_usd)}</td>
+                      <td className={cn('px-4 py-2.5 text-right font-mono', item.margin_pct < 35 ? 'text-decision-clear' : item.margin_pct >= 45 ? 'text-decision-promote' : '')}>{fmtPct(item.margin_pct, 0)}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" title="Edit SKU" onClick={() => openEdit(item)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="Archive SKU" onClick={() => archiveMutation.mutate(item.sku_id)}>
+                            <Archive className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -298,7 +338,7 @@ function InventoryManager() {
             </select>
             <Button
               size="sm"
-              disabled={parsed.rows.length === 0 || parsed.errors.length > 0 || importMutation.isPending}
+              disabled={parsed.rows.length === 0 || parsed.errors.length > 0 || importMutation.isPending || !canWrite}
               onClick={() => importMutation.mutate()}
             >
               <Save className="h-3.5 w-3.5" /> Import {parsed.rows.length || ''}
@@ -328,6 +368,7 @@ function InventoryManager() {
         form={form}
         setForm={setForm}
         saving={saveMutation.isPending}
+        canWrite={canWrite}
         onClose={() => setDialogOpen(false)}
         onSave={() => saveMutation.mutate()}
       />
@@ -341,6 +382,7 @@ function InventoryDialog({
   form,
   setForm,
   saving,
+  canWrite,
   onClose,
   onSave,
 }: {
@@ -349,11 +391,13 @@ function InventoryDialog({
   form: InventoryFormState;
   setForm: (value: InventoryFormState) => void;
   saving: boolean;
+  canWrite: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
   const update = (key: keyof InventoryFormState, value: string) => setForm({ ...form, [key]: value });
-  const canSave = form.sku_id.trim() && form.product_name.trim();
+  const validationErrors = validateInventoryForm(form);
+  const canSave = validationErrors.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -380,9 +424,14 @@ function InventoryDialog({
           <Field label="Supplier"><Input value={form.supplier_name || ''} onChange={(e) => update('supplier_name', e.target.value)} /></Field>
           <Field label="Notes" className="md:col-span-3"><Textarea value={form.notes || ''} onChange={(e) => update('notes', e.target.value)} /></Field>
         </div>
+        {validationErrors.length > 0 && (
+          <div className="rounded-md border border-decision-markdown/30 bg-decision-markdown-bg p-3 text-[12px] text-decision-markdown">
+            {validationErrors.map((error) => <div key={error}>{error}</div>)}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!canSave || saving} onClick={onSave}>
+          <Button disabled={!canSave || saving || !canWrite} onClick={onSave}>
             <Save className="h-3.5 w-3.5" /> Save
           </Button>
         </DialogFooter>
@@ -536,6 +585,84 @@ function ValueBar({ label, value, max, color }: { label: string; value: number; 
       </div>
     </div>
   );
+}
+
+function upsertInventoryCache(
+  current: RetailInventoryResponse | undefined,
+  savedItem: RetailInventoryItem,
+  search: string,
+): RetailInventoryResponse {
+  const currentItems = current?.items ?? [];
+  const exists = currentItems.some((item) => item.sku_id === savedItem.sku_id);
+  const nextItems = exists
+    ? currentItems.map((item) => (item.sku_id === savedItem.sku_id ? savedItem : item))
+    : inventoryMatchesSearch(savedItem, search)
+      ? [savedItem, ...currentItems]
+      : currentItems;
+
+  return {
+    items: nextItems,
+    summary: summarizeInventoryItems(nextItems),
+  };
+}
+
+function inventoryMatchesSearch(item: RetailInventoryItem, search: string) {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return [item.sku_id, item.product_name, item.brand, item.style_code]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(needle));
+}
+
+function summarizeInventoryItems(items: RetailInventoryItem[]) {
+  const totalUnits = items.reduce((sum, item) => sum + item.current_stock, 0);
+  const inventoryValueAtCost = items.reduce((sum, item) => sum + item.stock_value_usd, 0);
+  const inventoryValueAtRetail = items.reduce(
+    (sum, item) => sum + item.current_stock * item.retail_price_usd,
+    0,
+  );
+  const categories = Array.from(new Set(items.map((item) => item.category).filter(Boolean))).sort();
+
+  return {
+    total_skus: items.length,
+    total_units: totalUnits,
+    inventory_value_at_cost_usd: roundMoney(inventoryValueAtCost),
+    inventory_value_at_retail_usd: roundMoney(inventoryValueAtRetail),
+    reorder_count: items.filter((item) => item.needs_reorder).length,
+    categories,
+  };
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function inventoryDetailPairs(item: RetailInventoryItem): Array<[string, string]> {
+  return [
+    ['Gender', item.gender_target],
+    ['Season', item.season],
+    ['Color', item.color],
+    ['Size', item.size],
+    ['Supplier', item.supplier_name],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+}
+
+function validateInventoryForm(form: InventoryFormState) {
+  const errors: string[] = [];
+  if (!form.sku_id.trim()) errors.push('SKU is required.');
+  if (!form.product_name.trim()) errors.push('Product name is required.');
+  if (!form.brand.trim()) errors.push('Brand is required.');
+  if (!form.category.trim()) errors.push('Category is required.');
+  if (parseRequiredNumber(form.current_stock) === null) errors.push('Stock is required and must be a valid number.');
+  if (parseRequiredNumber(form.retail_price_usd) === null) errors.push('Retail price is required and must be a valid number.');
+  if (parseRequiredNumber(form.cost_price_usd) === null) errors.push('Cost price is required and must be a valid number.');
+  return errors;
+}
+
+function parseRequiredNumber(value: string) {
+  if (!value.trim()) return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizedForm(form: InventoryFormState): RetailInventoryInput {

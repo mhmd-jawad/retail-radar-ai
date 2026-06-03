@@ -34,13 +34,17 @@ export default function Overview() {
   }
 
   const { inventory, competitor, financial, promotions, metadata } = report;
+  const skuCount = inventory.sku_analysis.length;
   const distribution: { name: Decision; value: number; color: string }[] = [
     { name: 'HOLD', value: promotions.summary.hold_count, color: 'hsl(var(--decision-hold))' },
     { name: 'PROMOTE', value: promotions.summary.promote_count, color: 'hsl(var(--decision-promote))' },
     { name: 'MARKDOWN', value: promotions.summary.markdown_count, color: 'hsl(var(--decision-markdown))' },
     { name: 'CLEAR', value: promotions.summary.clearance_count, color: 'hsl(var(--decision-clear))' },
   ];
-  const total = distribution.reduce((s, x) => s + x.value, 0);
+  const total = Math.max(distribution.reduce((s, x) => s + x.value, 0), 1);
+  const actionableCount = promotions.summary.promote_count + promotions.summary.markdown_count + promotions.summary.clearance_count;
+  const cashRunwayMonths = financial.cashflow_health.cash_runway_months ?? 0;
+  const inventoryPctOfAssets = financial.balance_sheet_health.inventory_pct_of_assets ?? 0;
 
   const categoryRows = Object.entries(inventory.category_summary)
     .map(([k, v]) => ({ name: k, ...v }))
@@ -73,15 +77,21 @@ export default function Overview() {
                 <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" /> Live Intelligence Brief
               </div>
               <h2 className="font-display text-[28px] lg:text-[34px] leading-[1.05] font-semibold text-panel-foreground mt-3 tracking-tight">
-                350 SKUs analyzed.<br/>
+                {skuCount} SKUs analyzed.<br/>
                 <span className="bg-gradient-to-r from-primary-glow to-decision-promote bg-clip-text text-transparent">
-                  264 actionable signals waiting.
+                  {actionableCount} actionable signals waiting.
                 </span>
               </h2>
               <p className="text-panel-muted text-[14px] mt-3 max-w-2xl">
-                Cash runway tight at <span className="text-panel-foreground font-semibold">3.0 months</span> with inventory absorbing
-                {' '}<span className="text-panel-foreground font-semibold">82.6%</span> of assets.
-                Approve the markdown pack to unlock ~$48k in 30 days. Running and Football Boots peak windows open in 5 weeks.
+                {skuCount === 0 ? (
+                  <>Add or import inventory to generate recommendations, pricing signals, and financial diagnostics for this shop.</>
+                ) : (
+                  <>
+                    Cash runway at <span className="text-panel-foreground font-semibold">{cashRunwayMonths.toFixed(1)} months</span> with inventory absorbing
+                    {' '}<span className="text-panel-foreground font-semibold">{inventoryPctOfAssets.toFixed(1)}%</span> of assets.
+                    Review {actionableCount} inventory actions generated from this shop&apos;s live data.
+                  </>
+                )}
               </p>
               <div className="flex flex-wrap gap-3 mt-5">
                 <Link to="/queue" className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow">
@@ -113,7 +123,7 @@ export default function Overview() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Inventory @ Cost" icon={Boxes} value={fmtUSD(inventory.metrics.inventory_value_at_cost_usd, { compact: true })}
             hint={`${fmtNum(inventory.metrics.total_units)} units · ${inventory.metrics.median_days_of_supply}d median DOS`} />
-          <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${financial.cashflow_health.cash_runway_months.toFixed(1)} mo`}
+          <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${cashRunwayMonths.toFixed(1)} mo`}
             hint={`Burn ${fmtUSD(financial.cashflow_health.monthly_burn_usd, { compact: true })}/mo`} trend={{ value: '-0.4 mo', direction: 'down', positive: false }} />
           <KpiCard label="Competitor Records" icon={Radar} variant="data" value={fmtNum(competitor.market_overview.competitor_records)}
             hint={`${competitor.market_overview.shops_covered} shops · ${competitor.market_overview.data_freshness_hours}h freshness`} />
@@ -123,7 +133,7 @@ export default function Overview() {
 
         {/* Decision distribution + Directives */}
         <div className="grid lg:grid-cols-[1.1fr_1.4fr] gap-6">
-          <Section title="Decision Distribution" subtitle="350 SKUs across HOLD / PROMOTE / MARKDOWN / CLEAR">
+          <Section title="Decision Distribution" subtitle={`${skuCount} SKUs across HOLD / PROMOTE / MARKDOWN / CLEAR`}>
             <div className="grid grid-cols-[1fr_1fr] gap-4 items-center">
               <div className="h-44">
                 <ResponsiveContainer>
@@ -263,7 +273,7 @@ export default function Overview() {
         <Section title="Jump In" subtitle="Deep-dive into a specific intelligence layer">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
-              { to: '/queue', icon: Database, label: 'Recommendations', count: '350' },
+              { to: '/queue', icon: Database, label: 'Recommendations', count: String(skuCount) },
               { to: '/inventory', icon: Boxes, label: 'Inventory & Stock', count: `${inventory.metrics.dead_stock_skus} dead` },
               { to: '/competitive', icon: Radar, label: 'Competitive', count: `${competitor.market_overview.shops_covered} shops` },
               { to: '/promotions', icon: DollarSign, label: 'Promotions', count: `${promotions.promote.length} ready` },

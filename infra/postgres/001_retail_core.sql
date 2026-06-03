@@ -26,6 +26,92 @@ create table if not exists core.stores (
     unique (tenant_id, code)
 );
 
+create table if not exists core.app_users (
+    id uuid primary key default gen_random_uuid(),
+    email text not null,
+    password_hash text not null,
+    full_name text not null,
+    global_role text not null default 'shop' check (global_role in ('admin', 'shop')),
+    is_active boolean not null default true,
+    email_verified boolean not null default false,
+    last_login_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create unique index if not exists ux_app_users_email_lower
+    on core.app_users (lower(email));
+
+create table if not exists core.user_memberships (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references core.app_users(id) on delete cascade,
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    role text not null default 'owner' check (role in ('owner', 'manager', 'staff')),
+    is_active boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (user_id, tenant_id)
+);
+
+create index if not exists idx_user_memberships_tenant
+    on core.user_memberships (tenant_id, is_active);
+
+create table if not exists core.notifications (
+    id uuid primary key default gen_random_uuid(),
+    recipient_role text not null check (recipient_role in ('admin', 'shop')),
+    recipient_user_id uuid references core.app_users(id) on delete cascade,
+    tenant_id uuid references core.tenants(id) on delete cascade,
+    actor_user_id uuid references core.app_users(id) on delete set null,
+    type text not null,
+    title text not null,
+    message text not null,
+    payload jsonb not null default '{}'::jsonb,
+    status text not null default 'unread' check (status in ('unread', 'read', 'resolved', 'dismissed')),
+    priority text not null default 'normal' check (priority in ('low', 'normal', 'high', 'urgent')),
+    created_at timestamptz not null default now(),
+    read_at timestamptz,
+    resolved_at timestamptz
+);
+
+create index if not exists idx_notifications_admin_status
+    on core.notifications (recipient_role, status, created_at desc);
+
+create index if not exists idx_notifications_tenant_status
+    on core.notifications (tenant_id, status, created_at desc);
+
+create table if not exists core.shop_profiles (
+    tenant_id uuid primary key references core.tenants(id) on delete cascade,
+    owner_user_id uuid references core.app_users(id) on delete set null,
+    business_name text not null,
+    legal_name text,
+    contact_email text,
+    phone text,
+    website_url text,
+    address text,
+    country text not null default 'Lebanon',
+    timezone text not null default 'Asia/Beirut',
+    onboarding_status text not null default 'pending' check (
+        onboarding_status in ('pending', 'active', 'suspended', 'archived')
+    ),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists core.auth_sessions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references core.app_users(id) on delete cascade,
+    token_hash text not null unique,
+    expires_at timestamptz not null,
+    revoked_at timestamptz,
+    user_agent text,
+    ip_address text,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_auth_sessions_user_active
+    on core.auth_sessions (user_id, expires_at)
+    where revoked_at is null;
+
 create table if not exists core.suppliers (
     id uuid primary key default gen_random_uuid(),
     tenant_id uuid not null references core.tenants(id) on delete cascade,
@@ -68,6 +154,8 @@ create table if not exists core.sku_variants (
     cost_price_usd numeric(12,2) not null default 0,
     reorder_point integer not null default 0,
     reorder_quantity integer not null default 0,
+    supplier_id uuid references core.suppliers(id) on delete set null,
+    notes text,
     status text not null default 'active' check (status in ('active', 'archived')),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
@@ -76,6 +164,9 @@ create table if not exists core.sku_variants (
 
 create index if not exists idx_sku_variants_style_code
     on core.sku_variants (tenant_id, style_code);
+
+create index if not exists idx_sku_variants_supplier
+    on core.sku_variants (tenant_id, supplier_id);
 
 create unique index if not exists ux_sku_variants_barcode
     on core.sku_variants (tenant_id, barcode)
@@ -195,6 +286,37 @@ create table if not exists intel.shops (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+create table if not exists intel.tenant_competitors (
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    shop_code text not null references intel.shops(shop_code) on delete restrict,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (tenant_id, shop_code)
+);
+
+create index if not exists idx_tenant_competitors_active
+    on intel.tenant_competitors (tenant_id, is_active);
+
+create table if not exists intel.competitor_requests (
+    id uuid primary key default gen_random_uuid(),
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    requested_by_user_id uuid references core.app_users(id) on delete set null,
+    competitor_name text not null,
+    website_url text,
+    status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'onboarded')),
+    admin_notes text,
+    created_at timestamptz not null default now(),
+    reviewed_at timestamptz,
+    reviewed_by_user_id uuid references core.app_users(id) on delete set null
+);
+
+create index if not exists idx_competitor_requests_status
+    on intel.competitor_requests (status, created_at desc);
+
+create index if not exists idx_competitor_requests_tenant
+    on intel.competitor_requests (tenant_id, created_at desc);
 
 create table if not exists intel.scrape_runs (
     id bigserial primary key,
@@ -349,3 +471,71 @@ on conflict (shop_code) do update set
     shop_name = excluded.shop_name,
     is_active = true,
     updated_at = now();
+
+-- ─── Outcome Tracking ────────────────────────────────────────────────────────
+-- Closed-loop feedback: snapshot baseline at approval → measure actuals 7/14d later
+
+create schema if not exists outcome_tracking;
+
+create table if not exists outcome_tracking.decision_snapshots (
+    id                       bigserial primary key,
+    tenant_id                uuid not null references core.tenants(id) on delete cascade,
+    variant_id               uuid not null references core.sku_variants(id) on delete cascade,
+    recommendation_id        uuid references marketing.recommendations(id) on delete set null,
+    decision_type            text not null check (decision_type in ('HOLD','MARKDOWN','PROMOTE','CLEAR')),
+    approved_at              timestamptz not null default now(),
+
+    -- Real baseline from sales_transaction_lines (7-day window before approval)
+    baseline_velocity_daily  numeric(10,4),
+    baseline_revenue_7d      numeric(12,2),
+    baseline_avg_price       numeric(12,2),
+    baseline_qty_on_hand     integer,
+    baseline_margin_pct      numeric(6,2),
+    baseline_dos             numeric(10,2),
+
+    -- Prediction derived from marketing.recommendations
+    predicted_lift_pct       numeric(8,2),
+    ie2_confidence           numeric(5,4),
+    ie2_explanation          text,
+    suggested_discount_pct   numeric(6,2),
+
+    check_7d_at              timestamptz,
+    check_14d_at             timestamptz,
+    status                   text not null default 'tracking'
+        check (status in ('tracking','measured_7d','completed','insufficient_data')),
+    created_at               timestamptz not null default now()
+);
+
+create index if not exists idx_outcome_snapshots_variant
+    on outcome_tracking.decision_snapshots (variant_id, approved_at desc);
+
+create index if not exists idx_outcome_snapshots_status
+    on outcome_tracking.decision_snapshots (status, check_7d_at);
+
+create table if not exists outcome_tracking.outcome_measurements (
+    id                         bigserial primary key,
+    snapshot_id                bigint not null references outcome_tracking.decision_snapshots(id) on delete cascade,
+    measured_at                timestamptz not null default now(),
+    window_days                integer not null check (window_days in (7, 14)),
+
+    -- Real actuals from sales_transaction_lines
+    actual_velocity_daily      numeric(10,4),
+    actual_revenue_total       numeric(12,2),
+    actual_qty_sold            integer,
+    actual_avg_price           numeric(12,2),
+    actual_margin_pct          numeric(6,2),
+
+    -- Computed deltas
+    velocity_lift_pct          numeric(8,2),
+    revenue_delta_usd          numeric(12,2),
+    campaign_roi_usd           numeric(12,2),
+    accuracy_score             numeric(5,4),
+
+    -- LLM output
+    narrative                  text,
+    llm_computed_lift_pct      numeric(8,2),
+    llm_computed_revenue_delta numeric(12,2),
+
+    data_available             boolean not null default true,
+    unique (snapshot_id, window_days)
+);

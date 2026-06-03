@@ -124,8 +124,7 @@ async def post_to_facebook(caption: str, image_url: str) -> PublishResult:
     """
     token   = os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
     page_id = os.getenv("FB_PAGE_ID", "").strip()
-    print(f"[DEBUG publishers] FB token first30={token[:30]!r} len={len(token)}", flush=True)
-    logger.info("FB token in use (first30): %s | length: %d", token[:30], len(token))
+    logger.info("FB token in use (length: %d)", len(token))
 
     if not token or not page_id:
         return PublishResult(
