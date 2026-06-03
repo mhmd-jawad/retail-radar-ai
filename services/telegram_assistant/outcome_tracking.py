@@ -13,7 +13,7 @@ async def ensure_closed_loop_tables(db_url: str) -> None:
     conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
     try:
         async with conn.cursor() as cur:
-            await cur.execute("create schema if not exists whatsapp")
+            await cur.execute("create schema if not exists telegram")
             await cur.execute("create schema if not exists outcome_tracking")
             await cur.execute(
                 """
@@ -80,12 +80,12 @@ async def ensure_closed_loop_tables(db_url: str) -> None:
             )
             await cur.execute(
                 """
-                create table if not exists whatsapp.promote_notifications (
+                create table if not exists telegram.promote_notifications (
                     id                       bigserial    primary key,
                     tenant_id                uuid         not null references core.tenants(id) on delete cascade,
                     recommendation_id        uuid         references marketing.recommendations(id) on delete set null,
                     sku_id                   text         not null,
-                    phone_number             text         not null,
+                    chat_id             text         not null,
                     message_text             text         not null,
                     outcome                  text         not null default 'pending'
                                                 check (outcome in ('pending','approved','rejected','expired')),
@@ -99,22 +99,22 @@ async def ensure_closed_loop_tables(db_url: str) -> None:
             await cur.execute(
                 """
                 create index if not exists idx_promote_notifications_recommendation
-                    on whatsapp.promote_notifications (recommendation_id)
+                    on telegram.promote_notifications (recommendation_id)
                 where outcome = 'pending'
                 """
             )
             await cur.execute(
                 """
-                create table if not exists whatsapp.closed_loop_notifications (
+                create table if not exists telegram.closed_loop_notifications (
                     id bigserial primary key,
                     tenant_id uuid not null references core.tenants(id) on delete cascade,
-                    phone_number text not null,
+                    chat_id text not null,
                     snapshot_id bigint not null references outcome_tracking.decision_snapshots(id) on delete cascade,
                     window_days integer not null check (window_days in (0, 7, 14)),
                     notification_type text not null,
                     message_text text not null,
                     sent_at timestamptz not null default now(),
-                    unique (phone_number, snapshot_id, window_days, notification_type)
+                    unique (chat_id, snapshot_id, window_days, notification_type)
                 )
                 """
             )
@@ -251,7 +251,7 @@ async def record_decision_snapshot(
 async def due_progress_notifications(
     db_url: str,
     tenant_id: UUID,
-    phone_number: str,
+    chat_id: str,
 ) -> list[dict[str, Any]]:
     await ensure_closed_loop_tables(db_url)
     conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
@@ -278,16 +278,16 @@ async def due_progress_notifications(
                 )
                 select d.*
                 from due d
-                left join whatsapp.closed_loop_notifications n
+                left join telegram.closed_loop_notifications n
                   on n.snapshot_id = d.snapshot_id
                  and n.window_days = d.window_days
-                 and n.phone_number = %s
+                 and n.chat_id = %s
                  and n.notification_type = 'measurement_due'
                 where n.id is null
                 order by d.approved_at asc
                 limit 3
                 """,
-                (str(tenant_id), phone_number),
+                (str(tenant_id), chat_id),
             )
             rows = await cur.fetchall()
     finally:
@@ -308,7 +308,7 @@ async def due_progress_notifications(
 async def mark_progress_notification_sent(
     db_url: str,
     tenant_id: UUID,
-    phone_number: str,
+    chat_id: str,
     snapshot_id: int,
     window_days: int,
     message: str,
@@ -318,12 +318,12 @@ async def mark_progress_notification_sent(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                insert into whatsapp.closed_loop_notifications
-                    (tenant_id, phone_number, snapshot_id, window_days, notification_type, message_text)
+                insert into telegram.closed_loop_notifications
+                    (tenant_id, chat_id, snapshot_id, window_days, notification_type, message_text)
                 values (%s, %s, %s, %s, 'measurement_due', %s)
-                on conflict (phone_number, snapshot_id, window_days, notification_type) do nothing
+                on conflict (chat_id, snapshot_id, window_days, notification_type) do nothing
                 """,
-                (str(tenant_id), phone_number, snapshot_id, window_days, message),
+                (str(tenant_id), chat_id, snapshot_id, window_days, message),
             )
         await conn.commit()
     finally:
@@ -348,7 +348,7 @@ async def advance_roadmap_on_measurement(
     """
     if not recommendation_id:
         return
-    from services.whatsapp_assistant.roadmap import (
+    from services.telegram_assistant.recommendation_roadmap import (
         get_roadmap_id_for_recommendation, advance_stage, close_with_outcome,
     )
     try:
@@ -365,6 +365,6 @@ async def advance_roadmap_on_measurement(
             )
     except Exception as exc:
         import logging
-        logging.getLogger("whatsapp_assistant.outcome_tracker").warning(
+        logging.getLogger("telegram_assistant.outcome_tracking").warning(
             "Roadmap advance on measurement failed for rec %s: %s", recommendation_id, exc
         )

@@ -448,3 +448,71 @@ on conflict (shop_code) do update set
     shop_name = excluded.shop_name,
     is_active = true,
     updated_at = now();
+
+-- ─── Outcome Tracking ────────────────────────────────────────────────────────
+-- Closed-loop feedback: snapshot baseline at approval → measure actuals 7/14d later
+
+create schema if not exists outcome_tracking;
+
+create table if not exists outcome_tracking.decision_snapshots (
+    id                       bigserial primary key,
+    tenant_id                uuid not null references core.tenants(id) on delete cascade,
+    variant_id               uuid not null references core.sku_variants(id) on delete cascade,
+    recommendation_id        uuid references marketing.recommendations(id) on delete set null,
+    decision_type            text not null check (decision_type in ('HOLD','MARKDOWN','PROMOTE','CLEAR')),
+    approved_at              timestamptz not null default now(),
+
+    -- Real baseline from sales_transaction_lines (7-day window before approval)
+    baseline_velocity_daily  numeric(10,4),
+    baseline_revenue_7d      numeric(12,2),
+    baseline_avg_price       numeric(12,2),
+    baseline_qty_on_hand     integer,
+    baseline_margin_pct      numeric(6,2),
+    baseline_dos             numeric(10,2),
+
+    -- Prediction derived from marketing.recommendations
+    predicted_lift_pct       numeric(8,2),
+    ie2_confidence           numeric(5,4),
+    ie2_explanation          text,
+    suggested_discount_pct   numeric(6,2),
+
+    check_7d_at              timestamptz,
+    check_14d_at             timestamptz,
+    status                   text not null default 'tracking'
+        check (status in ('tracking','measured_7d','completed','insufficient_data')),
+    created_at               timestamptz not null default now()
+);
+
+create index if not exists idx_outcome_snapshots_variant
+    on outcome_tracking.decision_snapshots (variant_id, approved_at desc);
+
+create index if not exists idx_outcome_snapshots_status
+    on outcome_tracking.decision_snapshots (status, check_7d_at);
+
+create table if not exists outcome_tracking.outcome_measurements (
+    id                         bigserial primary key,
+    snapshot_id                bigint not null references outcome_tracking.decision_snapshots(id) on delete cascade,
+    measured_at                timestamptz not null default now(),
+    window_days                integer not null check (window_days in (7, 14)),
+
+    -- Real actuals from sales_transaction_lines
+    actual_velocity_daily      numeric(10,4),
+    actual_revenue_total       numeric(12,2),
+    actual_qty_sold            integer,
+    actual_avg_price           numeric(12,2),
+    actual_margin_pct          numeric(6,2),
+
+    -- Computed deltas
+    velocity_lift_pct          numeric(8,2),
+    revenue_delta_usd          numeric(12,2),
+    campaign_roi_usd           numeric(12,2),
+    accuracy_score             numeric(5,4),
+
+    -- LLM output
+    narrative                  text,
+    llm_computed_lift_pct      numeric(8,2),
+    llm_computed_revenue_delta numeric(12,2),
+
+    data_available             boolean not null default true,
+    unique (snapshot_id, window_days)
+);

@@ -2,7 +2,7 @@
 Promote / Markdown approval flow — Phase 3.
 
 Polls marketing.recommendations for un-notified PROMOTE/MARKDOWN rows,
-sends WhatsApp notifications, and handles APPROVE / MODIFY / REJECT replies.
+sends Telegram notifications, and handles APPROVE / MODIFY / REJECT replies.
 
 IE3 campaign endpoint: POST {IE3_BASE_URL}/campaign/generate
   Body: RecommendationResult-compatible JSON (services/decision_intelligence/schemas.py)
@@ -22,13 +22,13 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
-from services.whatsapp_assistant.outcome_tracker import record_decision_snapshot
+from services.telegram_assistant.outcome_tracking import record_decision_snapshot
 
 if TYPE_CHECKING:
-    from services.whatsapp_assistant.session_manager import ConversationManager
-    from services.whatsapp_assistant.messenger import WhatsAppClient
+    from services.telegram_assistant.conversation_store import ConversationManager
+    from services.telegram_assistant.telegram_client import TelegramClient
 
-logger = logging.getLogger("whatsapp_assistant.approval_flow")
+logger = logging.getLogger("telegram_assistant.promotion_approval_flow")
 
 # ── Notification template ─────────────────────────────────────────────────────
 
@@ -36,31 +36,31 @@ NOTIFICATION_TEMPLATE = """\
 🔔 *AI Recommendation — Action Required*
 
 *{decision}: {product_name}*
-SKU: {sku_id}
+SKU: {sku_id}  |  Stock: *{current_stock} units*
 
-*Why now?*
+*Why the AI flagged this (live data):*
 {shap_bullets}
 
 *What the AI suggests:*
 • Discount: *{suggested_discount}% off* → new price *${new_price:.2f}*
-• Confidence: {confidence}%
-• Est. outcome: sell {units_low}–{units_high} units in 3 weeks, +${gross_profit:.0f} vs. holding
+• Confidence: *{confidence}%* {confidence_context}
+• Est. outcome: sell {units_low}–{units_high} units in 3 weeks, +${gross_profit:.0f} gross
 
 *If you approve, Radar will:*
 1. Generate Instagram + Facebook ad copy and image
 2. Publish to your StylePulse social accounts
-3. Log it in your dashboard
+3. Track results at 7 and 14 days
 
 Reply:
 ✅ *APPROVE* — run it as suggested
 ✏️ *MODIFY [instruction]* — e.g. "MODIFY 20% off instead"
 ❌ *REJECT* — skip this one
 
-_(Expires in 24 hours)_"""
+_(Ask me "why this?" for full reasoning. Expires 24h)_"""
 
 
 def _build_shap_bullets(explanation: str | None, shap_top5_json: str | None) -> str:
-    """Convert SHAP/explanation data into WhatsApp bullet lines."""
+    """Convert SHAP/explanation data into Telegram bullet lines."""
     # Try structured shap_top5 JSON first
     if shap_top5_json:
         try:
@@ -82,18 +82,18 @@ class PromoteFlow:
         self,
         db_url: str,
         ie3_base_url: str,
-        whatsapp_client: "WhatsAppClient",
+        telegram_client: "TelegramClient",
         conversation_manager: "ConversationManager",
     ) -> None:
         self._db_url = db_url
         self._ie3 = ie3_base_url.rstrip("/")
-        self._wa = whatsapp_client
+        self._telegram = telegram_client
         self._conv = conversation_manager
 
     # ── Poller ────────────────────────────────────────────────────────────────
 
     async def check_and_notify_new_promotes(
-        self, retailer_phone: str, tenant_id: UUID
+        self, retailer_chat_id: str, tenant_id: UUID
     ) -> int:
         conn = await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
         try:
@@ -103,9 +103,13 @@ class PromoteFlow:
                     SELECT r.id, r.variant_id, r.recommendation,
                            r.confidence, r.suggested_discount_pct,
                            r.explanation,
+                           COALESCE(r.shap_features_json, '[]'::jsonb) AS shap_features_json,
+                           r.rule_override_json,
+                           COALESCE(r.fallback_used, FALSE)             AS fallback_used,
                            v.sku_id, p.name AS product_name,
                            coalesce(pr.amount, 0) AS retail_price_usd,
-                           coalesce(v.cost_price_usd, 0) AS cost_price_usd
+                           coalesce(v.cost_price_usd, 0) AS cost_price_usd,
+                           COALESCE(SUM(ib.quantity_on_hand), 0)::int   AS current_stock
                     FROM marketing.recommendations r
                     JOIN core.sku_variants v ON v.id = r.variant_id
                     JOIN core.products p ON p.id = v.product_id
@@ -116,13 +120,18 @@ class PromoteFlow:
                           AND valid_to IS NULL
                         ORDER BY valid_from DESC LIMIT 1
                     ) pr ON true
-                    LEFT JOIN whatsapp.promote_notifications n
+                    LEFT JOIN core.inventory_balances ib ON ib.variant_id = v.id
+                    LEFT JOIN telegram.promote_notifications n
                         ON n.recommendation_id = r.id
                     WHERE r.recommendation IN ('PROMOTE','MARKDOWN')
                       AND r.status = 'pending'
                       AND n.id IS NULL
                       AND r.generated_at > now() - interval '24 hours'
                       AND r.tenant_id = %s
+                    GROUP BY r.id, r.variant_id, r.recommendation, r.confidence,
+                             r.suggested_discount_pct, r.explanation, r.shap_features_json,
+                             r.rule_override_json, r.fallback_used,
+                             v.sku_id, p.name, pr.amount, v.cost_price_usd
                     """,
                     (str(tenant_id),),
                 )
@@ -133,7 +142,7 @@ class PromoteFlow:
         count = 0
         for row in rows:
             try:
-                await self._send_notification(retailer_phone, tenant_id, row)
+                await self._send_notification(retailer_chat_id, tenant_id, row)
                 count += 1
             except Exception as exc:
                 logger.error(
@@ -142,7 +151,7 @@ class PromoteFlow:
         return count
 
     async def _send_notification(
-        self, retailer_phone: str, tenant_id: UUID, row: dict
+        self, retailer_chat_id: str, tenant_id: UUID, row: dict
     ) -> None:
         retail_price = float(row["retail_price_usd"] or 0)
         cost_price = float(row["cost_price_usd"] or 0)
@@ -151,28 +160,45 @@ class PromoteFlow:
         decision = row["recommendation"]
         sku_id = row["sku_id"]
         product_name = row["product_name"] or sku_id
+        current_stock = int(row.get("current_stock") or 0)
 
         new_price = retail_price * (1 - suggested_discount / 100)
-        estimated_units = 20
+        estimated_units = max(current_stock // 4, 5) if current_stock else 20
         gross_profit = (new_price - cost_price) * estimated_units
         units_low = int(estimated_units * 0.7)
         units_high = int(estimated_units * 1.3)
-        shap_bullets = _build_shap_bullets(row.get("explanation"), None)
+
+        # Confidence tier context
+        if confidence >= 90:
+            confidence_context = "(very strong — hard rule or all signals aligned)"
+        elif confidence >= 75:
+            confidence_context = "(strong — inventory, price, and competitor signals converge)"
+        elif confidence >= 60:
+            confidence_context = "(moderate — worth acting on with monitoring)"
+        else:
+            confidence_context = "(weak signal — review carefully before approving)"
+
+        shap_bullets = _build_shap_bullets(
+            row.get("explanation"),
+            row.get("shap_features_json"),
+        )
 
         message = NOTIFICATION_TEMPLATE.format(
             decision=decision,
             product_name=product_name,
             sku_id=sku_id,
+            current_stock=current_stock,
             shap_bullets=shap_bullets,
             suggested_discount=int(suggested_discount),
             new_price=new_price,
             confidence=confidence,
+            confidence_context=confidence_context,
             units_low=units_low,
             units_high=units_high,
             gross_profit=gross_profit,
         )
 
-        await self._wa.send_text_message(retailer_phone, message)
+        await self._telegram.send_text_message(retailer_chat_id, message)
 
         # Persist notification record
         conn = await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
@@ -180,8 +206,8 @@ class PromoteFlow:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO whatsapp.promote_notifications
-                        (tenant_id, recommendation_id, sku_id, phone_number,
+                    INSERT INTO telegram.promote_notifications
+                        (tenant_id, recommendation_id, sku_id, chat_id,
                          message_text, outcome, expires_at)
                     VALUES (%s, %s, %s, %s, %s, 'pending',
                             now() + interval '24 hours')
@@ -191,7 +217,7 @@ class PromoteFlow:
                         str(tenant_id),
                         str(row["id"]),
                         sku_id,
-                        retailer_phone,
+                        retailer_chat_id,
                         message,
                     ),
                 )
@@ -204,9 +230,24 @@ class PromoteFlow:
 
         # Create / advance roadmap for this recommendation
         import os
-        from services.whatsapp_assistant.roadmap import (
+        from services.telegram_assistant.recommendation_roadmap import (
             create_roadmap, advance_stage, generate_rich_context,
         )
+        # Fetch live signals so generate_rich_context reasons from real data
+        live_signals: dict = {}
+        try:
+            from services.telegram_assistant.business_data_service import BusinessDataService as _BDS
+            import os as _os
+            _db_url = self._db_url
+            _bds = _BDS(db_url=_db_url, financial_data_path="", eep_base_url="")
+            # Resolve tenant_id to string for query
+            _tid = str(tenant_id)
+            live_signals = await _bds._fetch_live_signals_for_recommendation(
+                _tid, sku_id, suggested_discount
+            )
+        except Exception as sig_exc:
+            logger.warning("Live signal fetch skipped for %s: %s", sku_id, sig_exc)
+
         try:
             ctx = await generate_rich_context(
                 anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -217,6 +258,10 @@ class PromoteFlow:
                 explanation=row.get("explanation") or "",
                 retail_price=retail_price,
                 cost_price=cost_price,
+                shap_features=row.get("shap_features_json") or [],
+                rule_override=row.get("rule_override_json"),
+                current_stock=int(row.get("current_stock") or 0),
+                live_signals=live_signals or None,
             )
             roadmap_id = await create_roadmap(
                 db_url=self._db_url,
@@ -240,7 +285,7 @@ class PromoteFlow:
 
         # Store recommendation context so the LLM can handle natural approval language
         await self._conv.set_flow(
-            retailer_phone,
+            retailer_chat_id,
             "pending_recommendation",
             {
                 "notification_id": notification_id,
@@ -263,21 +308,21 @@ class PromoteFlow:
     # ── Reply handler (entry point from main.py) ──────────────────────────────
 
     async def handle_reply(
-        self, phone: str, reply_text: str, flow_context: dict
+        self, chat_id: str, reply_text: str, flow_context: dict
     ) -> str:
         upper = reply_text.strip().upper()
         if upper == "APPROVE" or upper.startswith("APPROVE"):
-            return await self._handle_approve(phone, flow_context)
+            return await self._handle_approve(chat_id, flow_context)
         if upper.startswith("MODIFY"):
             modification = reply_text[6:].strip()
-            return await self._handle_modify(phone, flow_context, modification)
+            return await self._handle_modify(chat_id, flow_context, modification)
         if upper == "REJECT" or upper.startswith("REJECT"):
-            return await self._handle_reject(phone, flow_context)
+            return await self._handle_reject(chat_id, flow_context)
         return "Please reply *APPROVE*, *MODIFY [your instruction]*, or *REJECT*."
 
     # ── Approve ───────────────────────────────────────────────────────────────
 
-    async def _handle_approve(self, phone: str, context: dict) -> str:
+    async def _handle_approve(self, chat_id: str, context: dict) -> str:
         sku_id = context["sku_id"]
         recommendation = context.get("recommendation", "PROMOTE")
 
@@ -310,7 +355,7 @@ class PromoteFlow:
         await self._update_recommendation_status(context.get("recommendation_id"), "approved")
 
         # Advance roadmap: approved → executing
-        from services.whatsapp_assistant.roadmap import (
+        from services.telegram_assistant.recommendation_roadmap import (
             get_roadmap_id_for_recommendation, advance_stage,
         )
         try:
@@ -331,7 +376,7 @@ class PromoteFlow:
             cost_price_usd=float(context.get("cost_price") or 0),
         )
         await self._update_notification_outcome(context["notification_id"], "approved")
-        await self._conv.clear_flow(phone)
+        await self._conv.clear_flow(chat_id)
 
         tracking = (
             f"Closed-loop tracking started: snapshot *#{snapshot_id}*.\n"
@@ -348,7 +393,7 @@ class PromoteFlow:
     # ── Modify ────────────────────────────────────────────────────────────────
 
     async def _handle_modify(
-        self, phone: str, context: dict, modification: str
+        self, chat_id: str, context: dict, modification: str
     ) -> str:
         # Update discount if a percentage is mentioned
         updated_context = dict(context)
@@ -367,7 +412,7 @@ class PromoteFlow:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE whatsapp.promote_notifications
+                    UPDATE telegram.promote_notifications
                     SET modification_instructions = %s
                     WHERE id = %s
                     """,
@@ -378,7 +423,7 @@ class PromoteFlow:
             await conn.close()
 
         # Advance roadmap to 'modified'
-        from services.whatsapp_assistant.roadmap import (
+        from services.telegram_assistant.recommendation_roadmap import (
             get_roadmap_id_for_recommendation, mark_modification,
         )
         try:
@@ -391,7 +436,7 @@ class PromoteFlow:
             logger.warning("Roadmap mark_modification failed: %s", exc)
 
         # Update flow context with new numbers — keep the same flow name so APPROVE still works
-        await self._conv.set_flow(phone, "pending_recommendation", updated_context)
+        await self._conv.set_flow(chat_id, "pending_recommendation", updated_context)
 
         product_name = updated_context.get("product_name", updated_context["sku_id"])
         reply = (
@@ -405,13 +450,13 @@ class PromoteFlow:
 
     # ── Reject ────────────────────────────────────────────────────────────────
 
-    async def _handle_reject(self, phone: str, context: dict) -> str:
+    async def _handle_reject(self, chat_id: str, context: dict) -> str:
         await self._update_recommendation_status(context.get("recommendation_id"), "rejected")
         await self._update_notification_outcome(context["notification_id"], "rejected")
-        await self._conv.clear_flow(phone)
+        await self._conv.clear_flow(chat_id)
 
         # Advance roadmap to 'expired'
-        from services.whatsapp_assistant.roadmap import (
+        from services.telegram_assistant.recommendation_roadmap import (
             get_roadmap_id_for_recommendation, advance_stage,
         )
         try:
@@ -436,7 +481,7 @@ class PromoteFlow:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE whatsapp.promote_notifications
+                    UPDATE telegram.promote_notifications
                     SET outcome = %s, outcome_at = now()
                     WHERE id = %s
                     """,
@@ -457,7 +502,7 @@ class PromoteFlow:
                 await cur.execute(
                     """
                     UPDATE marketing.recommendations
-                    SET status = %s, reviewed_at = now(), reviewed_by = 'whatsapp'
+                    SET status = %s, reviewed_at = now(), reviewed_by = 'telegram'
                     WHERE id = %s
                     """,
                     (status, recommendation_id),
@@ -471,7 +516,7 @@ class PromoteFlow:
 
 async def poll_loop(
     promote_flow_instance: PromoteFlow,
-    retailer_phone: str,
+    retailer_chat_id: str,
     tenant_id: UUID,
 ) -> None:
     """Background task: poll every 5 minutes for new un-notified recommendations."""
@@ -479,7 +524,7 @@ async def poll_loop(
         await asyncio.sleep(300)
         try:
             count = await promote_flow_instance.check_and_notify_new_promotes(
-                retailer_phone, tenant_id
+                retailer_chat_id, tenant_id
             )
             if count > 0:
                 logger.info("Sent %d promote notification(s)", count)

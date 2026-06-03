@@ -8,15 +8,16 @@ from pydantic import BaseModel, Field
 
 
 class InboundMessage(BaseModel):
-    phone_number: str
+    chat_id: str
     text: str
     message_id: str
     timestamp: datetime
 
 
-class WhatsAppWebhookPayload(BaseModel):
-    """Raw Meta webhook JSON shape — entry list is untyped to tolerate schema changes."""
-    entry: list[Any]
+class TelegramWebhookPayload(BaseModel):
+    """Raw Telegram Update JSON shape."""
+    update_id: int
+    message: dict[str, Any] | None = None
 
 
 class AlertmanagerAlert(BaseModel):
@@ -35,7 +36,7 @@ class AlertmanagerWebhookPayload(BaseModel):
 
 
 class ConversationSession(BaseModel):
-    phone_number: str
+    chat_id: str
     tenant_id: UUID
     message_history: list[dict[str, Any]] = Field(default_factory=list)
     active_flow: str | None = None
@@ -62,6 +63,6 @@ class PromoteNotification(BaseModel):
     id: UUID
     recommendation_id: UUID | None = None
     sku_id: str
-    phone_number: str
+    chat_id: str
     outcome: str
     expires_at: datetime

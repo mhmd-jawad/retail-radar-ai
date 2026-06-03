@@ -1,5 +1,5 @@
 """
-Anthropic tool schemas for the WhatsApp assistant.
+Anthropic tool schemas for the Telegram assistant.
 Pure data — no logic. Maps 1:1 to BusinessDataService methods and actions.
 """
 from __future__ import annotations
