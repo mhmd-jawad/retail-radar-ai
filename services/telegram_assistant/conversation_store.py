@@ -1,16 +1,19 @@
 """
-PostgreSQL-backed WhatsApp conversation session manager.
+PostgreSQL-backed Telegram conversation session manager.
 Uses psycopg3 async — mirrors eep/retail_db.py connection pattern.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+logger = logging.getLogger("telegram_assistant.conversation_store")
 
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
 DEFAULT_TENANT_SLUG = "default"
@@ -20,18 +23,18 @@ _SUMMARIZE_AFTER = 20   # trigger summarization when history reaches this size
 
 
 async def ensure_conversation_tables(db_url: str) -> None:
-    """Idempotent migration: add new columns and helper tables to whatsapp schema."""
+    """Idempotent migration: add new columns and helper tables to telegram schema."""
     import psycopg
 
     conn = await psycopg.AsyncConnection.connect(db_url)
     try:
         async with conn.cursor() as cur:
-            await cur.execute("CREATE SCHEMA IF NOT EXISTS whatsapp")
+            await cur.execute("CREATE SCHEMA IF NOT EXISTS telegram")
             # Main conversations table — idempotent
             await cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS whatsapp.conversations (
-                    phone_number          TEXT        PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS telegram.conversations (
+                    chat_id          TEXT        PRIMARY KEY,
                     tenant_id             UUID        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
                     message_history       JSONB       NOT NULL DEFAULT '[]',
                     active_flow           TEXT,
@@ -47,17 +50,17 @@ async def ensure_conversation_tables(db_url: str) -> None:
             )
             # New columns added in later migrations — safe to run on existing tables
             await cur.execute(
-                "ALTER TABLE whatsapp.conversations "
+                "ALTER TABLE telegram.conversations "
                 "ADD COLUMN IF NOT EXISTS conversation_summary TEXT"
             )
             await cur.execute(
-                "ALTER TABLE whatsapp.conversations "
+                "ALTER TABLE telegram.conversations "
                 "ADD COLUMN IF NOT EXISTS last_inbound_at TIMESTAMPTZ"
             )
-            # Table: deduplication — prevents processing Meta webhook retries twice
+            # Table: deduplication — prevents processing Telegram webhook retries twice
             await cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS whatsapp.processed_messages (
+                CREATE TABLE IF NOT EXISTS telegram.processed_messages (
                     message_id   TEXT        PRIMARY KEY,
                     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
@@ -66,22 +69,21 @@ async def ensure_conversation_tables(db_url: str) -> None:
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_processed_messages_cleanup
-                    ON whatsapp.processed_messages (processed_at)
+                    ON telegram.processed_messages (processed_at)
                 """
             )
         await conn.commit()
-    except Exception:
-        # Table may not exist yet (closed_loop creates whatsapp schema); ignore here
-        pass
+    except Exception as exc:
+        logger.warning("ensure_conversation_tables failed (may be a migration ordering issue): %s", exc)
     finally:
         await conn.close()
 
 
-async def is_within_24h_window(db_url: str, phone: str) -> bool:
+async def is_within_24h_window(db_url: str, chat_id: str) -> bool:
     """Return True if the retailer sent an inbound message within the last 24 hours.
 
     Used by proactive senders to decide whether a free-form text message can be
-    sent without being rejected by Meta's 24-hour conversation window policy.
+    sent without being rejected by Telegram delivery policy.
     """
     import psycopg
     from psycopg.rows import dict_row
@@ -90,8 +92,8 @@ async def is_within_24h_window(db_url: str, phone: str) -> bool:
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT last_inbound_at FROM whatsapp.conversations WHERE phone_number = %s",
-                (phone,),
+                "SELECT last_inbound_at FROM telegram.conversations WHERE chat_id = %s",
+                (chat_id,),
             )
             row = await cur.fetchone()
         if not row or not row.get("last_inbound_at"):
@@ -130,7 +132,7 @@ async def _summarize_messages(messages: list[dict]) -> str:
                 {
                     "role": "user",
                     "content": (
-                        "Summarize this WhatsApp retail assistant conversation in 3-4 bullet points. "
+                        "Summarize this Telegram retail assistant conversation in 3-4 bullet points. "
                         "Preserve key decisions, approved/rejected actions, and any business figures mentioned.\n\n"
                         + text_block
                     ),
@@ -178,29 +180,29 @@ class ConversationManager:
     # ── public API ────────────────────────────────────────────────────────────
 
     async def get_or_create_session(
-        self, phone_number: str, tenant_id: UUID
+        self, chat_id: str, tenant_id: UUID
     ):
-        from services.whatsapp_assistant.models import ConversationSession
+        from services.telegram_assistant.conversation_models import ConversationSession
 
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT phone_number, tenant_id, message_history,
+                    SELECT chat_id, tenant_id, message_history,
                            active_flow, flow_context,
                            cached_business_data, cached_at,
                            conversation_summary
-                    FROM whatsapp.conversations
-                    WHERE phone_number = %s
+                    FROM telegram.conversations
+                    WHERE chat_id = %s
                     """,
-                    (phone_number,),
+                    (chat_id,),
                 )
                 row = await cur.fetchone()
 
             if row:
                 return ConversationSession(
-                    phone_number=row["phone_number"],
+                    chat_id=row["chat_id"],
                     tenant_id=row["tenant_id"],
                     message_history=row["message_history"] or [],
                     active_flow=row["active_flow"],
@@ -214,17 +216,17 @@ class ConversationManager:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO whatsapp.conversations
-                        (tenant_id, phone_number, message_history)
+                    INSERT INTO telegram.conversations
+                        (tenant_id, chat_id, message_history)
                     VALUES (%s, %s, %s::jsonb)
-                    ON CONFLICT (tenant_id, phone_number) DO NOTHING
+                    ON CONFLICT (chat_id) DO NOTHING
                     """,
-                    (str(tenant_id), phone_number, json.dumps([])),
+                    (str(tenant_id), chat_id, json.dumps([])),
                 )
             await conn.commit()
 
             return ConversationSession(
-                phone_number=phone_number,
+                chat_id=chat_id,
                 tenant_id=tenant_id,
                 message_history=[],
             )
@@ -232,14 +234,14 @@ class ConversationManager:
             await conn.close()
 
     async def append_message(
-        self, phone_number: str, role: str, content: str
+        self, chat_id: str, role: str, content: str
     ) -> None:
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT message_history FROM whatsapp.conversations WHERE phone_number = %s",
-                    (phone_number,),
+                    "SELECT message_history FROM telegram.conversations WHERE chat_id = %s",
+                    (chat_id,),
                 )
                 row = await cur.fetchone()
                 history: list[dict] = row["message_history"] if row else []
@@ -263,73 +265,73 @@ class ConversationManager:
                 if summary_to_store is not None:
                     await cur.execute(
                         """
-                        UPDATE whatsapp.conversations
+                        UPDATE telegram.conversations
                         SET message_history = %s::jsonb,
                             conversation_summary = %s,
                             last_message_at = now()
-                        WHERE phone_number = %s
+                        WHERE chat_id = %s
                         """,
-                        (json.dumps(history), summary_to_store, phone_number),
+                        (json.dumps(history), summary_to_store, chat_id),
                     )
                 else:
                     await cur.execute(
                         """
-                        UPDATE whatsapp.conversations
+                        UPDATE telegram.conversations
                         SET message_history = %s::jsonb,
                             last_message_at = now()
-                        WHERE phone_number = %s
+                        WHERE chat_id = %s
                         """,
-                        (json.dumps(history), phone_number),
+                        (json.dumps(history), chat_id),
                     )
             await conn.commit()
         finally:
             await conn.close()
 
     async def set_flow(
-        self, phone_number: str, flow_name: str, context: dict
+        self, chat_id: str, flow_name: str, context: dict
     ) -> None:
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE whatsapp.conversations
+                    UPDATE telegram.conversations
                     SET active_flow = %s,
                         flow_context = %s::jsonb
-                    WHERE phone_number = %s
+                    WHERE chat_id = %s
                     """,
-                    (flow_name, json.dumps(context), phone_number),
+                    (flow_name, json.dumps(context), chat_id),
                 )
             await conn.commit()
         finally:
             await conn.close()
 
-    async def clear_flow(self, phone_number: str) -> None:
+    async def clear_flow(self, chat_id: str) -> None:
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE whatsapp.conversations
+                    UPDATE telegram.conversations
                     SET active_flow = null,
                         flow_context = null
-                    WHERE phone_number = %s
+                    WHERE chat_id = %s
                     """,
-                    (phone_number,),
+                    (chat_id,),
                 )
             await conn.commit()
         finally:
             await conn.close()
 
     async def get_cached_business_data(
-        self, phone_number: str
+        self, chat_id: str
     ) -> tuple[dict | None, datetime | None]:
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT cached_business_data, cached_at FROM whatsapp.conversations WHERE phone_number = %s",
-                    (phone_number,),
+                    "SELECT cached_business_data, cached_at FROM telegram.conversations WHERE chat_id = %s",
+                    (chat_id,),
                 )
                 row = await cur.fetchone()
             if not row:
@@ -339,19 +341,19 @@ class ConversationManager:
             await conn.close()
 
     async def set_cached_business_data(
-        self, phone_number: str, data: dict
+        self, chat_id: str, data: dict
     ) -> None:
         conn = await self._connect()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE whatsapp.conversations
+                    UPDATE telegram.conversations
                     SET cached_business_data = %s::jsonb,
                         cached_at = now()
-                    WHERE phone_number = %s
+                    WHERE chat_id = %s
                     """,
-                    (json.dumps(data), phone_number),
+                    (json.dumps(data), chat_id),
                 )
             await conn.commit()
         finally:
@@ -367,7 +369,7 @@ if __name__ == "__main__":
     if _env_file.exists():
         from dotenv import load_dotenv
 
-        load_dotenv(_env_file, override=False)
+        load_dotenv(_env_file, override=True)
 
     TEST_PHONE = "+96170000000"
 
@@ -393,7 +395,7 @@ if __name__ == "__main__":
 
         # 1 + 2. get_or_create_session
         session = await mgr.get_or_create_session(TEST_PHONE, default_tenant_id)
-        print(f"[1] session created/fetched for {session.phone_number}")
+        print(f"[1] session created/fetched for {session.chat_id}")
 
         # 3. append_message
         await mgr.append_message(TEST_PHONE, "user", "hello")

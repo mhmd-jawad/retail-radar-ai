@@ -24,7 +24,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from eep.auth_db import (
@@ -81,6 +81,7 @@ from eep.retail_db import (
     archive_inventory_item,
     create_inventory_item,
     db_status,
+    get_variant_id_for_sku,
     import_inventory,
     list_inventory_items,
     patch_inventory_price,
@@ -95,12 +96,20 @@ class PriceDecisionPayload(BaseModel):
     retail_price_usd: float = PField(gt=0)
     decision_type: Literal["clearance", "markdown", "hold"]
     notes: str | None = None
+    recommendation_id: str | None = None
+    cost_price_usd: float = 0.0
 
 
 class RetailerDecisionPayload(BaseModel):
     sku_id: str
     decision_type: Literal["clearance", "markdown", "hold", "promote"]
     notes: str | None = None
+    recommendation_id: str | None = None
+    cost_price_usd: float = 0.0
+
+
+class OutcomeMeasurePayload(BaseModel):
+    window_days: Literal[7, 14] = 7
 
 
 class NotificationStatusPayload(BaseModel):
@@ -559,15 +568,31 @@ def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload, requ
 
 
 @app.patch("/inventory/items/{sku_id}/price")
-def patch_inventory_item_price(sku_id: str, payload: "PriceDecisionPayload", request: Request) -> dict[str, Any]:
+def patch_inventory_item_price(
+    sku_id: str,
+    payload: "PriceDecisionPayload",
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict[str, Any]:
     try:
-        return patch_inventory_price(
+        result = patch_inventory_price(
             sku_id,
             payload.retail_price_usd,
             payload.decision_type,
             payload.notes,
             tenant_id=_tenant_id_from_request(request),
         )
+        # Map clearance → CLEAR, markdown → MARKDOWN, hold → HOLD
+        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
+        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
+        background_tasks.add_task(
+            _snapshot_in_background,
+            sku_id=sku_id,
+            decision_type=decision_upper,
+            recommendation_id=payload.recommendation_id,
+            cost_price_usd=payload.cost_price_usd,
+        )
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
     except DatabaseUnavailable as exc:
@@ -575,16 +600,137 @@ def patch_inventory_item_price(sku_id: str, payload: "PriceDecisionPayload", req
 
 
 @app.post("/decisions")
-def record_decision_route(payload: "RetailerDecisionPayload", request: Request) -> dict[str, Any]:
+def record_decision_route(
+    payload: "RetailerDecisionPayload",
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict[str, Any]:
     try:
-        return record_retailer_decision(
+        result = record_retailer_decision(
             payload.sku_id,
             payload.decision_type,
             payload.notes,
             tenant_id=_tenant_id_from_request(request),
         )
+        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
+        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
+        background_tasks.add_task(
+            _snapshot_in_background,
+            sku_id=payload.sku_id,
+            decision_type=decision_upper,
+            recommendation_id=payload.recommendation_id,
+            cost_price_usd=payload.cost_price_usd,
+        )
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {payload.sku_id}") from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _snapshot_in_background(
+    sku_id: str,
+    decision_type: str,
+    recommendation_id: str | None,
+    cost_price_usd: float,
+) -> None:
+    try:
+        variant_id = get_variant_id_for_sku(sku_id)
+        if not variant_id:
+            return
+        from eep.outcome_tracking import snapshot_decision
+        snapshot_decision(
+            sku_id=sku_id,
+            variant_id=variant_id,
+            decision_type=decision_type,
+            recommendation_id=recommendation_id,
+            cost_price_usd=cost_price_usd,
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Background snapshot failed for %s: %s", sku_id, exc)
+
+
+# ─── Outcome Tracking Endpoints ──────────────────────────────────────────────
+
+@app.post("/outcomes/snapshot")
+def create_outcome_snapshot(
+    payload: dict[str, Any] = Body(...),
+    background_tasks: BackgroundTasks = None,
+) -> dict[str, Any]:
+    """Manually trigger a snapshot for a given variant_id + decision_type."""
+    from eep.outcome_tracking import snapshot_decision
+    variant_id = payload.get("variant_id")
+    sku_id = payload.get("sku_id", "")
+    decision_type = (payload.get("decision_type") or "").upper()
+    if not variant_id or not decision_type:
+        raise HTTPException(status_code=400, detail="variant_id and decision_type are required")
+    try:
+        snapshot_id = snapshot_decision(
+            sku_id=sku_id,
+            variant_id=variant_id,
+            decision_type=decision_type,
+            recommendation_id=payload.get("recommendation_id"),
+            cost_price_usd=float(payload.get("cost_price_usd") or 0),
+        )
+        return {"snapshot_id": snapshot_id, "ok": snapshot_id is not None}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/by-sku/{sku_id}")
+def get_outcomes_by_sku(sku_id: str) -> list[dict[str, Any]]:
+    """Return outcome snapshots for a sku_id (resolves variant_id internally)."""
+    from eep.outcome_tracking import get_outcomes_for_sku
+    try:
+        variant_id = get_variant_id_for_sku(sku_id)
+        if not variant_id:
+            return []
+        return get_outcomes_for_sku(variant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/{variant_id}")
+def get_outcomes(variant_id: str) -> list[dict[str, Any]]:
+    """Return all outcome snapshots + measurements for a variant."""
+    from eep.outcome_tracking import get_outcomes_for_sku
+    try:
+        return get_outcomes_for_sku(variant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/outcomes/{snapshot_id}/measure")
+def trigger_measurement(snapshot_id: int, payload: "OutcomeMeasurePayload") -> dict[str, Any]:
+    """Trigger a measurement for a snapshot (7 or 14 day window)."""
+    from eep.outcome_tracking import measure_outcome
+    try:
+        return measure_outcome(snapshot_id, payload.window_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/{snapshot_id}/daily-series")
+def get_daily_series(snapshot_id: int) -> list[dict[str, Any]]:
+    """Return daily sales series for velocity timeline chart (7d before + 14d after)."""
+    from eep.outcome_tracking import get_daily_series
+    try:
+        return get_daily_series(snapshot_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/outcomes/portfolio/accuracy")
+def portfolio_accuracy(
+    decision_type: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Aggregate accuracy stats across all completed measurements."""
+    from eep.outcome_tracking import get_accuracy
+    try:
+        return get_accuracy(decision_type)
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

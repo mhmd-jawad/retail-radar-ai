@@ -1,5 +1,5 @@
 """
-Alert Engine — proactive retailer notifications via WhatsApp.
+Alert Dispatcher — proactive retailer notifications via Telegram.
 
 Polls for business conditions every 30 minutes and sends formatted alerts when
 thresholds are crossed. Each alert type has an independent cooldown to prevent spam.
@@ -10,8 +10,8 @@ Alert categories:
   REVENUE    — weekly revenue drop, revenue milestone
   COMPETITOR — competitor sale started, competitor price undercut
 
-Approval/recommendation alerts are handled by approval_flow.py (poll every 5 min).
-Decision progress alerts are handled by outcome_tracker.py (poll every 15 min).
+Approval/recommendation alerts are handled by promotion_approval_flow.py (poll every 5 min).
+Decision progress alerts are handled by outcome_tracking.py (poll every 15 min).
 """
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ import psycopg
 from psycopg.rows import dict_row
 
 if TYPE_CHECKING:
-    from services.whatsapp_assistant.messenger import WhatsAppClient
+    from services.telegram_assistant.telegram_client import TelegramClient
 
-logger = logging.getLogger("whatsapp_assistant.alert_engine")
+logger = logging.getLogger("telegram_assistant.alert_dispatcher")
 
 # ── Alert type registry ───────────────────────────────────────────────────────
 # Each entry: (label, description, cooldown_hours)
@@ -88,17 +88,17 @@ ALERT_TYPES: dict[str, tuple[str, str, int]] = {
 # ── DB migration ──────────────────────────────────────────────────────────────
 
 async def ensure_alert_tables(db_url: str) -> None:
-    """Create whatsapp.alert_log table if not present."""
+    """Create telegram.alert_log table if not present."""
     conn = await psycopg.AsyncConnection.connect(db_url)
     try:
         async with conn.cursor() as cur:
-            await cur.execute("CREATE SCHEMA IF NOT EXISTS whatsapp")
+            await cur.execute("CREATE SCHEMA IF NOT EXISTS telegram")
             await cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS whatsapp.alert_log (
+                CREATE TABLE IF NOT EXISTS telegram.alert_log (
                     id          BIGSERIAL PRIMARY KEY,
                     tenant_id   UUID      NOT NULL,
-                    phone_number TEXT     NOT NULL,
+                    chat_id TEXT     NOT NULL,
                     alert_type  TEXT      NOT NULL,
                     subject_key TEXT      NOT NULL DEFAULT '',
                     message_text TEXT     NOT NULL,
@@ -109,8 +109,8 @@ async def ensure_alert_tables(db_url: str) -> None:
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_alert_log_cooldown
-                    ON whatsapp.alert_log
-                    (tenant_id, phone_number, alert_type, subject_key, sent_at DESC)
+                    ON telegram.alert_log
+                    (tenant_id, chat_id, alert_type, subject_key, sent_at DESC)
                 """
             )
         await conn.commit()
@@ -118,28 +118,28 @@ async def ensure_alert_tables(db_url: str) -> None:
         await conn.close()
 
 
-# ── Alert Engine ──────────────────────────────────────────────────────────────
+# ── Alert Dispatcher ──────────────────────────────────────────────────────────────
 
-class AlertEngine:
+class AlertDispatcher:
     """
-    Polls business conditions on a schedule and sends WhatsApp alerts.
+    Polls business conditions on a schedule and sends Telegram alerts.
 
     Usage:
-        engine = AlertEngine(db_url, wa_client, retailer_phone, tenant_id, data_dir)
+        engine = AlertDispatcher(db_url, telegram_client, retailer_chat_id, tenant_id, data_dir)
         asyncio.create_task(alert_poll_loop(engine))
     """
 
     def __init__(
         self,
         db_url: str,
-        wa_client: "WhatsAppClient",
-        retailer_phone: str,
+        telegram_client: "TelegramClient",
+        retailer_chat_id: str,
         tenant_id: UUID,
         financial_data_path: str,
     ) -> None:
         self._db_url = db_url
-        self._wa = wa_client
-        self._phone = retailer_phone
+        self._telegram = telegram_client
+        self._chat_id = retailer_chat_id
         self._tenant_id = tenant_id
         self._tid = str(tenant_id)
         from pathlib import Path
@@ -177,9 +177,9 @@ class AlertEngine:
                        sv.sku_id,
                        COALESCE(SUM(ti.quantity)::float / 30.0, 0) AS daily_vel
                 FROM core.sku_variants sv
-                LEFT JOIN core.transaction_items ti ON ti.variant_id = sv.id
+                LEFT JOIN core.sales_transaction_lines ti ON ti.variant_id = sv.id
                 LEFT JOIN core.sales_transactions st
-                    ON st.id = ti.transaction_id
+                    ON st.id = ti.sales_transaction_id
                     AND st.sold_at >= now() - interval '30 days'
                 WHERE sv.tenant_id = %s AND sv.status = 'active'
                 GROUP BY sv.id, sv.sku_id
@@ -262,8 +262,8 @@ class AlertEngine:
             WITH last_sale AS (
                 SELECT ti.variant_id,
                        MAX(st.sold_at) AS last_sold_at
-                FROM core.transaction_items ti
-                JOIN core.sales_transactions st ON st.id = ti.transaction_id
+                FROM core.sales_transaction_lines ti
+                JOIN core.sales_transactions st ON st.id = ti.sales_transaction_id
                 WHERE st.tenant_id = %s
                 GROUP BY ti.variant_id
             )
@@ -521,20 +521,11 @@ class AlertEngine:
         message: str,
         cooldown_hours: int,
     ) -> bool:
-        """Send the alert only if it hasn't been sent within the cooldown window
-        AND the retailer is within the Meta 24-hour conversation window."""
+        """Send the alert only if it hasn't been sent within the cooldown window."""
         if not await self._is_cooldown_elapsed(alert_type, subject_key, cooldown_hours):
             return False
-        # Check Meta 24h window — free-form messages are rejected outside it
-        from services.whatsapp_assistant.session_manager import is_within_24h_window
-        if not await is_within_24h_window(self._db_url, self._phone):
-            logger.info(
-                "Alert deferred (24h window closed): type=%s subject=%s — will retry next cycle",
-                alert_type, subject_key,
-            )
-            return False
         try:
-            await self._wa.send_text_message(self._phone, message)
+            await self._telegram.send_text_message(self._chat_id, message)
             await self._log_alert(alert_type, subject_key, message)
             logger.info("Alert sent: type=%s subject=%s", alert_type, subject_key)
             return True
@@ -551,16 +542,16 @@ class AlertEngine:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT sent_at FROM whatsapp.alert_log
+                    SELECT sent_at FROM telegram.alert_log
                     WHERE tenant_id = %s
-                      AND phone_number = %s
+                      AND chat_id = %s
                       AND alert_type = %s
                       AND subject_key = %s
                       AND sent_at >= now() - (%s * interval '1 hour')
                     ORDER BY sent_at DESC
                     LIMIT 1
                     """,
-                    (self._tid, self._phone, alert_type, subject_key, cooldown_hours),
+                    (self._tid, self._chat_id, alert_type, subject_key, cooldown_hours),
                 )
                 row = await cur.fetchone()
             return row is None
@@ -575,11 +566,11 @@ class AlertEngine:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO whatsapp.alert_log
-                        (tenant_id, phone_number, alert_type, subject_key, message_text)
+                    INSERT INTO telegram.alert_log
+                        (tenant_id, chat_id, alert_type, subject_key, message_text)
                     VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (self._tid, self._phone, alert_type, subject_key, message),
+                    (self._tid, self._chat_id, alert_type, subject_key, message),
                 )
             await conn.commit()
         finally:
@@ -601,7 +592,7 @@ class AlertEngine:
 # ── Background poll loop ──────────────────────────────────────────────────────
 
 async def alert_poll_loop(
-    engine: AlertEngine,
+    engine: AlertDispatcher,
     interval_seconds: int = 1800,
 ) -> None:
     """

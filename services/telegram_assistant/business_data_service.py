@@ -1,5 +1,5 @@
 """
-Business Data Service — fetches and caches live business KPIs for WhatsApp AI context.
+Business Data Service — fetches and caches live business KPIs for Telegram AI context.
 
 All live data is queried directly from AWS RDS PostgreSQL.
 Financial profile / cashflow CSV are loaded from data/real/ as a fallback when
@@ -19,9 +19,9 @@ import psycopg
 from prometheus_client import Gauge
 from psycopg.rows import dict_row
 
-from services.whatsapp_assistant.session_manager import ConversationManager, DEFAULT_DATABASE_URL
+from services.telegram_assistant.conversation_store import ConversationManager, DEFAULT_DATABASE_URL
 
-logger = logging.getLogger("whatsapp_assistant.data_service")
+logger = logging.getLogger("telegram_assistant.business_data_service")
 
 # ── Prometheus gauges ─────────────────────────────────────────────────────────
 retail_cash_runway_months = Gauge("retail_cash_runway_months", "Cash runway in months")
@@ -209,12 +209,17 @@ class BusinessDataService:
                 r.suggested_price_usd,
                 r.explanation,
                 r.generated_at,
+                COALESCE(r.shap_features_json, '[]'::jsonb)  AS shap_features_json,
+                r.rule_override_json,
+                COALESCE(r.fallback_used, FALSE)             AS fallback_used,
+                r.model_version,
                 sv.sku_id,
                 p.name                           AS product_name,
                 p.brand,
                 p.category,
                 COALESCE(pr.amount, 0)           AS retail_price_usd,
-                sv.cost_price_usd
+                sv.cost_price_usd,
+                COALESCE(ib.quantity_on_hand, 0) AS current_stock
             FROM marketing.recommendations r
             JOIN core.sku_variants sv ON sv.id = r.variant_id
             JOIN core.products p ON sv.product_id = p.id
@@ -225,6 +230,11 @@ class BusinessDataService:
                   AND valid_to IS NULL
                 LIMIT 1
             ) pr ON true
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(quantity_on_hand), 0) AS quantity_on_hand
+                FROM core.inventory_balances
+                WHERE variant_id = sv.id
+            ) ib ON true
             WHERE r.tenant_id = %s
               AND r.status = 'pending'
             ORDER BY r.confidence DESC, r.generated_at DESC
@@ -258,13 +268,13 @@ class BusinessDataService:
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def get_business_context(
-        self, phone_number: str, force_refresh: bool = False,
+        self, chat_id: str, force_refresh: bool = False,
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
         # Check cache
         if not force_refresh:
             try:
-                cached_data, cached_at = await self._conv.get_cached_business_data(phone_number)
+                cached_data, cached_at = await self._conv.get_cached_business_data(chat_id)
                 if cached_data and cached_at:
                     age = (
                         datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)
@@ -421,7 +431,12 @@ class BusinessDataService:
                         "suggested_price_usd": float(r["suggested_price_usd"]) if r.get("suggested_price_usd") else None,
                         "retail_price_usd": float(r.get("retail_price_usd") or 0),
                         "cost_price_usd": float(r.get("cost_price_usd") or 0),
+                        "current_stock": int(r.get("current_stock") or 0),
                         "explanation": r.get("explanation") or "",
+                        "shap_features": r.get("shap_features_json") or [],
+                        "rule_override": r.get("rule_override_json"),
+                        "fallback_used": bool(r.get("fallback_used")),
+                        "model_version": r.get("model_version") or "unknown",
                     }
                     for r in recs
                 ]
@@ -434,7 +449,7 @@ class BusinessDataService:
 
         # Cache result
         try:
-            await self._conv.set_cached_business_data(phone_number, context)
+            await self._conv.set_cached_business_data(chat_id, context)
         except Exception as exc:
             logger.warning("Failed to write business data cache: %s", exc)
 
@@ -605,9 +620,9 @@ class BusinessDataService:
             SELECT
                 date_trunc('day', st.sold_at)::date AS day,
                 SUM(ti.quantity)::int                AS units_sold,
-                ROUND(SUM(ti.total_amount_usd)::numeric, 2) AS revenue_usd
+                ROUND(SUM(ti.quantity * ti.unit_price_usd * (1 - ti.discount_pct / 100.0))::numeric, 2) AS revenue_usd
             FROM core.sales_transactions st
-            JOIN core.transaction_items ti ON ti.transaction_id = st.id
+            JOIN core.sales_transaction_lines ti ON ti.sales_transaction_id = st.id
             JOIN core.sku_variants sv ON sv.id = ti.variant_id
             WHERE sv.sku_id = %s
               AND st.tenant_id = %s
@@ -664,7 +679,7 @@ class BusinessDataService:
                 p.category,
                 COUNT(DISTINCT sv.id)                            AS sku_count,
                 SUM(ti.quantity)::int                            AS units_sold,
-                ROUND(SUM(ti.total_amount_usd)::numeric, 2)     AS revenue_usd,
+                ROUND(SUM(ti.quantity * ti.unit_price_usd * (1 - ti.discount_pct / 100.0))::numeric, 2) AS revenue_usd,
                 ROUND(
                     AVG(
                         CASE WHEN ti.unit_price_usd > 0
@@ -673,7 +688,7 @@ class BusinessDataService:
                     )::numeric, 1
                 )                                                AS avg_margin_pct
             FROM core.sales_transactions st
-            JOIN core.transaction_items ti ON ti.transaction_id = st.id
+            JOIN core.sales_transaction_lines ti ON ti.sales_transaction_id = st.id
             JOIN core.sku_variants sv ON sv.id = ti.variant_id
             JOIN core.products p ON p.id = sv.product_id
             WHERE st.tenant_id = %s
@@ -707,8 +722,8 @@ class BusinessDataService:
                 SELECT sv.id AS variant_id,
                        COALESCE(SUM(ti.quantity)::float / 30.0, 0) AS daily_velocity
                 FROM core.sku_variants sv
-                LEFT JOIN core.transaction_items ti ON ti.variant_id = sv.id
-                LEFT JOIN core.sales_transactions st ON st.id = ti.transaction_id
+                LEFT JOIN core.sales_transaction_lines ti ON ti.variant_id = sv.id
+                LEFT JOIN core.sales_transactions st ON st.id = ti.sales_transaction_id
                     AND st.sold_at >= now() - interval '30 days'
                 WHERE sv.tenant_id = %s AND sv.status = 'active'
                 GROUP BY sv.id
@@ -796,6 +811,250 @@ class BusinessDataService:
         suggestions.sort(key=lambda x: (x["days_until_stockout"] or 999))
         return suggestions
 
+    async def _fetch_live_signals_for_recommendation(
+        self,
+        tenant_id: str,
+        sku_id: str,
+        suggested_discount_pct: float = 0.0,
+    ) -> dict[str, Any]:
+        """
+        Returns every signal Claude needs to reason about a recommendation
+        without relying on pre-stored explanation strings.
+
+        Fetches in one pass: inventory state, velocity, margin, competitor position.
+        The caller (tool handler) attaches this to the recommendation dict so
+        Claude Sonnet can reason from raw data instead of canned text.
+        """
+        sql = """
+            WITH velocity AS (
+                SELECT
+                    sv.id AS variant_id,
+                    COALESCE(SUM(ti.quantity)::float / 30.0, 0) AS daily_vel
+                FROM core.sku_variants sv
+                LEFT JOIN core.sales_transaction_lines ti ON ti.variant_id = sv.id
+                LEFT JOIN core.sales_transactions st
+                    ON st.id = ti.sales_transaction_id
+                    AND st.sold_at >= now() - interval '30 days'
+                WHERE sv.sku_id = %s AND sv.tenant_id = %s
+                GROUP BY sv.id
+            ),
+            comp AS (
+                SELECT
+                    COUNT(*)                              AS total_tracked,
+                    MIN(COALESCE(cl.competitor_sale_price, cl.competitor_price)) AS cheapest_price,
+                    MIN(cl.shop_code)                     AS cheapest_shop,
+                    SUM(CASE WHEN cl.is_on_sale THEN 1 ELSE 0 END)  AS on_sale_count,
+                    SUM(CASE WHEN cl.availability = 'out_of_stock' THEN 1 ELSE 0 END) AS oos_count
+                FROM intel.competitor_products_latest cl
+                JOIN core.sku_variants sv2
+                    ON sv2.style_code = cl.style_code
+                    AND sv2.tenant_id = %s
+                    AND sv2.sku_id = %s
+                WHERE cl.data_valid = true
+            )
+            SELECT
+                sv.sku_id,
+                p.name                                       AS product_name,
+                p.brand,
+                p.category,
+                sv.cost_price_usd,
+                COALESCE(pr.amount, 0)                       AS retail_price_usd,
+                COALESCE(SUM(ib.quantity_on_hand), 0)::int   AS units_on_hand,
+                sv.reorder_point,
+                ROUND(vel.daily_vel::numeric, 3)             AS daily_velocity,
+                CASE WHEN vel.daily_vel > 0
+                     THEN ROUND(
+                        COALESCE(SUM(ib.quantity_on_hand), 0) / vel.daily_vel
+                     )::int
+                     ELSE NULL
+                END                                          AS days_of_supply,
+                comp.total_tracked,
+                comp.cheapest_price,
+                comp.cheapest_shop,
+                comp.on_sale_count,
+                comp.oos_count
+            FROM core.sku_variants sv
+            JOIN core.products p ON p.id = sv.product_id
+            LEFT JOIN LATERAL (
+                SELECT amount FROM core.prices
+                WHERE variant_id = sv.id AND price_type = 'retail' AND valid_to IS NULL
+                LIMIT 1
+            ) pr ON true
+            LEFT JOIN core.inventory_balances ib ON ib.variant_id = sv.id
+            LEFT JOIN velocity vel ON vel.variant_id = sv.id
+            LEFT JOIN comp ON true
+            WHERE sv.tenant_id = %s AND sv.sku_id = %s
+            GROUP BY sv.id, sv.sku_id, p.name, p.brand, p.category,
+                     sv.cost_price_usd, sv.reorder_point, pr.amount,
+                     vel.daily_vel, comp.total_tracked, comp.cheapest_price,
+                     comp.cheapest_shop, comp.on_sale_count, comp.oos_count
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (sku_id, tenant_id, tenant_id, sku_id, tenant_id, sku_id))
+                row = await cur.fetchone()
+        finally:
+            await conn.close()
+
+        if not row:
+            return {"sku_id": sku_id, "error": "SKU not found in live inventory"}
+
+        retail = float(row["retail_price_usd"] or 0)
+        cost = float(row["cost_price_usd"] or 0)
+        units = int(row["units_on_hand"] or 0)
+        vel = float(row["daily_velocity"] or 0)
+        dos = row["days_of_supply"]
+        margin_now = round((retail - cost) / retail * 100, 1) if retail > cost else 0.0
+        cheapest = float(row["cheapest_price"] or 0)
+        price_gap_pct = round((retail - cheapest) / retail * 100, 1) if retail > 0 and cheapest > 0 else None
+
+        # Post-discount pricing
+        disc = suggested_discount_pct or 0.0
+        price_after = round(retail * (1 - disc / 100), 2) if disc > 0 else None
+        margin_after = round((price_after - cost) / price_after * 100, 1) if price_after and price_after > cost else None
+
+        # DOS zone — used by Claude to contextualise
+        if dos is None:
+            dos_zone = "no_velocity_data"
+        elif dos < 14:
+            dos_zone = "critical_low (< 14 days — risk of stockout)"
+        elif dos < 30:
+            dos_zone = "low (14–30 days — reorder soon)"
+        elif dos <= 90:
+            dos_zone = "healthy (30–90 days)"
+        elif dos <= 120:
+            dos_zone = "excess (90–120 days — above optimal)"
+        else:
+            dos_zone = "dead_stock (120+ days — capital trapped)"
+
+        # Margin zone
+        if margin_now >= 50:
+            margin_zone = "high — strong pricing power"
+        elif margin_now >= 35:
+            margin_zone = "healthy — above the 35% protection floor"
+        elif margin_now >= 25:
+            margin_zone = "thin — approaching the 35% floor"
+        else:
+            margin_zone = "below floor — cannot discount without special approval"
+
+        return {
+            "sku_id": row["sku_id"],
+            "product_name": row["product_name"],
+            "brand": row["brand"],
+            "category": row["category"],
+            "inventory": {
+                "units_on_hand": units,
+                "daily_velocity_30d": vel,
+                "days_of_supply": dos,
+                "dos_zone": dos_zone,
+                "reorder_point": row["reorder_point"],
+            },
+            "pricing": {
+                "retail_price_usd": retail,
+                "cost_price_usd": cost,
+                "current_margin_pct": margin_now,
+                "margin_zone": margin_zone,
+                "suggested_discount_pct": disc if disc > 0 else None,
+                "price_after_discount_usd": price_after,
+                "margin_after_discount_pct": margin_after,
+                "margin_floor_pct": 35.0,
+            },
+            "competition": {
+                "competitors_tracked": int(row["total_tracked"] or 0),
+                "cheapest_competitor_price_usd": cheapest if cheapest > 0 else None,
+                "cheapest_competitor": row["cheapest_shop"],
+                "our_price_vs_cheapest_gap_pct": price_gap_pct,
+                "price_position": (
+                    "above_market" if (price_gap_pct or 0) > 5
+                    else "below_market" if (price_gap_pct or 0) < -5
+                    else "at_market"
+                ),
+                "competitors_on_sale": int(row["on_sale_count"] or 0),
+                "competitors_out_of_stock": int(row["oos_count"] or 0),
+            },
+            "data_freshness": {
+                "inventory": "live (real-time)",
+                "competitor_prices": "up to 48h old",
+            },
+        }
+
+    async def _fetch_sku_live_snapshot(self, tenant_id: str, sku_id: str) -> dict[str, Any]:
+        """
+        Returns a live inventory + pricing + competitor snapshot for a single SKU.
+        Used to cross-reference recommendation reasoning with current real data.
+        """
+        sql = """
+            SELECT
+                sv.sku_id,
+                p.name                                       AS product_name,
+                p.brand,
+                p.category,
+                sv.cost_price_usd,
+                COALESCE(pr.amount, 0)                       AS retail_price_usd,
+                COALESCE(SUM(ib.quantity_on_hand), 0)::int   AS current_stock,
+                sv.reorder_point,
+                ROUND(
+                    (COALESCE(pr.amount, 0) - sv.cost_price_usd)
+                    / NULLIF(COALESCE(pr.amount, 0), 0) * 100
+                , 1)                                         AS margin_pct,
+                -- 30-day velocity from sales
+                COALESCE(vel.daily_velocity, 0)              AS daily_velocity,
+                CASE WHEN COALESCE(vel.daily_velocity, 0) > 0
+                     THEN ROUND(
+                        COALESCE(SUM(ib.quantity_on_hand), 0) / vel.daily_velocity
+                     )
+                     ELSE NULL
+                END::int                                     AS days_of_supply
+            FROM core.sku_variants sv
+            JOIN core.products p ON p.id = sv.product_id
+            LEFT JOIN LATERAL (
+                SELECT amount FROM core.prices
+                WHERE variant_id = sv.id AND price_type = 'retail' AND valid_to IS NULL
+                LIMIT 1
+            ) pr ON true
+            LEFT JOIN core.inventory_balances ib ON ib.variant_id = sv.id
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(ti.quantity)::float / 30.0, 0) AS daily_velocity
+                FROM core.sales_transaction_lines ti
+                JOIN core.sales_transactions st ON st.id = ti.sales_transaction_id
+                WHERE ti.variant_id = sv.id
+                  AND st.sold_at >= now() - interval '30 days'
+            ) vel ON true
+            WHERE sv.tenant_id = %s AND sv.sku_id = %s
+            GROUP BY sv.id, sv.sku_id, p.name, p.brand, p.category,
+                     sv.cost_price_usd, sv.reorder_point, pr.amount, vel.daily_velocity
+        """
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (tenant_id, sku_id))
+                row = await cur.fetchone()
+        finally:
+            await conn.close()
+
+        if not row:
+            return {"sku_id": sku_id, "error": "SKU not found in live inventory"}
+
+        # Competitor data for this SKU
+        comp_rows = await self.get_competitor_prices(tenant_id, sku_id=sku_id)
+
+        return {
+            "sku_id": row["sku_id"],
+            "product_name": row["product_name"],
+            "brand": row["brand"],
+            "category": row["category"],
+            "live_stock_units": row["current_stock"],
+            "days_of_supply": row["days_of_supply"],
+            "daily_velocity_units": round(float(row["daily_velocity"]), 2),
+            "retail_price_usd": float(row["retail_price_usd"]),
+            "cost_price_usd": float(row["cost_price_usd"]),
+            "margin_pct": float(row["margin_pct"]) if row["margin_pct"] is not None else None,
+            "reorder_point": row["reorder_point"],
+            "data_source": "live_rds",
+            "competitors": comp_rows[:5],
+        }
+
     async def _fetch_revenue_trend(self, tenant_id: str) -> dict[str, Any]:
         """This-week vs last-week daily revenue average with trend direction."""
         sql = """
@@ -834,6 +1093,40 @@ class BusinessDataService:
             "direction": "up" if trend_pct > 5 else "down" if trend_pct < -5 else "flat",
             "daily": [{"day": str(r["day"]), "revenue_usd": float(r["revenue_usd"])} for r in rows],
         }
+
+    # ── Public API aliases ────────────────────────────────────────────────────
+    # These thin wrappers expose the private fetch methods as stable public API so
+    # callers (ai_engine dispatch, tests) don't depend on private naming conventions.
+
+    async def get_stockout_days(self, tenant_id: str) -> list[dict[str, Any]]:
+        return await self._fetch_stockout_days(tenant_id)
+
+    async def get_reorder_suggestions(self, tenant_id: str) -> list[dict[str, Any]]:
+        return await self._fetch_reorder_suggestions(tenant_id)
+
+    async def get_sku_velocity_trend(
+        self, tenant_id: str, sku_id: str, days: int = 30
+    ) -> dict[str, Any]:
+        return await self._fetch_sku_velocity_trend(tenant_id, sku_id, days)
+
+    async def get_category_performance(
+        self, tenant_id: str, days: int = 30
+    ) -> list[dict[str, Any]]:
+        return await self._fetch_category_performance(tenant_id, days)
+
+    async def get_revenue_trend(self, tenant_id: str) -> dict[str, Any]:
+        return await self._fetch_revenue_trend(tenant_id)
+
+    async def get_pending_recommendations(self, tenant_id: str) -> list[dict[str, Any]]:
+        return await self._fetch_pending_recommendations_from_db(tenant_id)
+
+    async def get_live_signals_for_recommendation(
+        self, tenant_id: str, sku_id: str, discount_pct: float
+    ) -> dict[str, Any]:
+        return await self._fetch_live_signals_for_recommendation(tenant_id, sku_id, discount_pct)
+
+    async def get_sku_live_snapshot(self, tenant_id: str, sku_id: str) -> dict[str, Any]:
+        return await self._fetch_sku_live_snapshot(tenant_id, sku_id)
 
 
 # ── Formatting helper ─────────────────────────────────────────────────────────
@@ -917,7 +1210,7 @@ if __name__ == "__main__":
     _env_file = _Path(__file__).parent / ".env"
     if _env_file.exists():
         from dotenv import load_dotenv
-        load_dotenv(_env_file, override=False)
+        load_dotenv(_env_file, override=True)
 
     _DB_URL = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     _DATA_DIR = str(_Path(__file__).resolve().parents[2] / "data" / "real")

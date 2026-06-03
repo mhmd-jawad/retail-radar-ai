@@ -22,7 +22,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
-logger = logging.getLogger("whatsapp_assistant.roadmap")
+logger = logging.getLogger("telegram_assistant.recommendation_roadmap")
 
 # ── Stage metadata ─────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ async def ensure_roadmap_tables(db_url: str) -> None:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS whatsapp.recommendation_roadmaps (
+                CREATE TABLE IF NOT EXISTS telegram.recommendation_roadmaps (
                     id                        BIGSERIAL    PRIMARY KEY,
                     tenant_id                 UUID         NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
                     recommendation_id         UUID         REFERENCES marketing.recommendations(id) ON DELETE SET NULL,
@@ -109,21 +109,21 @@ async def ensure_roadmap_tables(db_url: str) -> None:
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_roadmaps_tenant_stage
-                    ON whatsapp.recommendation_roadmaps (tenant_id, current_stage, created_at DESC)
+                    ON telegram.recommendation_roadmaps (tenant_id, current_stage, created_at DESC)
                 """
             )
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_roadmaps_followup
-                    ON whatsapp.recommendation_roadmaps (next_followup_at)
+                    ON telegram.recommendation_roadmaps (next_followup_at)
                     WHERE current_stage NOT IN ('completed','expired','blocked')
                 """
             )
             await cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS whatsapp.roadmap_audit_log (
+                CREATE TABLE IF NOT EXISTS telegram.recommendation_roadmap_audit_log (
                     id          BIGSERIAL    PRIMARY KEY,
-                    roadmap_id  BIGINT       NOT NULL REFERENCES whatsapp.recommendation_roadmaps(id) ON DELETE CASCADE,
+                    roadmap_id  BIGINT       NOT NULL REFERENCES telegram.recommendation_roadmaps(id) ON DELETE CASCADE,
                     action      TEXT         NOT NULL,
                     actor       TEXT         NOT NULL CHECK (actor IN ('retailer','system','ai')),
                     from_stage  TEXT,
@@ -136,7 +136,7 @@ async def ensure_roadmap_tables(db_url: str) -> None:
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_roadmap_audit_roadmap
-                    ON whatsapp.roadmap_audit_log (roadmap_id, created_at)
+                    ON telegram.recommendation_roadmap_audit_log (roadmap_id, created_at)
                 """
             )
         await conn.commit()
@@ -170,7 +170,7 @@ async def create_roadmap(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO whatsapp.recommendation_roadmaps
+                INSERT INTO telegram.recommendation_roadmaps
                     (tenant_id, recommendation_id, sku_id, product_name, decision_type,
                      confidence_pct, suggested_discount_pct,
                      context_summary, reasoning, expected_impact,
@@ -199,7 +199,7 @@ async def create_roadmap(
         # Already existed — fetch
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT id FROM whatsapp.recommendation_roadmaps WHERE recommendation_id = %s",
+                "SELECT id FROM telegram.recommendation_roadmaps WHERE recommendation_id = %s",
                 (recommendation_id,),
             )
             existing = await cur.fetchone()
@@ -221,7 +221,7 @@ async def advance_stage(
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT current_stage FROM whatsapp.recommendation_roadmaps WHERE id = %s",
+                "SELECT current_stage FROM telegram.recommendation_roadmaps WHERE id = %s",
                 (roadmap_id,),
             )
             row = await cur.fetchone()
@@ -248,7 +248,7 @@ async def advance_stage(
         values.append(roadmap_id)
         async with conn.cursor() as cur:
             await cur.execute(
-                f"UPDATE whatsapp.recommendation_roadmaps SET {', '.join(set_parts)} WHERE id = %s",
+                f"UPDATE telegram.recommendation_roadmaps SET {', '.join(set_parts)} WHERE id = %s",
                 values,
             )
         await conn.commit()
@@ -273,7 +273,7 @@ async def mark_modification(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                UPDATE whatsapp.recommendation_roadmaps
+                UPDATE telegram.recommendation_roadmaps
                 SET current_stage = 'modified',
                     modification_count = modification_count + 1,
                     last_modification = %s
@@ -302,7 +302,7 @@ async def close_with_outcome(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                UPDATE whatsapp.recommendation_roadmaps
+                UPDATE telegram.recommendation_roadmaps
                 SET current_stage = 'completed',
                     completed_at = NOW(),
                     outcome_snapshot_id = %s,
@@ -336,7 +336,7 @@ async def get_roadmap_id_for_recommendation(db_url: str, recommendation_id: str)
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT id FROM whatsapp.recommendation_roadmaps WHERE recommendation_id = %s",
+                "SELECT id FROM telegram.recommendation_roadmaps WHERE recommendation_id = %s",
                 (recommendation_id,),
             )
             row = await cur.fetchone()
@@ -362,7 +362,7 @@ async def get_roadmap_summary(db_url: str, tenant_id: UUID) -> dict[str, Any]:
                     approved_at, executed_at, completed_at,
                     outcome_velocity_lift_pct, outcome_revenue_delta_usd,
                     created_at, expires_at
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s
                   AND created_at > NOW() - INTERVAL '30 days'
                 ORDER BY
@@ -438,7 +438,7 @@ async def get_recommendation_detail(db_url: str, roadmap_id: int) -> dict[str, A
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT * FROM whatsapp.recommendation_roadmaps WHERE id = %s",
+                "SELECT * FROM telegram.recommendation_roadmaps WHERE id = %s",
                 (roadmap_id,),
             )
             roadmap = await cur.fetchone()
@@ -447,7 +447,7 @@ async def get_recommendation_detail(db_url: str, roadmap_id: int) -> dict[str, A
             await cur.execute(
                 """
                 SELECT action, actor, from_stage, to_stage, details, created_at
-                FROM whatsapp.roadmap_audit_log
+                FROM telegram.recommendation_roadmap_audit_log
                 WHERE roadmap_id = %s
                 ORDER BY created_at
                 """,
@@ -478,7 +478,7 @@ async def get_next_actions(db_url: str, tenant_id: UUID) -> dict[str, Any]:
                 SELECT sku_id, product_name, decision_type, confidence_pct,
                        suggested_discount_pct, reasoning, expected_impact,
                        ROUND(EXTRACT(EPOCH FROM (NOW() - created_at))/3600, 1) AS hours_waiting
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s AND current_stage = 'awaiting_approval'
                   AND (expires_at IS NULL OR expires_at > NOW())
                 ORDER BY confidence_pct DESC NULLS LAST
@@ -492,7 +492,7 @@ async def get_next_actions(db_url: str, tenant_id: UUID) -> dict[str, Any]:
                 """
                 SELECT sku_id, product_name, decision_type,
                        modification_count, last_modification, confidence_pct
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s AND current_stage = 'modified'
                 ORDER BY created_at DESC
                 """,
@@ -504,7 +504,7 @@ async def get_next_actions(db_url: str, tenant_id: UUID) -> dict[str, Any]:
             await cur.execute(
                 """
                 SELECT sku_id, product_name, decision_type, last_modification
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s AND current_stage = 'blocked'
                 ORDER BY created_at DESC
                 """,
@@ -517,7 +517,7 @@ async def get_next_actions(db_url: str, tenant_id: UUID) -> dict[str, Any]:
                 """
                 SELECT sku_id, product_name, decision_type,
                        ROUND(EXTRACT(EPOCH FROM (NOW() - approved_at))/86400, 1) AS days_since_approval
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s
                   AND current_stage IN ('approved','executing','monitoring')
                   AND approved_at < NOW() - INTERVAL '7 days'
@@ -533,7 +533,7 @@ async def get_next_actions(db_url: str, tenant_id: UUID) -> dict[str, Any]:
                 SELECT sku_id, product_name, decision_type,
                        outcome_velocity_lift_pct, outcome_revenue_delta_usd,
                        completed_at
-                FROM whatsapp.recommendation_roadmaps
+                FROM telegram.recommendation_roadmaps
                 WHERE tenant_id = %s AND current_stage = 'completed'
                   AND completed_at > NOW() - INTERVAL '14 days'
                 ORDER BY completed_at DESC
@@ -580,44 +580,115 @@ async def generate_rich_context(
     explanation: str,
     retail_price: float,
     cost_price: float,
+    shap_features: list[dict] | None = None,
+    rule_override: dict | None = None,
+    current_stock: int | None = None,
+    live_signals: dict | None = None,
 ) -> dict[str, str]:
     """
-    Use Claude Haiku to generate structured recommendation context:
-    reasoning, expected impact, risks, alternatives, next best step.
-    Falls back to template values if the API call fails.
+    Use Claude Sonnet to generate genuine analyst-quality reasoning for a recommendation.
+
+    Receives the raw live signals (inventory, pricing, competition) and reasons over them
+    directly — no templates, no fixed rules. The output reads like a senior analyst wrote it.
+    Falls back to minimal structured values if the API call fails.
     """
     import anthropic as _anthropic
 
-    discount_line = f"{int(suggested_discount_pct)}% discount" if suggested_discount_pct else "pricing action"
-    new_price = retail_price * (1 - (suggested_discount_pct or 0) / 100)
-    margin_after = ((new_price - cost_price) / new_price * 100) if new_price > 0 else 0
+    disc = suggested_discount_pct or 0.0
+    new_price = retail_price * (1 - disc / 100) if disc > 0 else retail_price
+    margin_now = round((retail_price - cost_price) / retail_price * 100, 1) if retail_price > cost_price else 0.0
+    margin_after = round((new_price - cost_price) / new_price * 100, 1) if new_price > cost_price else 0.0
 
-    prompt = f"""You are a retail business analyst for StylePulse, a sportswear retailer in Lebanon.
-Generate a structured recommendation context for the retailer to review via WhatsApp.
+    # Build the data block Claude reasons from — prefer live signals, fall back to stored data
+    signals = live_signals or {}
+    inv = signals.get("inventory", {})
+    pricing = signals.get("pricing", {})
+    comp = signals.get("competition", {})
 
+    dos = inv.get("days_of_supply") or "unknown"
+    dos_zone = inv.get("dos_zone") or "unknown"
+    units = inv.get("units_on_hand") if inv else current_stock
+    vel = inv.get("daily_velocity_30d") or 0.0
+    comp_tracked = comp.get("competitors_tracked") or 0
+    comp_cheapest = comp.get("cheapest_competitor_price_usd")
+    comp_shop = comp.get("cheapest_competitor") or "a competitor"
+    gap = comp.get("our_price_vs_cheapest_gap_pct")
+    on_sale = comp.get("competitors_on_sale") or 0
+    oos = comp.get("competitors_out_of_stock") or 0
+
+    # SHAP signals — what the model weighted most
+    shap_block = ""
+    if rule_override:
+        shap_block = (
+            f"\nBusiness protection applied: {rule_override.get('rule_id','')} — "
+            f"{rule_override.get('reason','')}. This overrides the ML probability."
+        )
+    elif shap_features:
+        parts = []
+        for f in shap_features[:3]:
+            parts.append(f"  • {f.get('explanation', f.get('feature_name',''))}")
+        shap_block = "\nTop model signals:\n" + "\n".join(parts)
+
+    data_block = f"""
+LIVE INVENTORY
+  Units on hand: {units}
+  Daily velocity (30d): {vel:.2f} units/day
+  Days of supply: {dos} — zone: {dos_zone}
+
+PRICING & MARGIN
+  Current retail: ${retail_price:.2f}  |  Cost: ${cost_price:.2f}
+  Current margin: {margin_now:.1f}%
+  Suggested action: {int(disc)}% {'discount → $' + f'{new_price:.2f}' if disc > 0 else 'no discount'}
+  Margin after action: {margin_after:.1f}%  (business floor is 35%)
+
+COMPETITIVE POSITION
+  Competitors tracked: {comp_tracked}
+  Cheapest competitor: {'$' + f'{comp_cheapest:.2f}' + f' ({comp_shop})' if comp_cheapest else 'no data'}
+  Our price vs market: {f'{gap:+.1f}%' if gap is not None else 'unknown'} ({'we are more expensive' if (gap or 0) > 0 else 'we are cheaper' if (gap or 0) < 0 else 'at market'})
+  Competitors on sale: {on_sale} of {comp_tracked}
+  Competitors out of stock: {oos} of {comp_tracked}
+{shap_block}"""
+
+    prompt = f"""You are a senior retail inventory analyst for StylePulse, a multi-brand sportswear retailer in Lebanon.
+
+A pricing recommendation has been generated. Your job is to write a professional, specific explanation that the store owner will read on their phone.
+
+## Recommendation
+Action: {decision_type}{f' — {int(disc)}% discount' if disc > 0 else ''}
+ML confidence: {confidence_pct:.0f}%
 Product: {product_name}
-Decision: {decision_type} — {discount_line}
-AI confidence: {confidence_pct:.0f}%
-Primary signal: {explanation}
-Retail price: ${retail_price:.2f}  |  New price after discount: ${new_price:.2f}
-Margin after action: {margin_after:.1f}%
 
-Return ONLY a JSON object with these exact keys (no markdown, no explanation):
-- context_summary: 1-2 sentences — which data signals triggered this recommendation
-- reasoning: 2-3 sentences — WHY this action makes sense right now
-- expected_impact: 1-2 sentences — expected outcome (units sold, revenue, margin)
-- risks: 1 sentence — the main risk of taking this action
-- alternatives: 1 sentence — what else could be done instead
-- next_best_step: 1 short sentence — the single most important thing to do next"""
+## Data (from live systems)
+{data_block}
+
+## Your task
+Write a clear, honest analysis of why this recommendation makes sense — or where to be cautious.
+Rules:
+- Cite specific numbers from the data above. Never be vague.
+- Write for a store owner, not a data scientist. No jargon.
+- If the data shows risk (e.g. low margin after discount, few competitors on sale), say so.
+- If the confidence is below 65%, be explicit that the signal is not strong.
+- Do not invent numbers. Only use the data provided.
+
+Return ONLY a valid JSON object with these exact keys:
+{{
+  "context_summary": "1-2 sentences: which 2-3 numbers most clearly indicate action is needed",
+  "reasoning": "2-3 sentences: why NOW is the right time, not next week — cite the data",
+  "expected_impact": "1-2 sentences: what will likely happen if approved (units, revenue, margin)",
+  "risks": "1 sentence: the main risk and one specific mitigation",
+  "alternatives": "1 sentence: the best alternative if the retailer disagrees",
+  "next_best_step": "1 sentence: the single most important thing to do right now"
+}}"""
 
     try:
         client = _anthropic.AsyncAnthropic(api_key=anthropic_api_key)
         response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=600,
+            model="claude-sonnet-4-6",
+            max_tokens=800,
             messages=[{"role": "user", "content": prompt}],
         )
         text = (response.content[0].text if response.content else "").strip()
+        # Strip markdown code fences if present
         if text.startswith("```"):
             text = text.split("```", 2)[1]
             if text.startswith("json"):
@@ -626,13 +697,18 @@ Return ONLY a JSON object with these exact keys (no markdown, no explanation):
         return json.loads(text)
     except Exception as exc:
         logger.warning("Rich context generation failed for %s: %s", product_name, exc)
+        action_line = f"{int(disc)}% discount" if disc > 0 else decision_type.lower()
         return {
-            "context_summary": f"Inventory and pricing signals indicate action needed on {product_name}.",
-            "reasoning": explanation or "AI confidence threshold met based on current stock and velocity data.",
-            "expected_impact": f"Expected revenue improvement from applying {discount_line}.",
-            "risks": "Margin compression if discount is deeper than needed — monitor closely.",
-            "alternatives": "Hold price for one more week and monitor sales velocity.",
-            "next_best_step": f"Review and approve the {decision_type.lower()} recommendation.",
+            "context_summary": (
+                f"{product_name}: {units or '?'} units on hand, "
+                f"{dos} days of supply ({dos_zone}), "
+                f"{on_sale} of {comp_tracked} competitors on sale."
+            ),
+            "reasoning": explanation or f"Live inventory and competitor signals indicate a {action_line} is warranted.",
+            "expected_impact": f"Applying a {action_line} should accelerate sell-through from {vel:.1f} units/day.",
+            "risks": "Monitor margin closely — ensure the post-discount rate stays above 35%.",
+            "alternatives": "Hold for two more weeks and reassess if velocity changes.",
+            "next_best_step": f"Review the live data above and approve or modify the {decision_type.lower()}.",
         }
 
 
@@ -640,14 +716,14 @@ Return ONLY a JSON object with these exact keys (no markdown, no explanation):
 
 async def roadmap_followup_loop(
     db_url: str,
-    retailer_phone: str,
+    retailer_chat_id: str,
     tenant_id: UUID,
-    wa_client: Any,
+    telegram_client: Any,
     interval_seconds: int = 3600,
 ) -> None:
     """
     Background task: every hour, check for roadmaps that need a follow-up nudge.
-    Sends a WhatsApp reminder if a recommendation has been waiting for approval
+    Sends a Telegram reminder if a recommendation has been waiting for approval
     for more than 4 hours without a response.
     """
     import asyncio
@@ -662,7 +738,7 @@ async def roadmap_followup_loop(
                         SELECT id, product_name, decision_type, confidence_pct,
                                suggested_discount_pct, reasoning,
                                ROUND(EXTRACT(EPOCH FROM (NOW() - created_at))/3600, 0) AS hours_waiting
-                        FROM whatsapp.recommendation_roadmaps
+                        FROM telegram.recommendation_roadmaps
                         WHERE tenant_id = %s
                           AND current_stage IN ('awaiting_approval', 'modified')
                           AND (next_followup_at IS NULL OR next_followup_at <= NOW())
@@ -690,14 +766,14 @@ async def roadmap_followup_loop(
                     f"_(Or ask me: 'What should we do about {row['product_name']}?')_"
                 )
                 try:
-                    await wa_client.send_text_message(retailer_phone, msg)
+                    await telegram_client.send_text_message(retailer_chat_id, msg)
                     # Push next follow-up 4 hours out
                     conn2 = await psycopg.AsyncConnection.connect(db_url)
                     try:
                         async with conn2.cursor() as cur:
                             await cur.execute(
                                 """
-                                UPDATE whatsapp.recommendation_roadmaps
+                                UPDATE telegram.recommendation_roadmaps
                                 SET last_followup_at = NOW(),
                                     next_followup_at = NOW() + INTERVAL '4 hours'
                                 WHERE id = %s
@@ -732,7 +808,7 @@ async def _append_audit(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO whatsapp.roadmap_audit_log
+                INSERT INTO telegram.recommendation_roadmap_audit_log
                     (roadmap_id, action, actor, from_stage, to_stage, details)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """,

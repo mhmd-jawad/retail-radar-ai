@@ -138,21 +138,21 @@ services:
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
 
-  whatsapp_assistant:
+  telegram_assistant:
     build:
       context: ..
-      dockerfile: services/whatsapp_assistant/Dockerfile
+      dockerfile: services/telegram_assistant/Dockerfile
     ports:
       - "8004:8004"
     env_file:
       - ../.env
-      - ../services/whatsapp_assistant/.env
+      - ../services/telegram_assistant/.env
     environment:
       EEP_BASE_URL: http://eep:8000
       IE3_BASE_URL: http://ie3_campaign_creative:8003
       PYTHONUNBUFFERED: "1"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5).read()"]
       interval: 30s
       timeout: 10s
       retries: 3
