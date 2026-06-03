@@ -19,39 +19,113 @@ import type {
   RetailInventoryInput,
   RetailInventoryItem,
   RetailInventoryResponse,
+  AuthResponse,
   CampaignCreative,
+  CompetitorOption,
   DetailedBalanceSheet,
   DetailedProfitability,
   OutcomeSnapshot,
   DailySalesPoint,
   PortfolioAccuracy,
+  ShopProfile,
+  ShopProfileInput,
+  ShopSignupInput,
 } from '@/types/domain';
 import { MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
+import { authHeader, useAuth } from '@/store/auth';
 
 function settings() {
   const s = useSettings.getState();
   return { mode: s.mode, ie2: s.ie2BaseUrl, base: s.apiBaseUrl, key: s.apiKey };
 }
 
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { ...authHeader(), ...(extra ?? {}) };
+}
+
+function hasAuthSession(): boolean {
+  return Boolean(useAuth.getState().token);
+}
+
+export async function loginAccount(email: string, password: string): Promise<AuthResponse> {
+  const { base } = settings();
+  const r = await fetch(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/login'));
+  return r.json();
+}
+
+export async function signupShop(payload: ShopSignupInput): Promise<AuthResponse> {
+  const { base } = settings();
+  const r = await fetch(`${base}/auth/signup-shop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/signup-shop'));
+  return r.json();
+}
+
+export async function fetchCurrentUser(): Promise<AuthResponse['user']> {
+  const { base } = settings();
+  const r = await fetch(`${base}/auth/me`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/me'));
+  return r.json();
+}
+
+export async function logoutAccount(): Promise<void> {
+  const { base } = settings();
+  const r = await fetch(`${base}/auth/logout`, { method: 'POST', headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/logout'));
+}
+
+export async function fetchAvailableCompetitors(): Promise<CompetitorOption[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/auth/competitors`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/competitors'));
+  return r.json();
+}
+
+export async function fetchShopProfile(): Promise<ShopProfile> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/profile`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/profile'));
+  return r.json();
+}
+
+export async function updateShopProfile(payload: ShopProfileInput): Promise<ShopProfile> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/profile`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/profile'));
+  return r.json();
+}
+
 export async function fetchReport(): Promise<Report> {
   const { base } = settings();
-  const r = await fetch(`${base}/report`);
+  const r = await fetch(`${base}/report`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`/report ${r.status}`);
   return r.json();
 }
 
 export async function fetchLiveReport(): Promise<Report> {
   const { base } = settings();
-  const r = await fetch(`${base}/report/live`);
+  const r = await fetch(`${base}/report/live`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`/report/live ${r.status}`);
   return r.json();
 }
 
 export async function fetchScrapeRuns(): Promise<ScrapeRun[]> {
   const { mode, base } = settings();
-  if (mode === 'eep-live') {
-    const r = await fetch(`${base}/ops/scrape-runs`);
+  if (mode === 'eep-live' || hasAuthSession()) {
+    const r = await fetch(`${base}/ops/scrape-runs`, { headers: apiHeaders() });
     if (!r.ok) throw new Error(`EEP /ops/scrape-runs ${r.status}`);
     return r.json();
   }
@@ -61,8 +135,8 @@ export async function fetchScrapeRuns(): Promise<ScrapeRun[]> {
 
 export async function fetchCompetitorLatest(): Promise<CompetitorProductLatest[]> {
   const { mode, base } = settings();
-  if (mode === 'eep-live') {
-    const r = await fetch(`${base}/ops/competitor-latest?limit=50`);
+  if (mode === 'eep-live' || hasAuthSession()) {
+    const r = await fetch(`${base}/ops/competitor-latest?limit=50`, { headers: apiHeaders() });
     if (!r.ok) throw new Error(`EEP /ops/competitor-latest ${r.status}`);
     return r.json();
   }
@@ -72,7 +146,7 @@ export async function fetchCompetitorLatest(): Promise<CompetitorProductLatest[]
 
 export async function fetchRetailDbStatus(): Promise<RetailDbStatus> {
   const { base } = settings();
-  const r = await fetch(`${base}/inventory/db/status`);
+  const r = await fetch(`${base}/inventory/db/status`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`EEP /inventory/db/status ${r.status}`);
   return r.json();
 }
@@ -82,7 +156,7 @@ export async function fetchRetailInventory(search = ''): Promise<RetailInventory
   const params = new URLSearchParams();
   if (search.trim()) params.set('search', search.trim());
   params.set('limit', '1000');
-  const r = await fetch(`${base}/inventory/items?${params.toString()}`);
+  const r = await fetch(`${base}/inventory/items?${params.toString()}`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/items'));
   return r.json();
 }
@@ -91,7 +165,7 @@ export async function createRetailInventoryItem(payload: RetailInventoryInput): 
   const { base } = settings();
   const r = await fetch(`${base}/inventory/items`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/items'));
@@ -102,7 +176,7 @@ export async function updateRetailInventoryItem(skuId: string, payload: RetailIn
   const { base } = settings();
   const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error(await apiError(r, `EEP /inventory/items/${skuId}`));
@@ -111,7 +185,7 @@ export async function updateRetailInventoryItem(skuId: string, payload: RetailIn
 
 export async function archiveRetailInventoryItem(skuId: string): Promise<RetailInventoryItem> {
   const { base } = settings();
-  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}`, { method: 'DELETE' });
+  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}`, { method: 'DELETE', headers: apiHeaders() });
   if (!r.ok) throw new Error(await apiError(r, `EEP /inventory/items/${skuId}`));
   return r.json();
 }
@@ -123,7 +197,7 @@ export async function importRetailInventory(
   const { base } = settings();
   const r = await fetch(`${base}/inventory/import`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ mode, items }),
   });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /inventory/import'));
@@ -140,7 +214,7 @@ export async function patchInventoryPrice(
   const { base } = settings();
   const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}/price`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ retail_price_usd: retailPriceUsd, decision_type: decisionType, notes }),
   });
   if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
@@ -157,7 +231,7 @@ export async function recordDecision(
   const { base } = settings();
   const r = await fetch(`${base}/decisions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ sku_id: skuId, decision_type: decisionType, notes }),
   });
   if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
@@ -169,7 +243,7 @@ export async function recommend(req: IE2Request): Promise<IE2Result> {
   const { mode, ie2, base, key } = settings();
   const normalizedReq = normalizeRequest(req);
 
-  if (mode === 'ie2-live') {
+  if (mode === 'ie2-live' && !hasAuthSession()) {
     const r = await fetch(`${ie2}/recommend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
@@ -179,10 +253,10 @@ export async function recommend(req: IE2Request): Promise<IE2Result> {
     return normalizeRecommendation(await r.json());
   }
 
-  if (mode === 'eep-live') {
+  if (mode === 'eep-live' || hasAuthSession()) {
     const r = await fetch(`${base}/recommend/${encodeURIComponent(req.sku_id)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      headers: apiHeaders({ 'Content-Type': 'application/json', 'X-API-Key': key }),
       body: JSON.stringify(normalizedReq),
     });
     if (!r.ok) throw new Error(`EEP /recommend ${r.status}`);
@@ -379,7 +453,7 @@ async function apiError(response: Response, label: string) {
 
 export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/outcomes/${encodeURIComponent(variantId)}`);
+  const r = await fetch(`${base}/outcomes/${encodeURIComponent(variantId)}`, { headers: apiHeaders() });
   if (r.status === 503) return [];
   if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${variantId}`));
   return r.json();
@@ -387,7 +461,7 @@ export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[
 
 export async function fetchOutcomesBySku(skuId: string): Promise<OutcomeSnapshot[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/outcomes/by-sku/${encodeURIComponent(skuId)}`);
+  const r = await fetch(`${base}/outcomes/by-sku/${encodeURIComponent(skuId)}`, { headers: apiHeaders() });
   if (r.status === 503) return [];
   if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/by-sku/${skuId}`));
   return r.json();
@@ -400,7 +474,7 @@ export async function triggerMeasurement(
   const { base } = settings();
   const r = await fetch(`${base}/outcomes/${snapshotId}/measure`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ window_days: windowDays }),
   });
   if (!r.ok) throw new Error(await apiError(r, `EEP POST /outcomes/${snapshotId}/measure`));
@@ -409,7 +483,7 @@ export async function triggerMeasurement(
 
 export async function fetchDailySeries(snapshotId: number): Promise<DailySalesPoint[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/outcomes/${snapshotId}/daily-series`);
+  const r = await fetch(`${base}/outcomes/${snapshotId}/daily-series`, { headers: apiHeaders() });
   if (r.status === 503) return [];
   if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${snapshotId}/daily-series`));
   return r.json();
@@ -418,7 +492,7 @@ export async function fetchDailySeries(snapshotId: number): Promise<DailySalesPo
 export async function fetchPortfolioAccuracy(decisionType?: string): Promise<PortfolioAccuracy> {
   const { base } = settings();
   const params = decisionType ? `?decision_type=${encodeURIComponent(decisionType)}` : '';
-  const r = await fetch(`${base}/outcomes/portfolio/accuracy${params}`);
+  const r = await fetch(`${base}/outcomes/portfolio/accuracy${params}`, { headers: apiHeaders() });
   if (r.status === 503) return { avg_accuracy: null, decision_count: 0, by_type: {} };
   if (!r.ok) throw new Error(await apiError(r, 'EEP /outcomes/portfolio/accuracy'));
   return r.json();
@@ -428,14 +502,14 @@ export async function fetchPortfolioAccuracy(decisionType?: string): Promise<Por
 
 export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
   const { base } = settings();
-  const r = await fetch(`${base}/financial/balance-sheet`);
+  const r = await fetch(`${base}/financial/balance-sheet`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`/financial/balance-sheet ${r.status}`);
   return r.json();
 }
 
 export async function fetchDetailedProfitability(): Promise<DetailedProfitability> {
   const { base } = settings();
-  const r = await fetch(`${base}/financial/profitability`);
+  const r = await fetch(`${base}/financial/profitability`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`/financial/profitability ${r.status}`);
   return r.json();
 }
@@ -444,7 +518,7 @@ export interface CashflowMonth { month: string; in: number; out: number; net: nu
 
 export async function fetchCashflow(): Promise<CashflowMonth[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/financial/cashflow`);
+  const r = await fetch(`${base}/financial/cashflow`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`/financial/cashflow ${r.status}`);
   const json = await r.json();
   // backend wraps series in { series: [...] }, unwrap if needed

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import threading
+import time
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
@@ -108,22 +109,28 @@ def _import_psycopg():
 
 @contextmanager
 def _connect():
-    import socket
     from urllib.parse import urlparse
     _url = urlparse(database_url())
     _host = _url.hostname or "localhost"
     _port = _url.port or 5432
-    try:
-        s = socket.create_connection((_host, _port), timeout=0.5)
-        s.close()
-    except OSError as exc:
-        raise DatabaseUnavailable(f"Cannot reach PostgreSQL at {_host}:{_port}: {exc}") from exc
-
+    _tcp_timeout = float(os.environ.get("DATABASE_TCP_TIMEOUT_SECONDS", "10"))
     psycopg, dict_row = _import_psycopg()
-    try:
-        conn = psycopg.connect(database_url(), row_factory=dict_row, connect_timeout=3)
-    except Exception as exc:  # pragma: no cover - depends on local DB
-        raise DatabaseUnavailable(f"Cannot connect to PostgreSQL: {exc}") from exc
+    conn = None
+    last_connect_error: Exception | None = None
+    last_connect_message = f"Cannot connect to PostgreSQL at {_host}:{_port}"
+    retries = max(1, int(os.environ.get("DATABASE_CONNECT_RETRIES", "3")))
+    retry_delay = float(os.environ.get("DATABASE_CONNECT_RETRY_DELAY_SECONDS", "1"))
+    for attempt in range(retries):
+        try:
+            conn = psycopg.connect(database_url(), row_factory=dict_row, connect_timeout=max(5, int(_tcp_timeout)))
+            break
+        except Exception as exc:  # pragma: no cover - depends on local DB
+            last_connect_error = exc
+            last_connect_message = f"Cannot connect to PostgreSQL: {exc}"
+        if attempt < retries - 1:
+            time.sleep(retry_delay)
+    if conn is None:
+        raise DatabaseUnavailable(f"{last_connect_message} (attempted {retries} times)") from last_connect_error
 
     try:
         _ensure_schema(conn)
@@ -181,36 +188,48 @@ def _ensure_inventory_detail_columns(conn) -> None:
         _DETAIL_COLUMNS_READY = True
 
 
-def _context(cur) -> dict[str, Any]:
-    cur.execute(
-        """
-        select t.id as tenant_id, s.id as store_id
-        from core.tenants t
-        join core.stores s on s.tenant_id = t.id
-        where t.slug = %s and s.code = %s and s.is_active = true
-        """,
-        (tenant_slug(), store_code()),
-    )
+def _context(cur, tenant_id: Any | None = None, store_code_override: str | None = None) -> dict[str, Any]:
+    desired_store = store_code_override or store_code()
+    if tenant_id:
+        cur.execute(
+            """
+            select t.id as tenant_id, t.slug as tenant_slug, s.id as store_id, s.code as store_code
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.id = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_id, desired_store),
+        )
+    else:
+        cur.execute(
+            """
+            select t.id as tenant_id, t.slug as tenant_slug, s.id as store_id, s.code as store_code
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.slug = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_slug(), desired_store),
+        )
     row = cur.fetchone()
     if not row:
         raise DatabaseUnavailable(
-            f"Default tenant/store not found: {tenant_slug()}/{store_code()}. Run the schema first."
+            f"Tenant/store not found: {tenant_id or tenant_slug()}/{desired_store}. Run the schema first."
         )
     return row
 
 
-def db_status() -> dict[str, Any]:
+def db_status(tenant_id: Any | None = None) -> dict[str, Any]:
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                ctx = _context(cur)
+                ctx = _context(cur, tenant_id=tenant_id)
                 cur.execute("select count(*) as item_count from core.sku_variants where tenant_id = %s", (ctx["tenant_id"],))
                 count = cur.fetchone()["item_count"]
         return {
             "connected": True,
             "database_url_hint": _safe_database_url(),
-            "tenant": tenant_slug(),
-            "store": store_code(),
+            "tenant": ctx["tenant_slug"],
+            "store": ctx["store_code"],
             "item_count": int(count),
             "schema_auto_init": os.environ.get("RETAIL_AUTO_INIT_DB", "true"),
         }
@@ -218,16 +237,16 @@ def db_status() -> dict[str, Any]:
         return {
             "connected": False,
             "database_url_hint": _safe_database_url(),
-            "tenant": tenant_slug(),
+            "tenant": str(tenant_id) if tenant_id else tenant_slug(),
             "store": store_code(),
             "error": str(exc),
         }
 
 
-def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[str, Any]:
+def list_inventory_items(search: str | None = None, limit: int = 500, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             params: list[Any] = [ctx["tenant_id"]]
             conditions = ["v.tenant_id = %s", "v.status = 'active'"]
             if search:
@@ -295,21 +314,21 @@ def list_inventory_items(search: str | None = None, limit: int = 500) -> dict[st
     return {"items": items, "summary": _summary(items)}
 
 
-def create_inventory_item(payload: InventoryItemPayload) -> dict[str, Any]:
+def create_inventory_item(payload: InventoryItemPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             item = _upsert_inventory_item(cur, ctx, payload, actor="frontend", movement_type="initial_stock")
             item_with_context = _attach_payload_context(item, payload)
             _audit(cur, ctx["tenant_id"], "inventory_item", item["sku_id"], "upsert", None, item_with_context)
     return item_with_context
 
 
-def update_inventory_item(sku_id: str, payload: InventoryItemPayload) -> dict[str, Any]:
+def update_inventory_item(sku_id: str, payload: InventoryItemPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     data = payload.model_copy(update={"sku_id": sku_id})
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
@@ -324,11 +343,12 @@ def patch_inventory_price(
     new_price: float,
     decision_type: str,
     notes: str | None = None,
+    tenant_id: Any | None = None,
 ) -> dict[str, Any]:
     """Patch only the retail_price_usd for a SKU and write an audit entry."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
@@ -345,11 +365,16 @@ def patch_inventory_price(
     return after
 
 
-def record_retailer_decision(sku_id: str, decision_type: str, notes: str | None = None) -> dict[str, Any]:
+def record_retailer_decision(
+    sku_id: str,
+    decision_type: str,
+    notes: str | None = None,
+    tenant_id: Any | None = None,
+) -> dict[str, Any]:
     """Record a non-price retailer decision (e.g. hold acknowledgement) in the audit log."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             item = _get_inventory_item(cur, ctx, sku_id)
             if not item:
                 raise KeyError(sku_id)
@@ -360,10 +385,10 @@ def record_retailer_decision(sku_id: str, decision_type: str, notes: str | None 
     return {"ok": True, "sku_id": sku_id, "decision_type": decision_type}
 
 
-def archive_inventory_item(sku_id: str) -> dict[str, Any]:
+def archive_inventory_item(sku_id: str, tenant_id: Any | None = None) -> dict[str, Any]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             before = _get_inventory_item(cur, ctx, sku_id)
             if not before:
                 raise KeyError(sku_id)
@@ -380,12 +405,12 @@ def archive_inventory_item(sku_id: str) -> dict[str, Any]:
     return after
 
 
-def import_inventory(payload: InventoryImportPayload) -> dict[str, Any]:
+def import_inventory(payload: InventoryImportPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     seen: set[str] = set()
     items: list[dict[str, Any]] = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             for entry in payload.items:
                 item = _upsert_inventory_item(
                     cur,

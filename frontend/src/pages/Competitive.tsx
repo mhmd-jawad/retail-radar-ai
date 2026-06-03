@@ -19,7 +19,7 @@ export default function Competitive() {
   const positions = (['premium', 'above_market', 'at_market', 'below_market', 'deep_value'] as PricePosition[]).map(p => ({
     p, count: r.competitor.sku_positioning.filter(x => x.position === p).length,
   }));
-  const total = positions.reduce((s, x) => s + x.count, 0);
+  const total = Math.max(positions.reduce((s, x) => s + x.count, 0), 1);
   const filtered = useMemo(() => r.competitor.sku_positioning.filter(p =>
     !search || `${p.sku_id} ${p.product_name} ${p.brand}`.toLowerCase().includes(search.toLowerCase())
   ).slice(0, 60), [r, search]);

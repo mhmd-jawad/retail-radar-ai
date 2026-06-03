@@ -6,6 +6,82 @@ export type RecommendationStatus = 'pending' | 'approved' | 'edited' | 'rejected
 export type PricePosition = 'premium' | 'above_market' | 'at_market' | 'below_market' | 'deep_value';
 export type DataMode = 'mock-report' | 'ie2-live' | 'eep-live' | 'supabase-ready';
 
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  full_name: string;
+  global_role: 'admin' | 'shop';
+  tenant_id?: string | null;
+  tenant_slug?: string | null;
+  tenant_name?: string | null;
+  member_role?: 'owner' | 'manager' | 'staff' | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: 'bearer';
+  user: AuthUser;
+}
+
+export interface CompetitorOption {
+  shop_code: string;
+  shop_name: string;
+  is_active?: boolean;
+}
+
+export interface CompetitorRequest {
+  id: string;
+  competitor_name: string;
+  website_url?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'onboarded';
+  admin_notes?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface ShopProfile {
+  tenant_id: string;
+  tenant_slug: string;
+  business_name: string;
+  legal_name?: string | null;
+  contact_email?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country: string;
+  timezone: string;
+  onboarding_status: 'pending' | 'active' | 'suspended' | 'archived';
+  selected_competitors: CompetitorOption[];
+  competitor_requests: CompetitorRequest[];
+}
+
+export interface ShopSignupInput {
+  owner_name: string;
+  email: string;
+  password: string;
+  shop_name: string;
+  legal_name?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country?: string;
+  timezone?: string;
+  selected_competitor_codes: string[];
+  requested_competitor_names: string[];
+}
+
+export interface ShopProfileInput {
+  business_name?: string | null;
+  legal_name?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  address?: string | null;
+  country?: string | null;
+  timezone?: string | null;
+  selected_competitor_codes?: string[];
+  requested_competitor_names?: string[];
+}
+
 export interface InventoryMetrics {
   total_skus: number;
   total_units: number;

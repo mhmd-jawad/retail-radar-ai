@@ -3,6 +3,8 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthModeSync } from "@/components/auth/AuthModeSync";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import Overview from "./pages/Overview";
 import Queue from "./pages/Queue";
@@ -22,6 +24,9 @@ import Ops from "./pages/Ops";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import ShopProfile from "./pages/ShopProfile";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -30,28 +35,34 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider delayDuration={150}>
+      <AuthModeSync />
       <Toaster />
       <Sonner position="top-right" />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route element={<AppShell />}>
-            <Route path="/overview" element={<Overview />} />
-            <Route path="/queue" element={<Queue />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/competitive" element={<Competitive />} />
-            <Route path="/promotions" element={<Promotions />} />
-            <Route path="/financial" element={<Financial />} />
-            <Route path="/financial/balance-sheet" element={<FinancialBalanceSheet />} />
-            <Route path="/financial/profitability" element={<FinancialProfitability />} />
-            <Route path="/financial/cashflow" element={<FinancialCashflow />} />
-            <Route path="/financial/lollar" element={<FinancialLollar />} />
-            <Route path="/financial/costs" element={<FinancialCosts />} />
-            <Route path="/financial/alerts" element={<FinancialAlerts />} />
-            <Route path="/upload" element={<UploadBatch />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/ops" element={<Ops />} />
-            <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/overview" element={<Overview />} />
+              <Route path="/queue" element={<Queue />} />
+              <Route path="/inventory" element={<Inventory />} />
+              <Route path="/competitive" element={<Competitive />} />
+              <Route path="/promotions" element={<Promotions />} />
+              <Route path="/financial" element={<Financial />} />
+              <Route path="/financial/balance-sheet" element={<FinancialBalanceSheet />} />
+              <Route path="/financial/profitability" element={<FinancialProfitability />} />
+              <Route path="/financial/cashflow" element={<FinancialCashflow />} />
+              <Route path="/financial/lollar" element={<FinancialLollar />} />
+              <Route path="/financial/costs" element={<FinancialCosts />} />
+              <Route path="/financial/alerts" element={<FinancialAlerts />} />
+              <Route path="/upload" element={<UploadBatch />} />
+              <Route path="/audit" element={<Audit />} />
+              <Route path="/ops" element={<Ops />} />
+              <Route path="/shop-profile" element={<ShopProfile />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

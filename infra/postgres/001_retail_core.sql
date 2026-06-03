@@ -26,6 +26,69 @@ create table if not exists core.stores (
     unique (tenant_id, code)
 );
 
+create table if not exists core.app_users (
+    id uuid primary key default gen_random_uuid(),
+    email text not null,
+    password_hash text not null,
+    full_name text not null,
+    global_role text not null default 'shop' check (global_role in ('admin', 'shop')),
+    is_active boolean not null default true,
+    email_verified boolean not null default false,
+    last_login_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create unique index if not exists ux_app_users_email_lower
+    on core.app_users (lower(email));
+
+create table if not exists core.user_memberships (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references core.app_users(id) on delete cascade,
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    role text not null default 'owner' check (role in ('owner', 'manager', 'staff')),
+    is_active boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (user_id, tenant_id)
+);
+
+create index if not exists idx_user_memberships_tenant
+    on core.user_memberships (tenant_id, is_active);
+
+create table if not exists core.shop_profiles (
+    tenant_id uuid primary key references core.tenants(id) on delete cascade,
+    owner_user_id uuid references core.app_users(id) on delete set null,
+    business_name text not null,
+    legal_name text,
+    contact_email text,
+    phone text,
+    website_url text,
+    address text,
+    country text not null default 'Lebanon',
+    timezone text not null default 'Asia/Beirut',
+    onboarding_status text not null default 'pending' check (
+        onboarding_status in ('pending', 'active', 'suspended', 'archived')
+    ),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists core.auth_sessions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references core.app_users(id) on delete cascade,
+    token_hash text not null unique,
+    expires_at timestamptz not null,
+    revoked_at timestamptz,
+    user_agent text,
+    ip_address text,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_auth_sessions_user_active
+    on core.auth_sessions (user_id, expires_at)
+    where revoked_at is null;
+
 create table if not exists core.suppliers (
     id uuid primary key default gen_random_uuid(),
     tenant_id uuid not null references core.tenants(id) on delete cascade,
@@ -200,6 +263,37 @@ create table if not exists intel.shops (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+create table if not exists intel.tenant_competitors (
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    shop_code text not null references intel.shops(shop_code) on delete restrict,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (tenant_id, shop_code)
+);
+
+create index if not exists idx_tenant_competitors_active
+    on intel.tenant_competitors (tenant_id, is_active);
+
+create table if not exists intel.competitor_requests (
+    id uuid primary key default gen_random_uuid(),
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    requested_by_user_id uuid references core.app_users(id) on delete set null,
+    competitor_name text not null,
+    website_url text,
+    status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'onboarded')),
+    admin_notes text,
+    created_at timestamptz not null default now(),
+    reviewed_at timestamptz,
+    reviewed_by_user_id uuid references core.app_users(id) on delete set null
+);
+
+create index if not exists idx_competitor_requests_status
+    on intel.competitor_requests (status, created_at desc);
+
+create index if not exists idx_competitor_requests_tenant
+    on intel.competitor_requests (tenant_id, created_at desc);
 
 create table if not exists intel.scrape_runs (
     id bigserial primary key,
