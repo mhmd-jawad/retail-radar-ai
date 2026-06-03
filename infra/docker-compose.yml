@@ -139,14 +139,16 @@ services:
     restart: unless-stopped
 
   telegram_assistant:
+    profiles: ["telegram"]
     build:
       context: ..
       dockerfile: services/telegram_assistant/Dockerfile
     ports:
       - "8004:8004"
     env_file:
-      - ../.env
-      - ../services/telegram_assistant/.env
+      - path: ../.env
+      - path: ../services/telegram_assistant/.env
+        required: false
     environment:
       EEP_BASE_URL: http://eep:8000
       IE3_BASE_URL: http://ie3_campaign_creative:8003

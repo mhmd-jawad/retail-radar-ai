@@ -39,12 +39,13 @@ export function AdminShell() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <div className="min-h-screen flex bg-[radial-gradient(900px_520px_at_22%_0%,hsl(28_96%_56%/.18),transparent),radial-gradient(760px_500px_at_100%_18%,hsl(152_60%_48%/.12),transparent),radial-gradient(700px_460px_at_88%_100%,hsl(0_84%_60%/.10),transparent),linear-gradient(hsl(15_18%_6%),hsl(12_16%_5%))] text-foreground">
+      <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-primary/15 bg-sidebar/80 text-sidebar-foreground backdrop-blur-xl">
         <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
-            <div className="relative h-9 w-9 rounded-lg bg-gradient-data shadow-glow flex items-center justify-center">
+            <div className="relative h-10 w-10 rounded-xl bg-gradient-data shadow-glow-sm flex items-center justify-center">
               <Radio className="h-5 w-5 text-primary-foreground" />
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-decision-promote ring-2 ring-sidebar animate-pulse" />
             </div>
             <div className="min-w-0">
               <div className="font-display font-bold text-sidebar-foreground text-[15px] leading-tight tracking-tight">
@@ -67,14 +68,14 @@ export function AdminShell() {
                 cn(
                   'group flex items-center gap-3 rounded-md px-3 py-2 text-[13.5px] font-medium transition-all',
                   isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                    : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                    ? 'bg-gradient-data text-primary-foreground shadow-glow-sm outline-none'
+                    : 'text-sidebar-foreground/75 hover:bg-primary/10 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={cn('h-4 w-4 shrink-0', isActive && 'text-sidebar-primary')} />
+                  <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary-foreground' : 'text-sidebar-primary')} />
                   <span>{item.label}</span>
                 </>
               )}
@@ -83,9 +84,9 @@ export function AdminShell() {
         </nav>
 
         <div className="px-4 py-4 border-t border-sidebar-border">
-          <div className="rounded-lg bg-sidebar-accent/40 p-3 space-y-3">
+          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 via-decision-markdown/10 to-decision-promote/10 p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-gradient-data text-primary-foreground flex items-center justify-center text-[11px] font-semibold">
+              <div className="h-8 w-8 rounded-full bg-gradient-data text-primary-foreground flex items-center justify-center text-[11px] font-semibold shadow-glow-sm">
                 {initials(user?.full_name || user?.email || 'AD')}
               </div>
               <div className="min-w-0">
@@ -111,7 +112,7 @@ export function AdminShell() {
           </div>
         </div>
       </aside>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 bg-background/55 backdrop-blur-[2px]">
         <Outlet />
       </div>
     </div>
