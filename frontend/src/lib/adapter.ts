@@ -20,7 +20,10 @@ import type {
   RetailInventoryItem,
   RetailInventoryResponse,
   AuthResponse,
+  AdminTenant,
+  AppNotification,
   CampaignCreative,
+  CompetitorRequest,
   CompetitorOption,
   DetailedBalanceSheet,
   DetailedProfitability,
@@ -105,6 +108,54 @@ export async function updateShopProfile(payload: ShopProfileInput): Promise<Shop
     body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/profile'));
+  return r.json();
+}
+
+export async function fetchAdminTenants(): Promise<AdminTenant[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/tenants`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /admin/tenants'));
+  return r.json();
+}
+
+export async function fetchAdminNotifications(status?: AppNotification['status']): Promise<AppNotification[]> {
+  const { base } = settings();
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const r = await fetch(`${base}/admin/notifications${query}`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /admin/notifications'));
+  return r.json();
+}
+
+export async function updateAdminNotificationStatus(
+  id: string,
+  status: AppNotification['status'],
+): Promise<AppNotification> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/notifications/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ status }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/notifications/${id}`));
+  return r.json();
+}
+
+export async function fetchAdminCompetitorRequests(status?: CompetitorRequest['status']): Promise<CompetitorRequest[]> {
+  const { base } = settings();
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const r = await fetch(`${base}/admin/competitor-requests${query}`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /admin/competitor-requests'));
+  return r.json();
+}
+
+export async function fetchAdminCompetitors(): Promise<CompetitorOption[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/competitors`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /admin/competitors'));
   return r.json();
 }
 

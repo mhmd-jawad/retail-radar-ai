@@ -33,16 +33,20 @@ from eep.auth_db import (
     LoginPayload,
     ShopProfileUpdatePayload,
     ShopSignupPayload,
+    admin_list_competitors,
     admin_list_competitor_requests,
+    admin_list_notifications,
     admin_list_tenants,
     authenticate_token,
     ensure_default_admin_account,
     get_shop_profile,
     list_available_competitors,
+    list_shop_notifications,
     login,
     logout,
     signup_shop,
     token_from_authorization,
+    update_notification_status,
     update_shop_profile,
 )
 from eep.apify_ingest import (
@@ -97,6 +101,10 @@ class RetailerDecisionPayload(BaseModel):
     sku_id: str
     decision_type: Literal["clearance", "markdown", "hold", "promote"]
     notes: str | None = None
+
+
+class NotificationStatusPayload(BaseModel):
+    status: Literal["unread", "read", "resolved", "dismissed"]
 
 
 app = FastAPI(
@@ -193,7 +201,7 @@ def auth_competitors() -> list[dict[str, Any]]:
 @app.get("/shop/profile")
 def shop_profile(request: Request) -> dict[str, Any]:
     try:
-        return get_shop_profile(_required_auth(request))
+        return get_shop_profile(_required_shop(request))
     except AuthError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
@@ -203,7 +211,31 @@ def shop_profile(request: Request) -> dict[str, Any]:
 @app.put("/shop/profile")
 def shop_profile_update(payload: ShopProfileUpdatePayload, request: Request) -> dict[str, Any]:
     try:
-        return update_shop_profile(_required_auth(request), payload)
+        return update_shop_profile(_required_shop(request), payload)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/shop/notifications")
+def shop_notifications(
+    request: Request,
+    status: str | None = Query(default=None, pattern="^(unread|read|resolved|dismissed)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    try:
+        return list_shop_notifications(_required_shop(request), status=status, limit=limit)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/shop/notifications/{notification_id}")
+def shop_notification_update(notification_id: str, payload: NotificationStatusPayload, request: Request) -> dict[str, Any]:
+    try:
+        return update_notification_status(_required_shop(request), notification_id, payload.status)
     except AuthError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
@@ -213,7 +245,7 @@ def shop_profile_update(payload: ShopProfileUpdatePayload, request: Request) -> 
 @app.get("/admin/tenants")
 def admin_tenants(request: Request) -> list[dict[str, Any]]:
     try:
-        return admin_list_tenants(_required_auth(request))
+        return admin_list_tenants(_required_admin(request))
     except AuthError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
@@ -226,7 +258,41 @@ def admin_competitor_requests(
     status: str | None = Query(default=None, pattern="^(pending|approved|rejected|onboarded)$"),
 ) -> list[dict[str, Any]]:
     try:
-        return admin_list_competitor_requests(_required_auth(request), status=status)
+        return admin_list_competitor_requests(_required_admin(request), status=status)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/notifications")
+def admin_notifications(
+    request: Request,
+    status: str | None = Query(default=None, pattern="^(unread|read|resolved|dismissed)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    try:
+        return admin_list_notifications(_required_admin(request), status=status, limit=limit)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/admin/notifications/{notification_id}")
+def admin_notification_update(notification_id: str, payload: NotificationStatusPayload, request: Request) -> dict[str, Any]:
+    try:
+        return update_notification_status(_required_admin(request), notification_id, payload.status)
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/competitors")
+def admin_competitors(request: Request) -> list[dict[str, Any]]:
+    try:
+        return admin_list_competitors(_required_admin(request))
     except AuthError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
@@ -330,6 +396,20 @@ def _required_auth(request: Request) -> AuthContext:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
+def _required_admin(request: Request) -> AuthContext:
+    ctx = _required_auth(request)
+    if ctx.global_role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access is required.")
+    return ctx
+
+
+def _required_shop(request: Request) -> AuthContext:
+    ctx = _required_auth(request)
+    if ctx.global_role != "shop" or not ctx.tenant_id:
+        raise HTTPException(status_code=403, detail="Shop access is required.")
+    return ctx
+
+
 def _bearer_or_401(request: Request) -> str:
     token = token_from_authorization(request.headers.get("authorization"))
     if not token:
@@ -338,8 +418,8 @@ def _bearer_or_401(request: Request) -> str:
 
 
 def _tenant_id_from_request(request: Request) -> str | None:
-    ctx = _optional_auth(request)
-    return ctx.tenant_id if ctx and ctx.tenant_id else None
+    ctx = _required_shop(request)
+    return ctx.tenant_id
 
 
 def _client_ip(request: Request) -> str | None:
@@ -355,8 +435,44 @@ def report() -> dict[str, Any]:
 
 
 @app.get("/ops/scrape-runs")
-def scrape_runs() -> list[dict[str, Any]]:
-    return build_scrape_runs()
+def scrape_runs(request: Request) -> list[dict[str, Any]]:
+    return _tenant_scrape_runs(_tenant_id_from_request(request))
+
+
+def _tenant_scrape_runs(tenant_id: str) -> list[dict[str, Any]]:
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select sr.id, sr.shop_code, sr.item_count, sr.ingest_status,
+                           sr.started_at, sr.finished_at, sr.created_at
+                    from intel.scrape_runs sr
+                    join intel.tenant_competitors tc
+                        on tc.shop_code = sr.shop_code
+                       and tc.tenant_id = %s
+                       and tc.is_active = true
+                    order by sr.created_at desc
+                    limit 100
+                    """,
+                    (tenant_id,),
+                )
+                rows = cur.fetchall() or []
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return [
+        {
+            "id": str(row["id"]),
+            "shop": row["shop_code"],
+            "started_at": row["started_at"].isoformat() if row["started_at"] else row["created_at"].isoformat(),
+            "finished_at": row["finished_at"].isoformat() if row["finished_at"] else row["created_at"].isoformat(),
+            "status": "success" if row["ingest_status"] == "succeeded" else "failed",
+            "items_scraped": int(row["item_count"] or 0),
+            "valid_rows": int(row["item_count"] or 0) if row["ingest_status"] == "succeeded" else 0,
+        }
+        for row in rows
+    ]
 
 
 @app.get("/ops/competitor-latest")

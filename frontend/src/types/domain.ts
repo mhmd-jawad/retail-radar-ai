@@ -31,12 +31,48 @@ export interface CompetitorOption {
 
 export interface CompetitorRequest {
   id: string;
+  tenant_id?: string;
+  shop_name?: string;
   competitor_name: string;
   website_url?: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'onboarded';
+  requested_by_email?: string | null;
   admin_notes?: string | null;
   created_at: string;
   reviewed_at?: string | null;
+}
+
+export interface AdminTenant {
+  id: string;
+  name: string;
+  slug: string;
+  contact_email?: string | null;
+  phone?: string | null;
+  onboarding_status?: string | null;
+  sku_count: number;
+  competitor_count: number;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  recipient_role: 'admin' | 'shop';
+  recipient_user_id?: string | null;
+  tenant_id?: string | null;
+  shop_name?: string | null;
+  shop_slug?: string | null;
+  actor_user_id?: string | null;
+  actor_email?: string | null;
+  actor_name?: string | null;
+  type: 'competitor_request' | 'setup_help' | 'billing' | 'system' | string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
+  status: 'unread' | 'read' | 'resolved' | 'dismissed';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  created_at: string;
+  read_at?: string | null;
+  resolved_at?: string | null;
 }
 
 export interface ShopProfile {

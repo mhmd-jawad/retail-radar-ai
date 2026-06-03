@@ -56,6 +56,29 @@ create table if not exists core.user_memberships (
 create index if not exists idx_user_memberships_tenant
     on core.user_memberships (tenant_id, is_active);
 
+create table if not exists core.notifications (
+    id uuid primary key default gen_random_uuid(),
+    recipient_role text not null check (recipient_role in ('admin', 'shop')),
+    recipient_user_id uuid references core.app_users(id) on delete cascade,
+    tenant_id uuid references core.tenants(id) on delete cascade,
+    actor_user_id uuid references core.app_users(id) on delete set null,
+    type text not null,
+    title text not null,
+    message text not null,
+    payload jsonb not null default '{}'::jsonb,
+    status text not null default 'unread' check (status in ('unread', 'read', 'resolved', 'dismissed')),
+    priority text not null default 'normal' check (priority in ('low', 'normal', 'high', 'urgent')),
+    created_at timestamptz not null default now(),
+    read_at timestamptz,
+    resolved_at timestamptz
+);
+
+create index if not exists idx_notifications_admin_status
+    on core.notifications (recipient_role, status, created_at desc);
+
+create index if not exists idx_notifications_tenant_status
+    on core.notifications (tenant_id, status, created_at desc);
+
 create table if not exists core.shop_profiles (
     tenant_id uuid primary key references core.tenants(id) on delete cascade,
     owner_user_id uuid references core.app_users(id) on delete set null,

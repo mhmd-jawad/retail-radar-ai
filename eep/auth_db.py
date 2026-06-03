@@ -428,6 +428,120 @@ def admin_list_competitor_requests(ctx: AuthContext, status: str | None = None) 
             return [_row(row) for row in cur.fetchall()]
 
 
+def admin_list_notifications(
+    ctx: AuthContext,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    _require_admin(ctx)
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            conditions = ["n.recipient_role = 'admin'"]
+            params: list[Any] = []
+            if status:
+                conditions.append("n.status = %s")
+                params.append(status)
+            params.append(limit)
+            cur.execute(
+                """
+                select n.id, n.recipient_role, n.recipient_user_id, n.tenant_id,
+                       t.name as shop_name, t.slug as shop_slug,
+                       n.actor_user_id, u.email as actor_email, u.full_name as actor_name,
+                       n.type, n.title, n.message, n.payload, n.status, n.priority,
+                       n.created_at, n.read_at, n.resolved_at
+                from core.notifications n
+                left join core.tenants t on t.id = n.tenant_id
+                left join core.app_users u on u.id = n.actor_user_id
+                where """ + " and ".join(conditions) + """
+                order by
+                    case n.status when 'unread' then 0 when 'read' then 1 when 'resolved' then 2 else 3 end,
+                    n.created_at desc
+                limit %s
+                """,
+                params,
+            )
+            return [_row(row) for row in cur.fetchall()]
+
+
+def list_shop_notifications(
+    ctx: AuthContext,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    tenant_id = _require_tenant_id(ctx)
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            conditions = ["n.recipient_role = 'shop'", "(n.tenant_id = %s or n.recipient_user_id = %s)"]
+            params: list[Any] = [tenant_id, ctx.user_id]
+            if status:
+                conditions.append("n.status = %s")
+                params.append(status)
+            params.append(limit)
+            cur.execute(
+                """
+                select n.id, n.recipient_role, n.recipient_user_id, n.tenant_id,
+                       t.name as shop_name, t.slug as shop_slug,
+                       n.actor_user_id, u.email as actor_email, u.full_name as actor_name,
+                       n.type, n.title, n.message, n.payload, n.status, n.priority,
+                       n.created_at, n.read_at, n.resolved_at
+                from core.notifications n
+                left join core.tenants t on t.id = n.tenant_id
+                left join core.app_users u on u.id = n.actor_user_id
+                where """ + " and ".join(conditions) + """
+                order by n.created_at desc
+                limit %s
+                """,
+                params,
+            )
+            return [_row(row) for row in cur.fetchall()]
+
+
+def update_notification_status(ctx: AuthContext, notification_id: str, status: str) -> dict[str, Any]:
+    if status not in {"unread", "read", "resolved", "dismissed"}:
+        raise AuthError("Invalid notification status.")
+
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            conditions = ["id = %s"]
+            params: list[Any] = [notification_id]
+            if ctx.global_role == "admin":
+                conditions.append("recipient_role = 'admin'")
+            else:
+                tenant_id = _require_tenant_id(ctx)
+                conditions.append("recipient_role = 'shop'")
+                conditions.append("(tenant_id = %s or recipient_user_id = %s)")
+                params.extend([tenant_id, ctx.user_id])
+
+            read_at_sql = "now()" if status in {"read", "resolved"} else "read_at"
+            resolved_at_sql = "now()" if status == "resolved" else "resolved_at"
+            params.append(status)
+            cur.execute(
+                f"""
+                update core.notifications
+                set status = %s,
+                    read_at = {read_at_sql},
+                    resolved_at = {resolved_at_sql}
+                where {' and '.join(conditions)}
+                returning id, recipient_role, recipient_user_id, tenant_id, actor_user_id,
+                          type, title, message, payload, status, priority,
+                          created_at, read_at, resolved_at
+                """,
+                [params[-1], *params[:-1]],
+            )
+            row = cur.fetchone()
+            if not row:
+                raise AuthError("Notification not found.")
+            return _row(row)
+
+
+def admin_list_competitors(ctx: AuthContext) -> list[dict[str, Any]]:
+    _require_admin(ctx)
+    return list_available_competitors()
+
+
 def token_from_authorization(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -551,6 +665,44 @@ def _ensure_auth_tables(conn) -> None:
                 create index if not exists idx_auth_sessions_user_active
                     on core.auth_sessions (user_id, expires_at)
                     where revoked_at is null;
+
+                create table if not exists core.notifications (
+                    id uuid primary key default gen_random_uuid(),
+                    recipient_role text not null check (recipient_role in ('admin', 'shop')),
+                    recipient_user_id uuid references core.app_users(id) on delete cascade,
+                    tenant_id uuid references core.tenants(id) on delete cascade,
+                    actor_user_id uuid references core.app_users(id) on delete set null,
+                    type text not null,
+                    title text not null,
+                    message text not null,
+                    payload jsonb not null default '{}'::jsonb,
+                    status text not null default 'unread' check (status in ('unread', 'read', 'resolved', 'dismissed')),
+                    priority text not null default 'normal' check (priority in ('low', 'normal', 'high', 'urgent')),
+                    created_at timestamptz not null default now(),
+                    read_at timestamptz,
+                    resolved_at timestamptz
+                );
+
+                alter table core.notifications
+                    add column if not exists recipient_role text not null default 'admin',
+                    add column if not exists recipient_user_id uuid references core.app_users(id) on delete cascade,
+                    add column if not exists tenant_id uuid references core.tenants(id) on delete cascade,
+                    add column if not exists actor_user_id uuid references core.app_users(id) on delete set null,
+                    add column if not exists type text,
+                    add column if not exists title text,
+                    add column if not exists message text,
+                    add column if not exists payload jsonb not null default '{}'::jsonb,
+                    add column if not exists status text not null default 'unread',
+                    add column if not exists priority text not null default 'normal',
+                    add column if not exists created_at timestamptz not null default now(),
+                    add column if not exists read_at timestamptz,
+                    add column if not exists resolved_at timestamptz;
+
+                create index if not exists idx_notifications_admin_status
+                    on core.notifications (recipient_role, status, created_at desc);
+
+                create index if not exists idx_notifications_tenant_status
+                    on core.notifications (tenant_id, status, created_at desc);
 
                 create table if not exists intel.shops (
                     shop_code text primary key,
@@ -698,14 +850,68 @@ def _replace_tenant_competitors(cur, tenant_id: Any, selected_codes: list[str]) 
 
 
 def _insert_competitor_requests(cur, tenant_id: Any, user_id: Any, requested_names: list[str]) -> None:
+    cur.execute("select name from core.tenants where id = %s", (tenant_id,))
+    tenant = cur.fetchone() or {}
+    shop_name = tenant.get("name") or "Shop"
     for name in requested_names:
         cur.execute(
             """
             insert into intel.competitor_requests (tenant_id, requested_by_user_id, competitor_name)
             values (%s, %s, %s)
+            returning id, competitor_name
             """,
             (tenant_id, user_id, name),
         )
+        request_row = cur.fetchone()
+        _insert_notification(
+            cur,
+            recipient_role="admin",
+            notification_type="competitor_request",
+            title=f"New competitor request from {shop_name}",
+            message=f"{shop_name} requested competitor: {request_row['competitor_name']}",
+            tenant_id=tenant_id,
+            actor_user_id=user_id,
+            priority="normal",
+            payload={
+                "competitor_request_id": str(request_row["id"]),
+                "competitor_name": request_row["competitor_name"],
+            },
+        )
+
+
+def _insert_notification(
+    cur,
+    *,
+    recipient_role: str,
+    notification_type: str,
+    title: str,
+    message: str,
+    tenant_id: Any | None = None,
+    recipient_user_id: Any | None = None,
+    actor_user_id: Any | None = None,
+    priority: str = "normal",
+    payload: dict[str, Any] | None = None,
+) -> None:
+    cur.execute(
+        """
+        insert into core.notifications (
+            recipient_role, recipient_user_id, tenant_id, actor_user_id,
+            type, title, message, payload, priority
+        )
+        values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+        """,
+        (
+            recipient_role,
+            recipient_user_id,
+            tenant_id,
+            actor_user_id,
+            notification_type,
+            title,
+            message,
+            json.dumps(_jsonable(payload or {})),
+            priority,
+        ),
+    )
 
 
 def _unique_tenant_slug(cur, name: str) -> str:
@@ -796,7 +1002,7 @@ def _sign(value: str) -> str:
 
 
 def _require_tenant_id(ctx: AuthContext) -> str:
-    if not ctx.tenant_id:
+    if ctx.global_role != "shop" or not ctx.tenant_id:
         raise AuthError("This endpoint requires a shop account.")
     return ctx.tenant_id
 

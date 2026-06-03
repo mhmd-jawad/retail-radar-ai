@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { loginAccount } from '@/lib/adapter';
+import { redirectForLogin } from '@/lib/auth-routing';
 import { useAuth } from '@/store/auth';
 import { useSettings } from '@/store/settings';
 
@@ -30,7 +31,7 @@ export default function Login() {
       const session = await loginAccount(email, password);
       setSession(session.access_token, session.user);
       setMode('eep-live');
-      navigate(from, { replace: true });
+      navigate(redirectForLogin(session.user, from), { replace: true });
     } catch (error: any) {
       toast.error(error?.message || 'Login failed');
     } finally {
