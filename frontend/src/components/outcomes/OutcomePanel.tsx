@@ -21,8 +21,8 @@ export function OutcomeChip({ snapshot }: { snapshot: OutcomeSnapshot | null }) 
   const latest = snapshot.measurements?.[snapshot.measurements.length - 1] ?? null;
   const lift = latest?.velocity_lift_pct ?? null;
   const accuracy = latest?.accuracy_score ?? null;
-  const liftText = lift === null ? null : `${lift >= 0 ? '+' : ''}${Math.round(lift)}% lift`;
-  const accuracyText = accuracy === null ? null : `${Math.round(accuracy * 100)}% accuracy`;
+  const liftText = lift === null ? null : pct(lift);
+  const accuracyText = accuracy === null ? null : accuracyPct(accuracy);
 
   return (
     <span
@@ -32,88 +32,97 @@ export function OutcomeChip({ snapshot }: { snapshot: OutcomeSnapshot | null }) 
       )}
       title={snapshot.ie2_explanation ?? undefined}
     >
-      <span>{liftText ?? statusLabel[snapshot.status]}</span>
-      {accuracyText && <span className="text-current/70">- {accuracyText}</span>}
+      <span>{liftText ? `${liftText} lift` : statusLabel[snapshot.status]}</span>
+      {accuracyText && <span className="text-current/70">- {accuracyText} accuracy</span>}
     </span>
   );
 }
 
-function fmtNumber(value: number | null | undefined, suffix = '') {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })}${suffix}`;
-}
-
-function fmtUsd(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return `$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
-function fmtPct(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return fmtNumber(value * 100, '%');
-}
-
-function fmtDate(value: string | null | undefined) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-card/60 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-1 font-mono text-[13px] text-foreground">{value}</div>
-    </div>
-  );
-}
-
 export default function OutcomePanel({ snapshot }: { snapshot: OutcomeSnapshot }) {
-  const latest = snapshot.measurements?.[snapshot.measurements.length - 1] ?? null;
+  const measurements = snapshot.measurements ?? [];
+  const latest = measurements[measurements.length - 1] ?? null;
 
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 to-decision-promote/5 p-4 shadow-sm-soft">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Outcome tracking</div>
-          <div className="mt-1 flex items-center gap-2">
-            <OutcomeChip snapshot={snapshot} />
-            <span className="font-mono text-[11px] text-muted-foreground">
-              Approved {fmtDate(snapshot.approved_at)}
-            </span>
-          </div>
+          <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">Closed-loop outcome</div>
+          <div className="mt-1 text-sm font-semibold">{snapshot.decision_type} decision tracking</div>
+          {snapshot.ie2_explanation && (
+            <p className="mt-1 max-w-3xl text-[12.5px] leading-5 text-muted-foreground">{snapshot.ie2_explanation}</p>
+          )}
         </div>
-        <div className="text-right font-mono text-[11px] text-muted-foreground">
-          7d check {fmtDate(snapshot.check_7d_at)} | 14d check {fmtDate(snapshot.check_14d_at)}
-        </div>
+        <OutcomeChip snapshot={snapshot} />
       </div>
 
-      <div className="grid gap-2 md:grid-cols-4">
-        <Metric label="Baseline velocity" value={fmtNumber(snapshot.baseline_velocity_daily, '/day')} />
-        <Metric label="Baseline revenue 7d" value={fmtUsd(snapshot.baseline_revenue_7d)} />
-        <Metric label="Predicted lift" value={fmtNumber(snapshot.predicted_lift_pct, '%')} />
-        <Metric label="IE2 confidence" value={fmtPct(snapshot.ie2_confidence)} />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <OutcomeMetric label="Predicted lift" value={pct(snapshot.predicted_lift_pct)} />
+        <OutcomeMetric label="Baseline velocity" value={num(snapshot.baseline_velocity_daily)} />
+        <OutcomeMetric label="Latest lift" value={pct(latest?.velocity_lift_pct ?? null)} />
+        <OutcomeMetric label="Accuracy" value={accuracyPct(latest?.accuracy_score)} />
       </div>
 
-      {latest ? (
-        <div className="grid gap-2 md:grid-cols-4">
-          <Metric label={`Actual velocity ${latest.window_days}d`} value={fmtNumber(latest.actual_velocity_daily, '/day')} />
-          <Metric label="Qty sold" value={fmtNumber(latest.actual_qty_sold)} />
-          <Metric label="Revenue delta" value={fmtUsd(latest.revenue_delta_usd)} />
-          <Metric label="Accuracy" value={fmtPct(latest.accuracy_score)} />
+      {latest?.narrative && (
+        <div className="mt-4 rounded-lg border border-border/70 bg-background/45 p-3 text-[12.5px] leading-5 text-muted-foreground">
+          {latest.narrative}
         </div>
-      ) : (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
-          No measurement has been recorded yet. This decision is still inside its tracking window.
-        </p>
       )}
 
-      {(latest?.narrative || snapshot.ie2_explanation) && (
-        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-          {latest?.narrative || snapshot.ie2_explanation}
-        </p>
+      {measurements.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
+          <table className="w-full text-[12px]">
+            <thead className="bg-background/50 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left">Window</th>
+                <th className="px-3 py-2 text-left">Qty sold</th>
+                <th className="px-3 py-2 text-left">Revenue</th>
+                <th className="px-3 py-2 text-left">Velocity lift</th>
+                <th className="px-3 py-2 text-left">Accuracy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {measurements.map((measurement) => (
+                <tr key={`${measurement.window_days}-${measurement.measured_at}`} className="border-t border-border/70">
+                  <td className="px-3 py-2 font-mono">{measurement.window_days}d</td>
+                  <td className="px-3 py-2">{num(measurement.actual_qty_sold)}</td>
+                  <td className="px-3 py-2">{money(measurement.actual_revenue_total)}</td>
+                  <td className="px-3 py-2">{pct(measurement.velocity_lift_pct)}</td>
+                  <td className="px-3 py-2">{accuracyPct(measurement.accuracy_score)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
+}
+
+function OutcomeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/45 p-3">
+      <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function pct(value: number | null | undefined) {
+  if (value == null) return '-';
+  return `${value >= 0 ? '+' : ''}${Math.round(value)}%`;
+}
+
+function accuracyPct(value: number | null | undefined) {
+  if (value == null) return '-';
+  return `${Math.round(value * 100)}%`;
+}
+
+function num(value: number | null | undefined) {
+  if (value == null) return '-';
+  return value.toLocaleString();
+}
+
+function money(value: number | null | undefined) {
+  if (value == null) return '-';
+  return `$${Math.round(value).toLocaleString()}`;
 }
