@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 import re
+import threading
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 from scraping.common.http import build_session, get_text
 from scraping.common.models import ScrapedProductRecord
@@ -27,18 +30,49 @@ SITEMAP_INDEX_URL = f"{BASE_URL}/sitemap_index.xml"
 SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 PID_STYLE_RE = re.compile(r"\bA\d+_([A-Z0-9]+)_", re.IGNORECASE)
 TEXT_STYLE_RE = re.compile(r"Product\s*Code\s*:?\s*([A-Z0-9-]{5,})", re.IGNORECASE)
+DEFAULT_FETCH_WORKERS = 12
+MAX_FETCH_WORKERS = 32
+_THREAD_LOCAL = threading.local()
 
 
 def scrape(max_products: int | None = 3, max_pages: int | None = None):
     session = build_session()
     product_urls = _collect_product_urls(session, max_products=max_products, max_sitemaps=max_pages)
-    for source_url in product_urls:
-        try:
-            html = get_text(session, source_url)
-        except RuntimeError:
-            yield _error_record(source_url)
-            continue
-        yield parse_product_page_html(html, source_url)
+    workers = min(_fetch_worker_count(), len(product_urls))
+    if workers <= 1:
+        for source_url in product_urls:
+            yield _fetch_product_record(source_url)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        yield from executor.map(_fetch_product_record, product_urls)
+
+
+def _fetch_worker_count() -> int:
+    raw_value = os.getenv("ADIDAS_LB_FETCH_WORKERS")
+    if not raw_value:
+        return DEFAULT_FETCH_WORKERS
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return DEFAULT_FETCH_WORKERS
+    return max(1, min(value, MAX_FETCH_WORKERS))
+
+
+def _worker_session():
+    session = getattr(_THREAD_LOCAL, "session", None)
+    if session is None:
+        session = build_session()
+        _THREAD_LOCAL.session = session
+    return session
+
+
+def _fetch_product_record(source_url: str) -> ScrapedProductRecord:
+    try:
+        html = get_text(_worker_session(), source_url)
+    except RuntimeError:
+        return _error_record(source_url)
+    return parse_product_page_html(html, source_url)
 
 
 def _collect_product_urls(session, *, max_products: int | None, max_sitemaps: int | None) -> list[str]:

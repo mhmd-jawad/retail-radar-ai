@@ -135,10 +135,20 @@ def sync_items_to_retail_core(
     if not skip_schema:
         _apply_schema(conn, schema_path)
 
+    raw_item_count = len(items)
+    items = _dedupe_items(items)
     normalized_shop = _clean_shop(shop)
     run_id = _clean_run_id(run_info)
     dataset_id = _text(run_info.get("dataset_id") or run_info.get("defaultDatasetId"))
     actor_id = _text(actor_id or run_info.get("actor_id") or run_info.get("actorId"))
+    raw_payload = {
+        **(raw_payload or {}),
+        "_ingest": {
+            "raw_item_count": raw_item_count,
+            "deduped_item_count": len(items),
+            "duplicate_item_count": raw_item_count - len(items),
+        },
+    }
 
     _upsert_shop(conn, normalized_shop, actor_id)
     run_db_id = _upsert_run(conn, normalized_shop, actor_id, run_id, dataset_id, run_info, items, raw_payload)
@@ -164,6 +174,32 @@ def _apify_get(path_and_query: str, token: str) -> Any:
     with urlopen(request, timeout=90) as response:
         raw = response.read().decode("utf-8")
     return json.loads(raw)
+
+
+def _dedupe_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        key = _dataset_item_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _dataset_item_key(item: dict[str, Any]) -> str:
+    for field in ("competitor_product_id", "source_url"):
+        value = _text(item.get(field))
+        if value:
+            return f"{field}:{value}"
+    fallback = {
+        "sku_id": _optional_identifier(item.get("sku_id")),
+        "style_code": _optional_identifier(item.get("style_code")),
+        "product_name": _text(item.get("product_name")),
+        "competitor_name": _text(item.get("competitor_name")),
+    }
+    return "sha1:" + hashlib.sha1(json.dumps(fallback, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def _apply_schema(conn: Any, schema_path: Path) -> None:
