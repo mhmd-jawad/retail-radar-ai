@@ -23,6 +23,7 @@ import pandas as pd
 from services.decision_intelligence.main import (
     LABEL_INV,
     MODEL_META,
+    MODEL_CATEGORICAL_FEATURES,
     MODEL_FEATURE_COLUMNS,
     MODEL_VERSION,
     REGISTERED_MODEL,
@@ -702,12 +703,12 @@ def _is_later_feature_row(row: dict[str, Any], current: dict[str, Any] | None) -
 
 
 def _coerce_feature_row(row: dict[str, Any]) -> dict[str, Any]:
-    categorical = {"brand", "category", "market_position", "brand_tier"}
+    categorical = set(MODEL_CATEGORICAL_FEATURES) or {"brand", "category", "market_position", "brand_tier"}
     features: dict[str, Any] = {}
     for column in MODEL_FEATURE_COLUMNS:
         value = row.get(column)
         if column in categorical:
-            features[column] = value
+            features[column] = str(value if value not in (None, "") else "unknown")
         else:
             features[column] = _to_float(value)
     return features

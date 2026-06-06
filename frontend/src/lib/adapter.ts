@@ -317,6 +317,24 @@ export async function recommend(req: IE2Request): Promise<IE2Result> {
   return mockRecommend(req);
 }
 
+export async function recommendBatch(items: IE2Request[]): Promise<IE2Result[]> {
+  const { mode, base } = settings();
+
+  if (mode === 'eep-live' || hasAuthSession()) {
+    const r = await fetch(`${base}/recommend/batch`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ items: items.map(normalizeRequest) }),
+    });
+    if (!r.ok) throw new Error(await apiError(r, 'EEP /recommend/batch'));
+    const payload = await r.json();
+    return Array.isArray(payload) ? payload.map(normalizeRecommendation) : [];
+  }
+
+  await wait(120);
+  return items.map((item) => mockRecommend(item));
+}
+
 export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
   const { ie2, key } = settings();
   const t0 = performance.now();
@@ -401,6 +419,10 @@ export async function generateAndPublishCampaign(
 }
 
 function normalizeRequest(req: IE2Request): any {
+  if (!req.competitor_signals) {
+    return req;
+  }
+
   const gap = Number(req.competitor_signals?.price_gap_pct ?? 0);
   const trend = String(req.competitor_signals?.price_trend_direction ?? 'flat').toLowerCase();
   return {
@@ -417,6 +439,26 @@ function normalizeRequest(req: IE2Request): any {
 }
 
 function normalizeRecommendation(payload: any): IE2Result {
+  if (payload?.error) {
+    return {
+      sku_id: payload?.sku_id,
+      product_name: payload?.product_name,
+      recommendation: 'HOLD',
+      confidence: 0,
+      explanation: payload.error,
+      shap_top5: [],
+      rule_override: null,
+      fallback_used: true,
+      model_version: payload?.model_version ?? 'error',
+      processing_time_ms: 0,
+      requires_human_approval: true,
+      competitor_signals_used: payload?.competitor_signals_used ?? null,
+      input_context: payload?.input_context ?? null,
+      error: payload.error,
+      status_code: Number(payload?.status_code ?? 500),
+    };
+  }
+
   const shapTop5 = Array.isArray(payload?.shap_top5) ? payload.shap_top5.map((item: any) => ({
     feature: item.feature ?? item.feature_name ?? 'feature',
     impact: Number(item.impact ?? item.shap_value ?? 0),
@@ -424,6 +466,8 @@ function normalizeRecommendation(payload: any): IE2Result {
   })) : [];
 
   return {
+    sku_id: payload?.sku_id,
+    product_name: payload?.product_name,
     recommendation: payload?.recommendation,
     confidence: Number(payload?.confidence ?? 0),
     explanation: payload?.explanation ?? '',
@@ -438,14 +482,22 @@ function normalizeRecommendation(payload: any): IE2Result {
     model_version: payload?.model_version ?? 'unknown',
     processing_time_ms: Number(payload?.processing_time_ms ?? 0),
     requires_human_approval: Boolean(payload?.requires_human_approval ?? true),
+    competitor_signals_used: payload?.competitor_signals_used ?? payload?.input_context?.competitor_signals ?? null,
+    input_context: payload?.input_context ?? null,
   };
 }
 
 // ---------- mock recommendation engine (matches IE2 result shape) ----------
 function mockRecommend(req: IE2Request): IE2Result {
-  const margin = ((req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd) * 100;
-  const dos = req.current_stock / Math.max(0.1, req.initial_stock / Math.max(1, req.days_since_launch));
-  const gap = req.competitor_signals.price_gap_pct;
+  const retailPrice = Number(req.retail_price_usd ?? 100);
+  const costPrice = Number(req.cost_price_usd ?? retailPrice * 0.55);
+  const currentStock = Number(req.current_stock ?? 1);
+  const initialStock = Number(req.initial_stock ?? Math.max(currentStock, 1));
+  const daysSinceLaunch = Number(req.days_since_launch ?? 180);
+  const competitorSignals = req.competitor_signals ?? defaultCompetitorSignals(req.sku_id);
+  const margin = ((retailPrice - costPrice) / retailPrice) * 100;
+  const dos = currentStock / Math.max(0.1, initialStock / Math.max(1, daysSinceLaunch));
+  const gap = competitorSignals.price_gap_pct;
   let recommendation: IE2Result['recommendation'] = 'HOLD';
   let suggested_discount_pct: number | undefined;
   let suggested_price_usd: number | undefined;
@@ -457,26 +509,51 @@ function mockRecommend(req: IE2Request): IE2Result {
   else { recommendation = 'HOLD'; }
 
   if (suggested_discount_pct) {
-    suggested_price_usd = round(req.retail_price_usd * (1 - suggested_discount_pct / 100), 2);
+    suggested_price_usd = round(retailPrice * (1 - suggested_discount_pct / 100), 2);
   }
   const marginAfter = suggested_price_usd
-    ? round(((suggested_price_usd - req.cost_price_usd) / suggested_price_usd) * 100, 1)
+    ? round(((suggested_price_usd - costPrice) / suggested_price_usd) * 100, 1)
     : round(margin, 1);
 
   return {
     recommendation, confidence: round(0.72 + Math.random() * 0.22, 2),
+    sku_id: req.sku_id,
+    product_name: req.product_name,
     explanation: explain(recommendation, dos, gap, margin),
     shap_top5: [
       { feature: 'days_of_supply', impact: clamp((dos - 60) / 100, -1, 1), direction: dos > 60 ? 'positive' : 'negative' },
       { feature: 'competitor_price_gap_pct', impact: clamp(gap / 30, -1, 1), direction: gap > 0 ? 'positive' : 'negative' },
       { feature: 'margin_pct', impact: clamp((margin - 40) / 40, -1, 1), direction: margin > 40 ? 'negative' : 'positive' },
-      { feature: 'competitors_on_sale_count', impact: req.competitor_signals.competitors_on_sale_count / 5, direction: 'positive' },
-      { feature: 'days_since_last_discount', impact: clamp(req.days_since_last_discount / 200, 0, 1), direction: 'positive' },
+      { feature: 'competitors_on_sale_count', impact: competitorSignals.competitors_on_sale_count / 5, direction: 'positive' },
+      { feature: 'days_since_last_discount', impact: clamp(Number(req.days_since_last_discount ?? 999) / 200, 0, 1), direction: 'positive' },
     ],
     rule_override, fallback_used: false,
     suggested_discount_pct, suggested_price_usd, margin_after_action_pct: marginAfter,
     model_version: 'ie2-mock-1.4.0', processing_time_ms: 38 + Math.floor(Math.random() * 80),
     requires_human_approval: true,
+    competitor_signals_used: competitorSignals,
+    input_context: { ...req, competitor_signals: competitorSignals },
+  };
+}
+
+function defaultCompetitorSignals(skuId: string) {
+  return {
+    sku_id: skuId,
+    competitor_min_price: 0,
+    competitor_avg_price: 0,
+    price_gap_pct: 0,
+    competitors_on_sale_count: 0,
+    competitors_out_of_stock_count: 0,
+    num_competitors_tracked: 0,
+    cheapest_competitor_name: 'none',
+    price_trend_direction: 'flat' as const,
+    data_freshness_hours: 0,
+    confidence_score: 0,
+    fallback_used: true,
+    fallback_reason: 'No live competitor signal provided.',
+    match_type: 'no_match',
+    match_score: 0,
+    timestamp: new Date().toISOString(),
   };
 }
 
