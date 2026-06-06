@@ -26,7 +26,7 @@ export default function SettingsPage() {
                 <p className="text-[12px] text-muted-foreground mt-1">
                   {m === 'mock-report' && 'Local seeded data — works offline. Default for demos.'}
                   {m === 'ie2-live' && 'Calls IE2 service at port 8002 with X-API-Key header.'}
-                  {m === 'eep-live' && 'Calls the EEP API at port 8000 for live report, ops, and recommendation data.'}
+                  {m === 'eep-live' && 'Calls EEP for live report, ops, recommendation, and tenant data.'}
                   {m === 'supabase-ready' && 'Supabase repository for scrape_runs and competitor snapshots.'}
                 </p>
               </button>
@@ -36,9 +36,9 @@ export default function SettingsPage() {
 
         <Section title="API Endpoints">
           <div className="space-y-3">
-            <Field label="IE2 Base URL" value={s.ie2BaseUrl} onChange={s.setIe2BaseUrl} placeholder="http://localhost:8002" />
-            <Field label="IE3 Campaign Creative URL" value={s.ie3BaseUrl} onChange={s.setIe3BaseUrl} placeholder="http://localhost:8003" />
-            <Field label="EEP / API Base URL" value={s.apiBaseUrl} onChange={s.setApiBaseUrl} placeholder="http://localhost:8000" />
+            <Field label="IE2 Base URL" value={s.ie2BaseUrl} onChange={s.setIe2BaseUrl} placeholder="/ie2" />
+            <Field label="IE3 Campaign Creative URL" value={s.ie3BaseUrl} onChange={s.setIe3BaseUrl} placeholder="/ie3" />
+            <Field label="EEP / API Base URL" value={s.apiBaseUrl} onChange={s.setApiBaseUrl} placeholder="blank for Docker, http://localhost:8000 for Vite" />
             <Field label="API Key (X-API-Key)" value={s.apiKey} onChange={s.setApiKey} placeholder="ie2-local-postman-key" />
             <Field label="Store WhatsApp Number" value={s.whatsappNumber} onChange={s.setWhatsappNumber} placeholder="96170000000 (country code + number, no +)" />
           </div>
@@ -58,10 +58,10 @@ export default function SettingsPage() {
 
         <Section title="Environment Variables" subtitle="Override at build time">
           <pre className="text-[12px] font-mono p-4 rounded-md bg-panel text-panel-foreground overflow-x-auto">
-{`VITE_DATA_MODE=mock-report
-VITE_API_BASE_URL=http://localhost:8000
-VITE_IE2_BASE_URL=http://localhost:8002
-VITE_IE3_BASE_URL=http://localhost:8003
+{`VITE_DATA_MODE=eep-live
+VITE_API_BASE_URL=
+VITE_IE2_BASE_URL=/ie2
+VITE_IE3_BASE_URL=/ie3
 VITE_API_KEY=ie2-local-postman-key`}
           </pre>
         </Section>

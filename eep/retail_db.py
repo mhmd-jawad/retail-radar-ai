@@ -294,11 +294,11 @@ def list_inventory_items(search: str | None = None, limit: int = 500, tenant_id:
                 join core.products p on p.id = v.product_id
                 left join core.suppliers sup on sup.id = v.supplier_id
                 left join core.inventory_balances b
-                    on b.variant_id = v.id and b.store_id = %s
+                    on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
                 left join lateral (
                     select amount
                     from core.prices
-                    where variant_id = v.id and price_type = 'retail' and valid_to is null
+                    where variant_id = v.id and tenant_id = v.tenant_id and price_type = 'retail' and valid_to is null
                     order by valid_from desc
                     limit 1
                 ) pr on true
@@ -567,10 +567,10 @@ def _set_current_price(cur, tenant_id: Any, variant_id: Any, amount: float) -> N
         """
         select id, amount
         from core.prices
-        where variant_id = %s and price_type = 'retail' and valid_to is null
+        where tenant_id = %s and variant_id = %s and price_type = 'retail' and valid_to is null
         for update
         """,
-        (variant_id,),
+        (tenant_id, variant_id),
     )
     current = cur.fetchone()
     if current and float(current["amount"]) == float(amount):
@@ -682,11 +682,11 @@ def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any]
         join core.products p on p.id = v.product_id
         left join core.suppliers sup on sup.id = v.supplier_id
         left join core.inventory_balances b
-            on b.variant_id = v.id and b.store_id = %s
-        left join lateral (
-            select amount
-            from core.prices
-            where variant_id = v.id and price_type = 'retail' and valid_to is null
+        on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
+    left join lateral (
+        select amount
+        from core.prices
+        where variant_id = v.id and tenant_id = v.tenant_id and price_type = 'retail' and valid_to is null
             order by valid_from desc
             limit 1
         ) pr on true
@@ -819,11 +819,11 @@ def _safe_database_url() -> str:
 
 # ─── Outcome Tracking DB helpers ─────────────────────────────────────────────
 
-def get_variant_id_for_sku(sku_id: str) -> str | None:
+def get_variant_id_for_sku(sku_id: str, tenant_id: Any | None = None) -> str | None:
     """Return the UUID variant_id for a given sku_id string."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 "select id from core.sku_variants where tenant_id = %s and sku_id = %s and status = 'active'",
                 (ctx["tenant_id"], sku_id),
@@ -843,6 +843,7 @@ def query_velocity_window(
     variant_id: str,
     window_start: "datetime",
     window_end: "datetime",
+    tenant_id: Any | None = None,
 ) -> dict[str, Any]:
     """
     Compute real velocity metrics from sales_transactions + sales_transaction_lines
@@ -853,7 +854,7 @@ def query_velocity_window(
     """
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 SELECT
@@ -893,6 +894,7 @@ def query_daily_sales_series(
     variant_id: str,
     series_start: "datetime",
     series_end: "datetime",
+    tenant_id: Any | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return day-by-day units sold and revenue for a variant.
@@ -901,7 +903,7 @@ def query_daily_sales_series(
     """
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 SELECT
@@ -931,10 +933,10 @@ def query_daily_sales_series(
     ]
 
 
-def get_current_stock_for_variant(variant_id: str) -> int:
+def get_current_stock_for_variant(variant_id: str, tenant_id: Any | None = None) -> int:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 SELECT COALESCE(quantity_on_hand, 0) AS qty
@@ -947,10 +949,10 @@ def get_current_stock_for_variant(variant_id: str) -> int:
             return int(row["qty"]) if row else 0
 
 
-def get_recommendation_by_id(recommendation_id: str) -> dict[str, Any] | None:
+def get_recommendation_by_id(recommendation_id: str, tenant_id: Any | None = None) -> dict[str, Any] | None:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 SELECT id, recommendation, confidence, explanation,
@@ -964,10 +966,23 @@ def get_recommendation_by_id(recommendation_id: str) -> dict[str, Any] | None:
             return {k: _jsonable(v) for k, v in row.items()} if row else None
 
 
-def insert_decision_snapshot(data: dict[str, Any]) -> int:
+def insert_decision_snapshot(data: dict[str, Any], tenant_id: Any | None = None) -> int:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                "select 1 from core.sku_variants where id = %s and tenant_id = %s",
+                (data["variant_id"], ctx["tenant_id"]),
+            )
+            if not cur.fetchone():
+                raise KeyError("Variant does not belong to tenant.")
+            if data.get("recommendation_id"):
+                cur.execute(
+                    "select 1 from marketing.recommendations where id = %s and tenant_id = %s",
+                    (data["recommendation_id"], ctx["tenant_id"]),
+                )
+                if not cur.fetchone():
+                    raise KeyError("Recommendation does not belong to tenant.")
             cur.execute(
                 """
                 INSERT INTO outcome_tracking.decision_snapshots (
@@ -1010,21 +1025,27 @@ def insert_decision_snapshot(data: dict[str, Any]) -> int:
     return snapshot_id
 
 
-def get_snapshot_by_id(snapshot_id: int) -> dict[str, Any] | None:
+def get_snapshot_by_id(snapshot_id: int, tenant_id: Any | None = None) -> dict[str, Any] | None:
     with _connect() as conn:
         with conn.cursor() as cur:
+            params: list[Any] = [snapshot_id]
+            where = "id = %s"
+            if tenant_id is not None:
+                ctx = _context(cur, tenant_id=tenant_id)
+                where += " AND tenant_id = %s"
+                params.append(ctx["tenant_id"])
             cur.execute(
-                "SELECT * FROM outcome_tracking.decision_snapshots WHERE id = %s",
-                (snapshot_id,),
+                f"SELECT * FROM outcome_tracking.decision_snapshots WHERE {where}",
+                params,
             )
             row = cur.fetchone()
             return {k: _jsonable(v) for k, v in row.items()} if row else None
 
 
-def get_snapshots_for_variant(variant_id: str) -> list[dict[str, Any]]:
+def get_snapshots_for_variant(variant_id: str, tenant_id: Any | None = None) -> list[dict[str, Any]]:
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 SELECT s.*, json_agg(
@@ -1056,9 +1077,17 @@ def get_snapshots_for_variant(variant_id: str) -> list[dict[str, Any]]:
             return [{k: _jsonable(v) for k, v in row.items()} for row in rows]
 
 
-def insert_outcome_measurement(data: dict[str, Any]) -> int:
+def insert_outcome_measurement(data: dict[str, Any], tenant_id: Any | None = None) -> int:
     with _connect() as conn:
         with conn.cursor() as cur:
+            if tenant_id is not None:
+                ctx = _context(cur, tenant_id=tenant_id)
+                cur.execute(
+                    "select 1 from outcome_tracking.decision_snapshots where id = %s and tenant_id = %s",
+                    (data["snapshot_id"], ctx["tenant_id"]),
+                )
+                if not cur.fetchone():
+                    raise KeyError("Snapshot does not belong to tenant.")
             cur.execute(
                 """
                 INSERT INTO outcome_tracking.outcome_measurements (
@@ -1108,20 +1137,26 @@ def insert_outcome_measurement(data: dict[str, Any]) -> int:
             return cur.fetchone()["id"]
 
 
-def update_snapshot_status(snapshot_id: int, status: str) -> None:
+def update_snapshot_status(snapshot_id: int, status: str, tenant_id: Any | None = None) -> None:
     with _connect() as conn:
         with conn.cursor() as cur:
+            params: list[Any] = [status, snapshot_id]
+            where = "id = %s"
+            if tenant_id is not None:
+                ctx = _context(cur, tenant_id=tenant_id)
+                where += " AND tenant_id = %s"
+                params.append(ctx["tenant_id"])
             cur.execute(
-                "UPDATE outcome_tracking.decision_snapshots SET status = %s WHERE id = %s",
-                (status, snapshot_id),
+                f"UPDATE outcome_tracking.decision_snapshots SET status = %s WHERE {where}",
+                params,
             )
 
 
-def get_portfolio_accuracy(decision_type: str | None = None) -> dict[str, Any]:
+def get_portfolio_accuracy(decision_type: str | None = None, tenant_id: Any | None = None) -> dict[str, Any]:
     """Aggregate accuracy scores across all completed measurements."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _context(cur)
+            ctx = _context(cur, tenant_id=tenant_id)
             if decision_type:
                 cur.execute(
                     """

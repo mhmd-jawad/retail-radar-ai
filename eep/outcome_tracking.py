@@ -68,6 +68,7 @@ def snapshot_decision(
     decision_type: str,
     recommendation_id: str | None = None,
     cost_price_usd: float = 0.0,
+    tenant_id: Any | None = None,
 ) -> int | None:
     """
     Capture a baseline snapshot when a decision is approved.
@@ -80,10 +81,10 @@ def snapshot_decision(
         window_start = now - timedelta(days=7)
 
         # Baseline sales velocity (real data)
-        baseline = query_velocity_window(variant_id, window_start, now)
+        baseline = query_velocity_window(variant_id, window_start, now, tenant_id=tenant_id)
 
         # Current stock
-        qty_on_hand = get_current_stock_for_variant(variant_id)
+        qty_on_hand = get_current_stock_for_variant(variant_id, tenant_id=tenant_id)
 
         # IE2 recommendation details
         ie2_confidence = 0.0
@@ -92,7 +93,7 @@ def snapshot_decision(
         retail_price = 0.0
 
         if recommendation_id:
-            rec = get_recommendation_by_id(recommendation_id)
+            rec = get_recommendation_by_id(recommendation_id, tenant_id=tenant_id)
             if rec:
                 ie2_confidence = float(rec.get("confidence") or 0)
                 ie2_explanation = rec.get("explanation")
@@ -120,25 +121,28 @@ def snapshot_decision(
 
         status = "tracking" if baseline["data_available"] else "insufficient_data"
 
-        snapshot_id = insert_decision_snapshot({
-            "variant_id": variant_id,
-            "recommendation_id": recommendation_id,
-            "decision_type": decision_type,
-            "approved_at": now,
-            "baseline_velocity_daily": baseline["velocity_daily"] if baseline["data_available"] else None,
-            "baseline_revenue_7d": baseline["total_revenue"] if baseline["data_available"] else None,
-            "baseline_avg_price": baseline["avg_unit_price"] if baseline["data_available"] else None,
-            "baseline_qty_on_hand": qty_on_hand,
-            "baseline_margin_pct": baseline_margin,
-            "baseline_dos": baseline_dos,
-            "predicted_lift_pct": predicted_lift,
-            "ie2_confidence": ie2_confidence,
-            "ie2_explanation": ie2_explanation,
-            "suggested_discount_pct": suggested_discount_pct,
-            "check_7d_at": now + timedelta(days=7),
-            "check_14d_at": now + timedelta(days=14),
-            "status": status,
-        })
+        snapshot_id = insert_decision_snapshot(
+            {
+                "variant_id": variant_id,
+                "recommendation_id": recommendation_id,
+                "decision_type": decision_type,
+                "approved_at": now,
+                "baseline_velocity_daily": baseline["velocity_daily"] if baseline["data_available"] else None,
+                "baseline_revenue_7d": baseline["total_revenue"] if baseline["data_available"] else None,
+                "baseline_avg_price": baseline["avg_unit_price"] if baseline["data_available"] else None,
+                "baseline_qty_on_hand": qty_on_hand,
+                "baseline_margin_pct": baseline_margin,
+                "baseline_dos": baseline_dos,
+                "predicted_lift_pct": predicted_lift,
+                "ie2_confidence": ie2_confidence,
+                "ie2_explanation": ie2_explanation,
+                "suggested_discount_pct": suggested_discount_pct,
+                "check_7d_at": now + timedelta(days=7),
+                "check_14d_at": now + timedelta(days=14),
+                "status": status,
+            },
+            tenant_id=tenant_id,
+        )
         logger.info("Outcome snapshot %d created for %s (%s)", snapshot_id, sku_id, decision_type)
         return snapshot_id
 
@@ -150,14 +154,14 @@ def snapshot_decision(
         return None
 
 
-def measure_outcome(snapshot_id: int, window_days: int) -> dict[str, Any]:
+def measure_outcome(snapshot_id: int, window_days: int, tenant_id: Any | None = None) -> dict[str, Any]:
     """
     Measure actual post-decision outcome from real sales data.
     Calls Claude to verify calculations and generate a narrative.
 
     window_days: 7 or 14
     """
-    snapshot = get_snapshot_by_id(snapshot_id)
+    snapshot = get_snapshot_by_id(snapshot_id, tenant_id=tenant_id)
     if not snapshot:
         raise ValueError(f"Snapshot {snapshot_id} not found")
 
@@ -178,16 +182,19 @@ def measure_outcome(snapshot_id: int, window_days: int) -> dict[str, Any]:
     window_end = approved_at + timedelta(days=window_days)
 
     # Real post-decision sales
-    actuals = query_velocity_window(variant_id, window_start, window_end)
+    actuals = query_velocity_window(variant_id, window_start, window_end, tenant_id=tenant_id)
 
     if not actuals["data_available"]:
-        measurement_id = insert_outcome_measurement({
-            "snapshot_id": snapshot_id,
-            "window_days": window_days,
-            "data_available": False,
-        })
+        measurement_id = insert_outcome_measurement(
+            {
+                "snapshot_id": snapshot_id,
+                "window_days": window_days,
+                "data_available": False,
+            },
+            tenant_id=tenant_id,
+        )
         new_status = "measured_7d" if window_days == 7 else "completed"
-        update_snapshot_status(snapshot_id, new_status)
+        update_snapshot_status(snapshot_id, new_status, tenant_id=tenant_id)
         return {
             "snapshot_id": snapshot_id,
             "window_days": window_days,
@@ -225,25 +232,28 @@ def measure_outcome(snapshot_id: int, window_days: int) -> dict[str, Any]:
     # LLM narrative
     narrative_data = _generate_narrative(snapshot, actuals, velocity_lift_pct, revenue_delta, window_days)
 
-    measurement_id = insert_outcome_measurement({
-        "snapshot_id": snapshot_id,
-        "window_days": window_days,
-        "actual_velocity_daily": actual_vel,
-        "actual_revenue_total": actual_rev,
-        "actual_qty_sold": actuals["total_units"],
-        "actual_avg_price": actuals["avg_unit_price"],
-        "velocity_lift_pct": velocity_lift_pct,
-        "revenue_delta_usd": revenue_delta,
-        "campaign_roi_usd": campaign_roi,
-        "accuracy_score": accuracy_score,
-        "narrative": narrative_data.get("narrative"),
-        "llm_computed_lift_pct": narrative_data.get("verified_lift_pct"),
-        "llm_computed_revenue_delta": narrative_data.get("verified_revenue_delta"),
-        "data_available": True,
-    })
+    measurement_id = insert_outcome_measurement(
+        {
+            "snapshot_id": snapshot_id,
+            "window_days": window_days,
+            "actual_velocity_daily": actual_vel,
+            "actual_revenue_total": actual_rev,
+            "actual_qty_sold": actuals["total_units"],
+            "actual_avg_price": actuals["avg_unit_price"],
+            "velocity_lift_pct": velocity_lift_pct,
+            "revenue_delta_usd": revenue_delta,
+            "campaign_roi_usd": campaign_roi,
+            "accuracy_score": accuracy_score,
+            "narrative": narrative_data.get("narrative"),
+            "llm_computed_lift_pct": narrative_data.get("verified_lift_pct"),
+            "llm_computed_revenue_delta": narrative_data.get("verified_revenue_delta"),
+            "data_available": True,
+        },
+        tenant_id=tenant_id,
+    )
 
     new_status = "measured_7d" if window_days == 7 else "completed"
-    update_snapshot_status(snapshot_id, new_status)
+    update_snapshot_status(snapshot_id, new_status, tenant_id=tenant_id)
 
     return {
         "measurement_id": measurement_id,
@@ -371,20 +381,20 @@ Step 3 — Output ONLY valid JSON (no markdown, no code fences):
         return {"narrative": None, "verified_lift_pct": None, "verified_revenue_delta": None}
 
 
-def get_outcomes_for_sku(variant_id: str) -> list[dict[str, Any]]:
-    return get_snapshots_for_variant(variant_id)
+def get_outcomes_for_sku(variant_id: str, tenant_id: Any | None = None) -> list[dict[str, Any]]:
+    return get_snapshots_for_variant(variant_id, tenant_id=tenant_id)
 
 
-def get_accuracy(decision_type: str | None = None) -> dict[str, Any]:
+def get_accuracy(decision_type: str | None = None, tenant_id: Any | None = None) -> dict[str, Any]:
     try:
-        return get_portfolio_accuracy(decision_type)
+        return get_portfolio_accuracy(decision_type, tenant_id=tenant_id)
     except DatabaseUnavailable:
         return {"avg_accuracy": None, "decision_count": 0, "by_type": {}}
 
 
-def get_daily_series(snapshot_id: int) -> list[dict[str, Any]]:
+def get_daily_series(snapshot_id: int, tenant_id: Any | None = None) -> list[dict[str, Any]]:
     """Return the 21-day daily sales series (7d before + 14d after) for the velocity chart."""
-    snapshot = get_snapshot_by_id(snapshot_id)
+    snapshot = get_snapshot_by_id(snapshot_id, tenant_id=tenant_id)
     if not snapshot:
         return []
 
@@ -403,4 +413,4 @@ def get_daily_series(snapshot_id: int) -> list[dict[str, Any]]:
     series_start = approved_at - timedelta(days=7)
     series_end = approved_at + timedelta(days=14)
 
-    return query_daily_sales_series(variant_id, series_start, series_end)
+    return query_daily_sales_series(variant_id, series_start, series_end, tenant_id=tenant_id)

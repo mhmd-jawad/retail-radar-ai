@@ -1,7 +1,7 @@
 {$WEBHOOK_DOMAIN} {
 	encode zstd gzip
 
-	@eep_api path /health /openapi.json /docs* /redoc* /webhooks/* /apify/* /report /ops/* /inventory/* /recommend/* /dashboard/*
+	@eep_api path /health /metrics /openapi.json /docs* /redoc* /auth/* /shop/* /admin/* /webhooks/* /apify/* /report /report/* /ops/* /inventory/* /recommend/* /decisions /outcomes/* /financial/* /dashboard/*
 	handle @eep_api {
 		reverse_proxy eep:8000
 	}
@@ -17,6 +17,10 @@
 	# IE1 and IE3 stay internal until they have API authentication.
 	handle_path /ie2/* {
 		reverse_proxy ie2_decision_intelligence:8002
+	}
+
+	handle_path /ie3/* {
+		reverse_proxy ie3_campaign_creative:8003
 	}
 
 	handle {

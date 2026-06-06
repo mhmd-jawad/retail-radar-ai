@@ -426,6 +426,7 @@ class AIEngine:
             decision_type=rec_type,
             recommendation_id=recommendation_id,
             cost_price_usd=float(rec.get("cost_price_usd") or 0),
+            tenant_id=tenant_id,
         )
 
         # Try to update notification outcome if a notification exists for this recommendation

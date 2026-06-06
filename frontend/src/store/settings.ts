@@ -34,14 +34,21 @@ const env = import.meta.env;
 const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
 const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 const defaultIe3BaseUrl = env.PROD ? '/ie3' : 'http://localhost:8003';
+const configuredApiBaseUrl = env.VITE_API_BASE_URL ?? defaultApiBaseUrl;
+const configuredIe2BaseUrl = env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl;
+const configuredIe3BaseUrl = env.VITE_IE3_BASE_URL ?? defaultIe3BaseUrl;
+
+function isLocalhostUrl(value: unknown) {
+  return typeof value === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(value.trim());
+}
 
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
       mode: (env.VITE_DATA_MODE as DataMode) || 'eep-live',
-      apiBaseUrl: env.VITE_API_BASE_URL ?? defaultApiBaseUrl,
-      ie2BaseUrl: env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl,
-      ie3BaseUrl: env.VITE_IE3_BASE_URL ?? defaultIe3BaseUrl,
+      apiBaseUrl: configuredApiBaseUrl,
+      ie2BaseUrl: configuredIe2BaseUrl,
+      ie3BaseUrl: configuredIe3BaseUrl,
       apiKey: env.VITE_API_KEY || 'ie2-local-postman-key',
       recState: {},
       campaignCache: {},
@@ -65,7 +72,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'rr-settings-v1',
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
         const s = (persistedState ?? {}) as Record<string, unknown>;
         if (version < 3) {
@@ -75,6 +82,17 @@ export const useSettings = create<SettingsState>()(
           }
           if (s.mode === 'mock-report') {
             s.mode = 'eep-live';
+          }
+        }
+        if (version < 4 && env.PROD) {
+          if (!s.apiBaseUrl || isLocalhostUrl(s.apiBaseUrl)) {
+            s.apiBaseUrl = configuredApiBaseUrl;
+          }
+          if (!s.ie2BaseUrl || isLocalhostUrl(s.ie2BaseUrl)) {
+            s.ie2BaseUrl = configuredIe2BaseUrl;
+          }
+          if (!s.ie3BaseUrl || isLocalhostUrl(s.ie3BaseUrl)) {
+            s.ie3BaseUrl = configuredIe3BaseUrl;
           }
         }
         return s;
