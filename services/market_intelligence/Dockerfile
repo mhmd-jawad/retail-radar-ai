@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r ./requirements.txt
 
 COPY services/ ./services/
 COPY data/ ./data/
-COPY scraping/data/output/ ./scraping/data/output/
+RUN mkdir -p ./scraping/data/output
 
 EXPOSE 8001
 

@@ -57,7 +57,7 @@ LOCAL_PINNED_MODEL_EXPORT_DIR = (
     / "decision_intelligence"
     / "models"
     / "mlflow_export"
-    / "retail_radar_decision_model_v6"
+    / "retail_radar_decision_model_rds_candidate_v1"
 )
 LOCAL_MODEL_EXPORT_DIR = (
     ROOT
@@ -368,6 +368,11 @@ def _build_model_features(req: RecommendationRequest) -> dict:
     comp_on_sale = comp.competitors_on_sale_count if comp else 0
     comp_oos = comp.competitors_out_of_stock_count if comp else 0
     comp_count = comp.num_competitors_tracked if comp else 0
+    comp_min_price = comp.competitor_min_price if comp else 0.0
+    comp_avg_price = comp.competitor_avg_price if comp else 0.0
+    comp_confidence = comp.confidence_score if comp else 0.0
+    fallback_used = bool(comp.fallback_used) if comp else False
+    match_type = "no_match" if comp_count <= 0 else "similar_product" if fallback_used else "same_model_family"
 
     margin_pct = (
         (req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd * 100
@@ -411,6 +416,22 @@ def _build_model_features(req: RecommendationRequest) -> dict:
         "cash_runway_months": DEFAULT_CASH_RUNWAY_MONTHS,
         "cash_tight": 0,
         "inventory_intensity": DEFAULT_INVENTORY_INTENSITY,
+        "match_type": match_type,
+        "match_score": round(comp_confidence, 4),
+        "inventory_history_quality": "online_estimated",
+        "has_competitor_data": 1 if comp_count > 0 else 0,
+        "competitor_min_price_usd": comp_min_price,
+        "competitor_avg_price_usd": comp_avg_price,
+        "competitor_max_price_usd": max(comp_min_price, comp_avg_price),
+        "sales_units_last_28d": round(avg_daily * 28.0, 2),
+        "avg_daily_sales_28d": round(avg_daily, 4),
+        "competitor_price_trend_4w": 0.0,
+        "competitor_sale_frequency_4w": round(comp_on_sale / comp_count, 4) if comp_count > 0 else 0.0,
+        "competitor_oos_frequency_4w": round(comp_oos / comp_count, 4) if comp_count > 0 else 0.0,
+        "price_gap_volatility_4w": round(abs(comp_gap) * 0.25, 4),
+        "stock_velocity_4w": round(avg_daily * 28.0 / max(req.initial_stock, 1), 4),
+        "sell_through_velocity_4w": round(season_sell_through / 4.0, 4),
+        "days_since_competitor_change": 30,
     }
     return _augment_model_features(features)
 
@@ -683,13 +704,16 @@ def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float,
     return decision, round(confidence, 3), _build_rule_explanations(features, decision)
 
 
-def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
-    t_start = time.time()
+def _recommend_with_features(
+    req: RecommendationRequest,
+    features: dict,
+    t_start: float | None = None,
+) -> RecommendationResult:
+    t_start = t_start or time.time()
     margin_pct = (
         (req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd * 100
         if req.retail_price_usd > 0 else 0.0
     )
-    features = _build_model_features(req)
     rule_result = run_rules(features)
 
     rule_override = None
@@ -767,6 +791,12 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         model_version=MODEL_VERSION,
         processing_time_ms=int((time.time() - t_start) * 1000),
     )
+
+
+def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
+    t_start = time.time()
+    features = _build_model_features(req)
+    return _recommend_with_features(req, features, t_start=t_start)
 
 
 @app.get("/health")

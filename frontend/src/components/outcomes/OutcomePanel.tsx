@@ -21,8 +21,8 @@ export function OutcomeChip({ snapshot }: { snapshot: OutcomeSnapshot | null }) 
   const latest = snapshot.measurements?.[snapshot.measurements.length - 1] ?? null;
   const lift = latest?.velocity_lift_pct ?? null;
   const accuracy = latest?.accuracy_score ?? null;
-  const liftText = lift === null ? null : `${lift >= 0 ? '+' : ''}${Math.round(lift)}% lift`;
-  const accuracyText = accuracy === null ? null : `${Math.round(accuracy * 100)}% accuracy`;
+  const liftText = lift === null ? null : pct(lift);
+  const accuracyText = accuracy === null ? null : accuracyPct(accuracy);
 
   return (
     <span
@@ -32,8 +32,8 @@ export function OutcomeChip({ snapshot }: { snapshot: OutcomeSnapshot | null }) 
       )}
       title={snapshot.ie2_explanation ?? undefined}
     >
-      <span>{liftText ?? statusLabel[snapshot.status]}</span>
-      {accuracyText && <span className="text-current/70">- {accuracyText}</span>}
+      <span>{liftText ? `${liftText} lift` : statusLabel[snapshot.status]}</span>
+      {accuracyText && <span className="text-current/70">- {accuracyText} accuracy</span>}
     </span>
   );
 }
@@ -59,7 +59,7 @@ export default function OutcomePanel({ snapshot }: { snapshot: OutcomeSnapshot }
         <OutcomeMetric label="Predicted lift" value={pct(snapshot.predicted_lift_pct)} />
         <OutcomeMetric label="Baseline velocity" value={num(snapshot.baseline_velocity_daily)} />
         <OutcomeMetric label="Latest lift" value={pct(latest?.velocity_lift_pct ?? null)} />
-        <OutcomeMetric label="Accuracy" value={latest?.accuracy_score == null ? '-' : `${Math.round(latest.accuracy_score * 100)}%`} />
+        <OutcomeMetric label="Accuracy" value={accuracyPct(latest?.accuracy_score)} />
       </div>
 
       {latest?.narrative && (
@@ -87,9 +87,7 @@ export default function OutcomePanel({ snapshot }: { snapshot: OutcomeSnapshot }
                   <td className="px-3 py-2">{num(measurement.actual_qty_sold)}</td>
                   <td className="px-3 py-2">{money(measurement.actual_revenue_total)}</td>
                   <td className="px-3 py-2">{pct(measurement.velocity_lift_pct)}</td>
-                  <td className="px-3 py-2">
-                    {measurement.accuracy_score == null ? '-' : `${Math.round(measurement.accuracy_score * 100)}%`}
-                  </td>
+                  <td className="px-3 py-2">{accuracyPct(measurement.accuracy_score)}</td>
                 </tr>
               ))}
             </tbody>
@@ -112,6 +110,11 @@ function OutcomeMetric({ label, value }: { label: string; value: string }) {
 function pct(value: number | null | undefined) {
   if (value == null) return '-';
   return `${value >= 0 ? '+' : ''}${Math.round(value)}%`;
+}
+
+function accuracyPct(value: number | null | undefined) {
+  if (value == null) return '-';
+  return `${Math.round(value * 100)}%`;
 }
 
 function num(value: number | null | undefined) {

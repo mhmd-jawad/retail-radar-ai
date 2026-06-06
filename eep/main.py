@@ -24,7 +24,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from eep.auth_db import (
@@ -532,6 +532,13 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
     ]
 
 
+@app.get("/evaluation/live-rds/metrics")
+def live_rds_evaluation_metrics() -> Response:
+    from services.decision_intelligence.evaluation.live_rds_metrics import render_prometheus_metrics
+
+    return Response(render_prometheus_metrics(), media_type="text/plain; version=0.0.4")
+
+
 @app.get("/inventory/db/status")
 def inventory_db_status(request: Request) -> dict[str, Any]:
     return db_status(tenant_id=_tenant_id_from_request(request))
@@ -779,9 +786,49 @@ async def recommend_batch(
 
     tenant_id = _tenant_id_from_request(request)
     return list(await asyncio.gather(*[
-        _recommend_for_frontend(item["sku_id"], item, endpoint_label="/recommend/batch", tenant_id=tenant_id)
+        _recommend_batch_item(item, endpoint_label="/recommend/batch", tenant_id=tenant_id)
         for item in items
     ]))
+
+
+async def _recommend_batch_item(
+    item: dict[str, Any],
+    endpoint_label: str,
+    tenant_id: str | None,
+) -> dict[str, Any]:
+    sku_id = str(item.get("sku_id") or "")
+    try:
+        return await _recommend_for_frontend(sku_id, item, endpoint_label=endpoint_label, tenant_id=tenant_id)
+    except HTTPException as exc:
+        return {
+            "sku_id": sku_id,
+            "recommendation": "HOLD",
+            "confidence": 0.0,
+            "explanation": str(exc.detail),
+            "shap_top5": [],
+            "rule_override": None,
+            "fallback_used": True,
+            "model_version": "error",
+            "processing_time_ms": 0,
+            "requires_human_approval": True,
+            "error": str(exc.detail),
+            "status_code": exc.status_code,
+        }
+    except Exception as exc:
+        return {
+            "sku_id": sku_id,
+            "recommendation": "HOLD",
+            "confidence": 0.0,
+            "explanation": "Unexpected recommendation error.",
+            "shap_top5": [],
+            "rule_override": None,
+            "fallback_used": True,
+            "model_version": "error",
+            "processing_time_ms": 0,
+            "requires_human_approval": True,
+            "error": str(exc),
+            "status_code": 500,
+        }
 
 
 @app.post("/recommend/full")
@@ -844,7 +891,34 @@ async def _recommend_for_frontend(
     result = _recommend_single(request_model)
     observe_competitor_match(competitor_metric_payload)
     observe_recommendation(endpoint_label, getattr(result, "recommendation", None))
-    return serialize_frontend_recommendation(result)
+    response_payload = serialize_frontend_recommendation(result)
+    return {
+        **response_payload,
+        "competitor_signals_used": competitor_metric_payload,
+        "input_context": _frontend_input_context(request_payload, competitor_metric_payload),
+    }
+
+
+def _frontend_input_context(
+    request_payload: dict[str, Any],
+    competitor_signals: Any,
+) -> dict[str, Any]:
+    allowed_fields = {
+        "sku_id",
+        "product_name",
+        "brand",
+        "category",
+        "retail_price_usd",
+        "cost_price_usd",
+        "current_stock",
+        "initial_stock",
+        "days_since_launch",
+        "days_since_last_discount",
+        "days_at_current_price",
+    }
+    context = {key: request_payload.get(key) for key in allowed_fields if key in request_payload}
+    context["competitor_signals"] = competitor_signals if isinstance(competitor_signals, dict) else None
+    return context
 
 
 def _strip_competitor_metadata(request_payload: dict[str, Any]) -> dict[str, Any]:
@@ -995,6 +1069,8 @@ def _live_competitor_signals(cur, tenant_id: Any, product_row: dict[str, Any]) -
             "confidence_score": 0,
             "fallback_used": True,
             "fallback_reason": "No matching products found in this shop's selected competitors.",
+            "match_type": "no_match",
+            "match_score": 0.0,
             "timestamp": timestamp.isoformat(),
         }
 
@@ -1020,6 +1096,8 @@ def _live_competitor_signals(cur, tenant_id: Any, product_row: dict[str, Any]) -
         "confidence_score": 0.85,
         "fallback_used": False,
         "fallback_reason": None,
+        "match_type": "exact_style" if style_code else "similar_product",
+        "match_score": 1.0 if style_code else 0.75,
         "timestamp": timestamp.isoformat(),
     }
 

@@ -110,6 +110,7 @@ def _ensure_run_has_mlflow_model(
     trial_number: int,
     tracking_uri: str,
     artifact_subpath: str,
+    local_export_name: str | None = None,
 ) -> str:
     # If the winning run only has a raw .cbm file, convert it once into an
     # MLflow-formatted model artifact inside the same run.
@@ -117,7 +118,7 @@ def _ensure_run_has_mlflow_model(
     if not local_cbm.exists():
         raise FileNotFoundError(f"Expected trial model file not found at: {local_cbm}")
 
-    export_dir = LOCAL_MLFLOW_MODEL_DIR / f"trial_{trial_number:03d}_run_export"
+    export_dir = LOCAL_MLFLOW_MODEL_DIR / (local_export_name or f"trial_{trial_number:03d}_run_export")
     if export_dir.exists():
         shutil.rmtree(export_dir)
     export_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -137,8 +138,10 @@ def register_best_run_model(
     model_name: str,
     mlflow_tracking_uri: str,
     artifact_subpath: str,
+    meta_path: Path = META_PATH,
+    local_export_name: str | None = None,
 ) -> None:
-    meta = _load_meta(META_PATH)
+    meta = _load_meta(meta_path)
     best_trial = meta.get("best_trial", {})
     trial_number = int(best_trial.get("trial_number"))
     experiment_name = str(meta.get("mlflow_experiment", "")).strip()
@@ -158,6 +161,7 @@ def register_best_run_model(
         trial_number=trial_number,
         tracking_uri=mlflow_tracking_uri,
         artifact_subpath=artifact_subpath,
+        local_export_name=local_export_name,
     )
 
     try:
@@ -199,6 +203,17 @@ def parse_args() -> argparse.Namespace:
         default="registered_model_export",
         help="Artifact subpath to store the MLflow-formatted model inside the winning run.",
     )
+    parser.add_argument(
+        "--meta-path",
+        type=Path,
+        default=META_PATH,
+        help="Path to the training meta.json to register.",
+    )
+    parser.add_argument(
+        "--local-export-name",
+        default=None,
+        help="Optional folder name under services/decision_intelligence/models/mlflow_export for the exported model.",
+    )
     return parser.parse_args()
 
 
@@ -208,4 +223,6 @@ if __name__ == "__main__":
         model_name=args.model_name,
         mlflow_tracking_uri=args.mlflow_tracking_uri,
         artifact_subpath=args.artifact_subpath,
+        meta_path=args.meta_path,
+        local_export_name=args.local_export_name,
     )

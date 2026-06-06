@@ -38,20 +38,6 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
         days_since_launch: sku!.days_since_launch,
         days_since_last_discount: sku!.days_since_last_discount,
         days_at_current_price: sku!.days_at_current_price,
-        competitor_signals: {
-          competitor_min_price: sku!.retail_price_usd * 0.92,
-          competitor_avg_price: sku!.retail_price_usd * 1.02,
-          price_gap_pct: -2,
-          competitors_on_sale_count: 1,
-          competitors_out_of_stock_count: 0,
-          num_competitors_tracked: 4,
-          cheapest_competitor_name: 'mikesport',
-          price_trend_direction: 'flat',
-          data_freshness_hours: 6,
-          confidence_score: 0.84,
-          fallback_used: false,
-          timestamp: new Date().toISOString(),
-        },
       }),
   });
 
@@ -118,12 +104,17 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
               {ie2 && (
                 <div>
                   <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-2">
-                    <Sparkles className="h-3 w-3 text-primary" /> IE2 Explanation · {(ie2.confidence * 100).toFixed(0)}% confidence
+                    <Sparkles className="h-3 w-3 text-primary" /> System Decision · {(ie2.confidence * 100).toFixed(0)}% confidence
                   </div>
                   <p className="text-[14px] leading-relaxed text-foreground">{ie2.explanation}</p>
                   {ie2.rule_override && (
                     <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded bg-decision-clear-bg text-decision-clear">
                       <AlertTriangle className="h-3 w-3" /> Rule override: {ie2.rule_override}
+                    </div>
+                  )}
+                  {ie2.error && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded bg-decision-clear-bg text-decision-clear">
+                      <AlertTriangle className="h-3 w-3" /> Prediction error: {ie2.error}
                     </div>
                   )}
                 </div>
@@ -165,32 +156,37 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
                 </div>
               )}
 
-              {/* Competitor comparison */}
-              <div>
-                <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
-                  <Activity className="h-3 w-3" /> Competitor Comparison · {ie2 ? `${ie2.processing_time_ms}ms` : ''}
+              {/* Live competitor context */}
+              {ie2?.competitor_signals_used && (
+                <div>
+                  <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
+                    <Activity className="h-3 w-3" /> Live Competitor Signal · {ie2.processing_time_ms}ms
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-3">
+                    {ie2.competitor_signals_used.num_competitors_tracked > 0 ? (
+                      <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <SignalCell label="Cheapest" value={ie2.competitor_signals_used.cheapest_competitor_name || 'unknown'} />
+                          <SignalCell label="Min price" value={fmtUSD(ie2.competitor_signals_used.competitor_min_price, { decimals: 2 })} />
+                          <SignalCell label="Price gap" value={fmtPct(ie2.competitor_signals_used.price_gap_pct * 100, 1)} />
+                          <SignalCell label="Freshness" value={`${ie2.competitor_signals_used.data_freshness_hours}h`} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                          <SignalCell label="Matches" value={`${ie2.competitor_signals_used.num_competitors_tracked}`} />
+                          <SignalCell label="Match type" value={ie2.competitor_signals_used.match_type || 'matched'} />
+                          <SignalCell label="On sale" value={`${ie2.competitor_signals_used.competitors_on_sale_count}`} />
+                          <SignalCell label="OOS" value={`${ie2.competitor_signals_used.competitors_out_of_stock_count}`} />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
+                        <AlertTriangle className="h-4 w-4 text-decision-clear shrink-0 mt-0.5" />
+                        <span>{ie2.competitor_signals_used.fallback_reason || 'No live competitor match was available for this SKU.'}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <table className="w-full text-[12.5px]">
-                    <thead className="bg-surface-sunken text-[10.5px] uppercase text-muted-foreground">
-                      <tr><th className="px-3 py-2 text-left">Shop</th><th className="px-3 py-2 text-right">Price</th><th className="px-3 py-2 text-center">On sale</th><th className="px-3 py-2 text-center">In stock</th></tr>
-                    </thead>
-                    <tbody>
-                      {['mikesport', 'tchooz', 'shoesworld', 'citysport'].map((shop, i) => {
-                        const price = sku.retail_price_usd * (0.88 + i * 0.04);
-                        return (
-                          <tr key={shop} className="border-t border-border">
-                            <td className="px-3 py-2 font-mono">{shop}</td>
-                            <td className="px-3 py-2 text-right font-mono">{fmtUSD(price, { decimals: 2 })}</td>
-                            <td className="px-3 py-2 text-center">{i === 1 ? '🟢' : '—'}</td>
-                            <td className="px-3 py-2 text-center">{i === 3 ? '✕' : '✓'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              )}
 
               {/* Campaign preview */}
               {(ie2?.recommendation === 'PROMOTE' || sku.decision === 'PROMOTE') && promo?.creative && (
@@ -263,6 +259,15 @@ function Cell({ label, value, className }: { label: string; value: string; class
     <div className="rounded-md bg-card border border-border p-2.5">
       <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn('text-data text-[16px] font-semibold mt-0.5', className)}>{value}</div>
+    </div>
+  );
+}
+
+function SignalCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-surface-sunken border border-border p-2.5 min-w-0">
+      <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[12.5px] font-semibold mt-0.5 truncate">{value}</div>
     </div>
   );
 }

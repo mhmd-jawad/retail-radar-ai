@@ -172,6 +172,7 @@ export interface Alert {
 }
 
 export interface CompetitorSignals {
+  sku_id?: string;
   competitor_min_price: number;
   competitor_avg_price: number;
   price_gap_pct: number;
@@ -184,6 +185,8 @@ export interface CompetitorSignals {
   confidence_score: number;
   fallback_used: boolean;
   fallback_reason?: string;
+  match_type?: string;
+  match_score?: number;
   timestamp: string;
 }
 
@@ -386,20 +389,22 @@ export interface Report {
 // IE2 contracts
 export interface IE2Request {
   sku_id: string;
-  product_name: string;
-  brand: string;
-  category: string;
-  retail_price_usd: number;
-  cost_price_usd: number;
-  current_stock: number;
-  days_since_launch: number;
-  initial_stock: number;
-  days_since_last_discount: number;
-  days_at_current_price: number;
-  competitor_signals: CompetitorSignals;
+  product_name?: string;
+  brand?: string;
+  category?: string;
+  retail_price_usd?: number;
+  cost_price_usd?: number;
+  current_stock?: number;
+  days_since_launch?: number;
+  initial_stock?: number;
+  days_since_last_discount?: number;
+  days_at_current_price?: number;
+  competitor_signals?: CompetitorSignals;
 }
 
 export interface IE2Result {
+  sku_id?: string;
+  product_name?: string;
   recommendation: Decision;
   confidence: number;
   explanation: string;
@@ -412,6 +417,10 @@ export interface IE2Result {
   model_version: string;
   processing_time_ms: number;
   requires_human_approval: boolean;
+  competitor_signals_used?: CompetitorSignals | null;
+  input_context?: IE2Request | null;
+  error?: string;
+  status_code?: number;
 }
 
 // EEP future
