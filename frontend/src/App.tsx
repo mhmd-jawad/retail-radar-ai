@@ -27,9 +27,6 @@ import FinancialCashflow from "./pages/financial/Cashflow";
 import FinancialLollar from "./pages/financial/Lollar";
 import FinancialCosts from "./pages/financial/Costs";
 import FinancialAlerts from "./pages/financial/Alerts";
-import Audit from "./pages/Audit";
-import Ops from "./pages/Ops";
-import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -69,10 +66,10 @@ const App = () => (
               <Route path="/financial/costs" element={<FinancialCosts />} />
               <Route path="/financial/alerts" element={<FinancialAlerts />} />
               <Route path="/upload" element={<Navigate to="/inventory" replace />} />
-              <Route path="/audit" element={<Audit />} />
-              <Route path="/ops" element={<Ops />} />
+              <Route path="/audit" element={<Navigate to="/overview" replace />} />
+              <Route path="/ops" element={<Navigate to="/overview" replace />} />
               <Route path="/shop-profile" element={<ShopProfile />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings" element={<Navigate to="/shop-profile" replace />} />
             </Route>
           </Route>
           <Route element={<ProtectedRoute roles={["admin"]} />}>

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  ScrollText, Activity, Settings, Radio, Home, ExternalLink,
+  Radio,
   User, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,13 +9,10 @@ import { logoutAccount } from '@/lib/adapter';
 import { useAuth } from '@/store/auth';
 import { useReport } from '@/hooks/useReport';
 
-const grafanaUrl = import.meta.env.VITE_GRAFANA_URL ?? 'http://localhost:3001';
-
 const sections: { label: string; items: { to: string; label: string; icon: any; badge?: string }[] }[] = [
   {
     label: 'Command',
     items: [
-      { to: '/', label: 'Home', icon: Home },
       { to: '/overview', label: 'Overview', icon: LayoutDashboard },
       { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: 'queue' },
     ],
@@ -30,12 +27,9 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
     ],
   },
   {
-    label: 'Operations',
+    label: 'Account',
     items: [
-      { to: '/audit', label: 'Audit Trail', icon: ScrollText },
-      { to: '/ops', label: 'Ops & Pipeline', icon: Activity },
       { to: '/shop-profile', label: 'Shop Profile', icon: User },
-      { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];
@@ -141,15 +135,6 @@ export function AppSidebar() {
               {report ? `${skuCount} SKUs - tenant data synced` : 'Syncing tenant data'}
             </div>
           </div>
-          <a
-            href={grafanaUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-sidebar-primary hover:text-sidebar-primary/80 transition"
-          >
-            Monitoring
-            <ExternalLink className="h-3 w-3" />
-          </a>
           <button
             onClick={handleLogout}
             className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-sidebar-foreground/70 hover:text-sidebar-foreground transition"
