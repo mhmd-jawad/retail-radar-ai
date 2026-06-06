@@ -26,6 +26,7 @@ except ImportError:
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from eep.auth_db import (
     AuthContext,
@@ -37,7 +38,11 @@ from eep.auth_db import (
     admin_list_competitor_requests,
     admin_list_notifications,
     admin_list_tenants,
+    admin_impersonate_shop,
+    admin_review_competitor_request,
+    admin_update_shop_status,
     authenticate_token,
+    decode_token_claims,
     ensure_default_admin_account,
     get_shop_profile,
     list_available_competitors,
@@ -118,6 +123,15 @@ class NotificationStatusPayload(BaseModel):
     status: Literal["unread", "read", "resolved", "dismissed"]
 
 
+class CompetitorRequestReviewPayload(BaseModel):
+    action: Literal["approve", "reject"]
+    admin_notes: str | None = None
+
+
+class ShopStatusPayload(BaseModel):
+    onboarding_status: Literal["pending", "active", "suspended", "archived"]
+
+
 app = FastAPI(
     title="StylePulse AI — EEP Executive Platform",
     description="Unified dashboard API for the Retail Radar frontend.",
@@ -139,6 +153,29 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 configure_metrics(app)
+
+
+_READONLY_ALLOWED_PREFIXES = ("/auth/logout",)
+
+
+@app.middleware("http")
+async def _readonly_impersonation_guard(request: Request, call_next):
+    """Block writes for read-only impersonation sessions (admin 'view as shop')."""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        token = token_from_authorization(request.headers.get("authorization"))
+        if token:
+            try:
+                claims = decode_token_claims(token)
+            except Exception:
+                claims = None
+            if claims and claims.get("read_only"):
+                path = request.url.path
+                if not any(path.startswith(prefix) for prefix in _READONLY_ALLOWED_PREFIXES):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Read-only impersonation session — changes are disabled."},
+                    )
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -306,6 +343,47 @@ def admin_competitors(request: Request) -> list[dict[str, Any]]:
         return admin_list_competitors(_required_admin(request))
     except AuthError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/admin/competitor-requests/{request_id}")
+def admin_competitor_request_review(
+    request_id: str,
+    payload: CompetitorRequestReviewPayload,
+    request: Request,
+) -> dict[str, Any]:
+    ctx = _required_admin(request)
+    try:
+        return admin_review_competitor_request(ctx, request_id, payload.action, payload.admin_notes)
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.patch("/admin/shops/{tenant_id}")
+def admin_shop_status_update(
+    tenant_id: str,
+    payload: ShopStatusPayload,
+    request: Request,
+) -> dict[str, Any]:
+    ctx = _required_admin(request)
+    try:
+        return admin_update_shop_status(ctx, tenant_id, payload.onboarding_status)
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/impersonate/{tenant_id}")
+def admin_impersonate(tenant_id: str, request: Request) -> dict[str, Any]:
+    ctx = _required_admin(request)
+    try:
+        return admin_impersonate_shop(ctx, tenant_id)
+    except AuthError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

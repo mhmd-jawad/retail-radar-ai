@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Radar } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,8 +63,9 @@ export default function Login() {
         <section className="relative flex items-center p-8 sm:p-12 lg:p-16">
           <div className="absolute inset-0 bg-[radial-gradient(520px_320px_at_70%_10%,hsl(28_96%_56%/.16),transparent),radial-gradient(420px_260px_at_100%_90%,hsl(0_84%_60%/.10),transparent)]" />
           <div className="relative w-full">
-            <div className="mb-5 h-12 w-12 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">
-              <Radar className="h-6 w-6 text-primary-foreground" />
+            <div className="mb-6 flex flex-col items-start gap-3">
+              <img src="/logo.png" alt="Retail Radar AI" className="h-44 w-44 object-contain drop-shadow-[0_0_26px_hsl(28_96%_56%/.55)]" />
+              <span className="font-display text-2xl font-bold tracking-tight">Retail Radar AI</span>
             </div>
             <h2 className="font-display text-4xl font-bold tracking-tight">Log in</h2>
             <p className="mt-2 text-sm text-muted-foreground">Use your admin or shop owner account.</p>

@@ -207,7 +207,7 @@ def signup_shop(payload: ShopSignupPayload, user_agent: str | None = None, ip_ad
                     tenant_id, owner_user_id, business_name, legal_name, contact_email,
                     phone, website_url, address, country, timezone, onboarding_status
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
                 """,
                 (
                     tenant["id"],
@@ -221,6 +221,17 @@ def signup_shop(payload: ShopSignupPayload, user_agent: str | None = None, ip_ad
                     payload.country,
                     payload.timezone,
                 ),
+            )
+            _insert_notification(
+                cur,
+                recipient_role="admin",
+                notification_type="shop_signup",
+                title=f"New shop registered: {payload.shop_name}",
+                message=f"{payload.owner_name} ({payload.email}) registered \"{payload.shop_name}\" and is awaiting approval.",
+                tenant_id=tenant["id"],
+                actor_user_id=user["id"],
+                priority="high",
+                payload={"tenant_id": str(tenant["id"]), "email": payload.email},
             )
             _replace_tenant_competitors(cur, tenant["id"], payload.selected_competitor_codes)
             _insert_competitor_requests(cur, tenant["id"], user["id"], payload.requested_competitor_names)
@@ -540,6 +551,295 @@ def update_notification_status(ctx: AuthContext, notification_id: str, status: s
 def admin_list_competitors(ctx: AuthContext) -> list[dict[str, Any]]:
     _require_admin(ctx)
     return list_available_competitors()
+
+
+def admin_review_competitor_request(
+    ctx: AuthContext,
+    request_id: str,
+    action: str,
+    admin_notes: str | None = None,
+) -> dict[str, Any]:
+    """Approve or reject a shop's competitor request.
+
+    Approving onboards the competitor into the catalog (intel.shops), links it to
+    the requesting tenant, marks the request 'onboarded', notifies the shop, and
+    resolves the matching admin notification(s).
+    """
+    _require_admin(ctx)
+    if action not in {"approve", "reject"}:
+        raise AuthError("Invalid action.")
+    notes = _clean_optional_text(admin_notes)
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select cr.id, cr.tenant_id, cr.requested_by_user_id, cr.competitor_name,
+                       cr.website_url, cr.status, t.name as shop_name
+                from intel.competitor_requests cr
+                join core.tenants t on t.id = cr.tenant_id
+                where cr.id = %s
+                """,
+                (request_id,),
+            )
+            req = cur.fetchone()
+            if not req:
+                raise AuthError("Competitor request not found.")
+            if req["status"] in {"rejected", "onboarded"}:
+                raise AuthError("This request has already been reviewed.")
+
+            if action == "reject":
+                cur.execute(
+                    """
+                    update intel.competitor_requests
+                    set status = 'rejected', admin_notes = %s,
+                        reviewed_at = now(), reviewed_by_user_id = %s
+                    where id = %s
+                    """,
+                    (notes, ctx.user_id, request_id),
+                )
+                _insert_notification(
+                    cur,
+                    recipient_role="shop",
+                    notification_type="competitor_request_update",
+                    title="Competitor request declined",
+                    message=f'Your request for "{req["competitor_name"]}" was declined.',
+                    tenant_id=req["tenant_id"],
+                    recipient_user_id=req["requested_by_user_id"],
+                    actor_user_id=ctx.user_id,
+                    priority="normal",
+                    payload={"competitor_request_id": str(request_id), "status": "rejected"},
+                )
+                _resolve_request_notifications(cur, request_id)
+                return _competitor_request_row(cur, request_id)
+
+            # approve -> onboard into the competitor catalog
+            cur.execute(
+                "select shop_code from intel.shops where lower(shop_name) = lower(%s) limit 1",
+                (req["competitor_name"],),
+            )
+            existing = cur.fetchone()
+            shop_code = existing["shop_code"] if existing else _unique_shop_code(cur, req["competitor_name"])
+            cur.execute(
+                """
+                insert into intel.shops (shop_code, shop_name, is_active)
+                values (%s, %s, true)
+                on conflict (shop_code) do update set
+                    shop_name = excluded.shop_name, is_active = true, updated_at = now()
+                """,
+                (shop_code, req["competitor_name"]),
+            )
+            cur.execute(
+                """
+                insert into intel.tenant_competitors (tenant_id, shop_code, is_active)
+                values (%s, %s, true)
+                on conflict (tenant_id, shop_code) do update set is_active = true, updated_at = now()
+                """,
+                (req["tenant_id"], shop_code),
+            )
+            cur.execute(
+                """
+                update intel.competitor_requests
+                set status = 'onboarded', admin_notes = %s,
+                    reviewed_at = now(), reviewed_by_user_id = %s
+                where id = %s
+                """,
+                (notes, ctx.user_id, request_id),
+            )
+            _insert_notification(
+                cur,
+                recipient_role="shop",
+                notification_type="competitor_request_update",
+                title="Competitor request approved",
+                message=f'"{req["competitor_name"]}" was approved and added to your competitor catalog.',
+                tenant_id=req["tenant_id"],
+                recipient_user_id=req["requested_by_user_id"],
+                actor_user_id=ctx.user_id,
+                priority="normal",
+                payload={
+                    "competitor_request_id": str(request_id),
+                    "status": "onboarded",
+                    "shop_code": shop_code,
+                },
+            )
+            _resolve_request_notifications(cur, request_id)
+            return _competitor_request_row(cur, request_id)
+
+
+def admin_update_shop_status(
+    ctx: AuthContext,
+    tenant_id: str,
+    onboarding_status: str,
+) -> dict[str, Any]:
+    """Approve / suspend / archive a shop and notify its owner."""
+    _require_admin(ctx)
+    if onboarding_status not in {"pending", "active", "suspended", "archived"}:
+        raise AuthError("Invalid shop status.")
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update core.shop_profiles
+                set onboarding_status = %s, updated_at = now()
+                where tenant_id = %s
+                returning owner_user_id
+                """,
+                (onboarding_status, tenant_id),
+            )
+            updated = cur.fetchone()
+            if not updated:
+                raise AuthError("Shop not found.")
+            _insert_notification(
+                cur,
+                recipient_role="shop",
+                notification_type="shop_status_update",
+                title=f"Account {onboarding_status}",
+                message=f'Your shop account status is now "{onboarding_status}".',
+                tenant_id=tenant_id,
+                recipient_user_id=updated["owner_user_id"],
+                actor_user_id=ctx.user_id,
+                priority="high" if onboarding_status in {"suspended", "archived"} else "normal",
+                payload={"onboarding_status": onboarding_status},
+            )
+            if onboarding_status == "active":
+                cur.execute(
+                    """
+                    update core.notifications
+                    set status = 'resolved', read_at = coalesce(read_at, now()), resolved_at = now()
+                    where recipient_role = 'admin' and status <> 'resolved'
+                      and type = 'shop_signup' and tenant_id = %s
+                    """,
+                    (tenant_id,),
+                )
+            return _admin_tenant_row(cur, tenant_id)
+
+
+def admin_impersonate_shop(ctx: AuthContext, tenant_id: str) -> dict[str, Any]:
+    """Mint a READ-ONLY session that views a shop's workspace as its owner.
+
+    The token carries a `read_only` claim; the EEP middleware blocks all writes
+    for such sessions, so the admin can inspect a tenant's data without changing it.
+    """
+    _require_admin(ctx)
+    with _connect() as conn:
+        _ensure_auth_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("select id, slug, name from core.tenants where id = %s", (tenant_id,))
+            tenant = cur.fetchone()
+            if not tenant:
+                raise AuthError("Shop not found.")
+            cur.execute(
+                """
+                select u.id, u.email, u.full_name, u.global_role
+                from core.shop_profiles sp
+                join core.app_users u on u.id = sp.owner_user_id
+                where sp.tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            owner = cur.fetchone()
+            if not owner:
+                cur.execute(
+                    """
+                    select u.id, u.email, u.full_name, u.global_role
+                    from core.user_memberships m
+                    join core.app_users u on u.id = m.user_id
+                    where m.tenant_id = %s and m.is_active = true
+                    order by m.created_at asc
+                    limit 1
+                    """,
+                    (tenant_id,),
+                )
+                owner = cur.fetchone()
+            if not owner:
+                raise AuthError("This shop has no owner account to view.")
+            cur.execute(
+                """
+                select role from core.user_memberships
+                where user_id = %s and tenant_id = %s and is_active = true
+                limit 1
+                """,
+                (owner["id"], tenant_id),
+            )
+            membership = cur.fetchone()
+            shop_ctx = AuthContext(
+                user_id=str(owner["id"]),
+                email=owner["email"],
+                full_name=owner["full_name"],
+                global_role="shop",
+                tenant_id=str(tenant["id"]),
+                tenant_slug=tenant["slug"],
+                tenant_name=tenant["name"],
+                member_role=membership["role"] if membership else "owner",
+            )
+            token = _make_token(
+                shop_ctx,
+                extra_claims={"read_only": True, "impersonated_by": ctx.user_id},
+            )
+            _store_session(cur, owner["id"], token, "admin-impersonation", None)
+    user = shop_ctx.model_dump()
+    user["read_only"] = True
+    user["impersonated_by_email"] = ctx.email
+    return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+def _competitor_request_row(cur, request_id: str) -> dict[str, Any]:
+    cur.execute(
+        """
+        select cr.id, cr.tenant_id, t.name as shop_name, cr.competitor_name,
+               cr.website_url, cr.status, u.email as requested_by_email,
+               cr.admin_notes, cr.created_at, cr.reviewed_at
+        from intel.competitor_requests cr
+        join core.tenants t on t.id = cr.tenant_id
+        left join core.app_users u on u.id = cr.requested_by_user_id
+        where cr.id = %s
+        """,
+        (request_id,),
+    )
+    return _row(cur.fetchone())
+
+
+def _admin_tenant_row(cur, tenant_id: str) -> dict[str, Any]:
+    cur.execute(
+        """
+        select t.id, t.name, t.slug, sp.contact_email, sp.phone, sp.onboarding_status,
+               count(distinct v.id) as sku_count,
+               count(distinct tc.shop_code) filter (where tc.is_active) as competitor_count,
+               t.created_at
+        from core.tenants t
+        left join core.shop_profiles sp on sp.tenant_id = t.id
+        left join core.sku_variants v on v.tenant_id = t.id and v.status = 'active'
+        left join intel.tenant_competitors tc on tc.tenant_id = t.id
+        where t.id = %s
+        group by t.id, sp.tenant_id
+        """,
+        (tenant_id,),
+    )
+    return _row(cur.fetchone())
+
+
+def _resolve_request_notifications(cur, request_id: str) -> None:
+    cur.execute(
+        """
+        update core.notifications
+        set status = 'resolved', read_at = coalesce(read_at, now()), resolved_at = now()
+        where recipient_role = 'admin' and status <> 'resolved'
+          and payload->>'competitor_request_id' = %s
+        """,
+        (str(request_id),),
+    )
+
+
+def _unique_shop_code(cur, name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", (name or "competitor").lower()).strip("_") or "competitor"
+    base = base[:48]
+    for index in range(0, 100):
+        code = base if index == 0 else f"{base}_{index + 1}"
+        cur.execute("select 1 from intel.shops where shop_code = %s", (code,))
+        if not cur.fetchone():
+            return code
+    return f"{base}_{secrets.token_hex(3)}"
 
 
 def token_from_authorization(authorization: str | None) -> str | None:
@@ -949,7 +1249,7 @@ def _verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
-def _make_token(ctx: AuthContext) -> str:
+def _make_token(ctx: AuthContext, extra_claims: dict[str, Any] | None = None) -> str:
     now = datetime.now(timezone.utc)
     ttl = int(os.environ.get("AUTH_TOKEN_TTL_HOURS", "12"))
     payload = {
@@ -961,9 +1261,16 @@ def _make_token(ctx: AuthContext) -> str:
         "exp": int((now + timedelta(hours=ttl)).timestamp()),
         "nonce": secrets.token_hex(12),
     }
+    if extra_claims:
+        payload.update(extra_claims)
     body = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = _sign(body)
     return f"{body}.{signature}"
+
+
+def decode_token_claims(token: str) -> dict[str, Any]:
+    """Validate signature + expiry and return the raw JWT-style claims (no DB hit)."""
+    return _decode_token(token)
 
 
 def _decode_token(token: str) -> dict[str, Any]:

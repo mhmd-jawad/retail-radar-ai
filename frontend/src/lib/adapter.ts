@@ -161,6 +161,45 @@ export async function fetchAdminCompetitors(): Promise<CompetitorOption[]> {
   return r.json();
 }
 
+export async function reviewAdminCompetitorRequest(
+  id: string,
+  action: 'approve' | 'reject',
+  adminNotes?: string,
+): Promise<CompetitorRequest> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/competitor-requests/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ action, admin_notes: adminNotes ?? null }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/competitor-requests/${id}`));
+  return r.json();
+}
+
+export async function updateAdminShopStatus(
+  tenantId: string,
+  onboardingStatus: 'pending' | 'active' | 'suspended' | 'archived',
+): Promise<AdminTenant> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/shops/${encodeURIComponent(tenantId)}`, {
+    method: 'PATCH',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ onboarding_status: onboardingStatus }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/shops/${tenantId}`));
+  return r.json();
+}
+
+export async function impersonateShop(tenantId: string): Promise<AuthResponse> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/impersonate/${encodeURIComponent(tenantId)}`, {
+    method: 'POST',
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/impersonate/${tenantId}`));
+  return r.json();
+}
+
 export async function fetchReport(): Promise<Report> {
   const { base } = settings();
   const r = await fetch(`${base}/report`, { headers: apiHeaders() });
