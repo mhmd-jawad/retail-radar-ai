@@ -41,4 +41,18 @@ describe('parseInventoryCsv', () => {
       cost_price_usd: 70,
     });
   });
+
+  it('rejects rows that are not model-ready for inventory import', () => {
+    const csv = [
+      'sku_id,product_name,brand,category,current_stock,retail_price_usd,cost_price_usd',
+      'CSV-BAD-001,Missing Retail,Nike,Footwear,10,,60',
+      'CSV-BAD-002,Cost Above Retail,Adidas,Footwear,5,95,120',
+    ].join('\n');
+
+    const parsed = parseInventoryCsv(csv);
+
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toContain('Row 2: retail_price_usd is required and must be greater than 0.');
+    expect(parsed.errors).toContain('Row 3: cost_price_usd must be lower than retail_price_usd.');
+  });
 });

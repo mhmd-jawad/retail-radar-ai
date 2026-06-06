@@ -4,7 +4,7 @@ import { KpiCard } from '@/components/shared/KpiCard';
 import { Section } from '@/components/shared/Section';
 import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
-import { fmtUSD, fmtPct, fmtNum, relativeTime } from '@/lib/format';
+import { fmtDos, fmtUSD, fmtPct, fmtNum, isUnknownDos, relativeTime } from '@/lib/format';
 import {
   Boxes, Radar, DollarSign, Wallet, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database,
 } from 'lucide-react';
@@ -49,6 +49,8 @@ export default function Overview() {
   const categoryRows = Object.entries(inventory.category_summary)
     .map(([k, v]) => ({ name: k, ...v }))
     .sort((a, b) => b.value_usd - a.value_usd);
+  const knownDosCount = inventory.sku_analysis.filter((s) => !isUnknownDos(s.days_of_supply)).length;
+  const medianDosHint = knownDosCount > 0 ? `${fmtDos(inventory.metrics.median_days_of_supply)} median DOS` : 'No sales history yet';
 
   return (
     <>
@@ -122,7 +124,7 @@ export default function Overview() {
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Inventory @ Cost" icon={Boxes} value={fmtUSD(inventory.metrics.inventory_value_at_cost_usd, { compact: true })}
-            hint={`${fmtNum(inventory.metrics.total_units)} units · ${inventory.metrics.median_days_of_supply}d median DOS`} />
+            hint={`${fmtNum(inventory.metrics.total_units)} units · ${medianDosHint}`} />
           <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${cashRunwayMonths.toFixed(1)} mo`}
             hint={`Burn ${fmtUSD(financial.cashflow_health.monthly_burn_usd, { compact: true })}/mo`} trend={{ value: '-0.4 mo', direction: 'down', positive: false }} />
           <KpiCard label="Competitor Records" icon={Radar} variant="data" value={fmtNum(competitor.market_overview.competitor_records)}

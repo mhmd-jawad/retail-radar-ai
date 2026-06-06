@@ -4,7 +4,7 @@ import type { SkuAnalysis, IE2Result } from '@/types/domain';
 import { useQuery } from '@tanstack/react-query';
 import { recommend, fetchPortfolioAccuracy } from '@/lib/adapter';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
-import { fmtPct, fmtUSD, statusStyles } from '@/lib/format';
+import { fmtDos, fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
@@ -87,7 +87,7 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
               <div className="grid grid-cols-4 gap-3 mt-5">
                 {[
                   { l: 'Stock', v: sku.current_stock },
-                  { l: 'DOS', v: `${sku.days_of_supply}d` },
+                  { l: 'DOS', v: fmtDos(sku.days_of_supply) },
                   { l: 'Margin', v: fmtPct(sku.margin_pct, 0) },
                   { l: 'Price', v: fmtUSD(sku.retail_price_usd) },
                 ].map((x) => (

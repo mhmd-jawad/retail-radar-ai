@@ -1,0 +1,13 @@
+sku_id,product_name,brand,category,current_stock,retail_price_usd,cost_price_usd,barcode,style_code,color,size,gender_target,season,reorder_point,reorder_quantity,supplier_name,notes
+NST-FTW-001,Adidas Ultraboost 5 Core Black,Adidas,footwear,18,180,92,5280001000011,UB5-BLK,Black,42,men,SS26,5,12,Levant Sports Distribution,Core running shoe with healthy stock
+NST-FTW-002,Nike Pegasus 41 White Volt,Nike,footwear,4,140,72,5280001000028,PEG41-WVT,White/Volt,41,women,SS26,6,10,Cedar Active Imports,Low stock test case
+NST-FTW-003,Asics Gel-Kayano 31 Midnight,Asics,footwear,2,165,88,5280001000035,GK31-MID,Midnight,43,men,SS26,5,8,Cedar Active Imports,Critical reorder test case
+NST-FTW-004,New Balance 9060 Moonrock,New Balance,footwear,11,150,78,5280001000042,NB9060-MRK,Moonrock,40,unisex,FW25,4,8,Beirut Lifestyle Supply,Lifestyle sneaker
+NST-APP-001,Nike Dri-FIT Training Tee,Nike,apparel,42,45,19,5280001000059,DRI-TEE-BLK,Black,M,men,SS26,10,24,Levant Sports Distribution,Fast moving apparel basic
+NST-APP-002,Adidas Essentials Hoodie,Adidas,apparel,7,72,34,5280001000066,ESS-HD-GRY,Grey,L,unisex,FW25,8,16,Levant Sports Distribution,"Near reorder, winter layer"
+NST-APP-003,Under Armour Launch Shorts,Under Armour,apparel,25,38,16,5280001000073,UA-LSH-NVY,Navy,M,men,SS26,6,18,Cedar Active Imports,Good margin test
+NST-ACC-001,Nike Everyday Cushioned Socks 3-Pack,Nike,accessories,64,18,7,5280001000080,NIKE-SOCK3,White,L,unisex,SS26,20,48,Levant Sports Distribution,High unit count accessory
+NST-ACC-002,Adidas Linear Duffel Medium,Adidas,accessories,9,42,21,5280001000097,LIN-DUF-BLK,Black,OS,unisex,SS26,4,12,Levant Sports Distribution,Bag category test
+NST-ACC-003,Hydro Flask Sport Bottle 24oz,Hydro Flask,accessories,0,32,15,5280001000103,HF-24-BLU,Blue,24oz,unisex,SS26,8,24,Beirut Lifestyle Supply,Stockout test case
+NST-APP-004,Puma Classics Track Pants,Puma,apparel,16,58,28,5280001000110,PUM-TP-BLK,Black,S,women,FW25,5,12,Cedar Active Imports,Mid margin apparel
+NST-FTW-005,Hoka Clifton 9 Wide,Hoka,footwear,6,155,86,5280001000127,HOK-CL9-WID,Blue,44,men,SS26,6,8,Beirut Lifestyle Supply,Exactly at reorder point

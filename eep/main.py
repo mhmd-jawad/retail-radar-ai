@@ -76,6 +76,7 @@ from eep.retail_db import (
     DatabaseUnavailable,
     InventoryImportPayload,
     InventoryItemPayload,
+    InventoryMovementPayload,
     _connect,
     _context,
     archive_inventory_item,
@@ -85,6 +86,7 @@ from eep.retail_db import (
     import_inventory,
     list_inventory_items,
     patch_inventory_price,
+    record_inventory_movement,
     record_retailer_decision,
     update_inventory_item,
 )
@@ -570,6 +572,18 @@ def update_inventory_item_route(sku_id: str, payload: InventoryItemPayload, requ
         return update_inventory_item(sku_id, payload, tenant_id=_tenant_id_from_request(request))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/inventory/items/{sku_id}/movement")
+def record_inventory_movement_route(sku_id: str, payload: InventoryMovementPayload, request: Request) -> dict[str, Any]:
+    try:
+        return record_inventory_movement(sku_id, payload, tenant_id=_tenant_id_from_request(request))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -1274,11 +1288,16 @@ def report_live(request: Request) -> dict[str, Any]:
         cat_buckets[s["category"]].append(s)
 
     category_summary: dict = {}
+    health_score_points = {"healthy": 75, "excess": 45, "dead": 20, "critical": 15}
     for cat, items in sorted(cat_buckets.items()):
         avg_margin = round(sum(i["margin_pct"] for i in items) / len(items), 1) if items else 0.0
-        med_dos_val = float(_median([i["days_of_supply"] for i in items])) if items else 0.0
+        known_dos = [i["days_of_supply"] for i in items if i["days_of_supply"] < 999]
+        med_dos_val = float(_median(known_dos)) if known_dos else 999.0
         val_usd = round(sum(i["current_stock"] * i["cost_price_usd"] for i in items), 2)
-        score = int(round(max(0, min(100, 100 - abs(med_dos_val - 60) * 0.6 - max(0, 45 - avg_margin) * 1.5))))
+        if known_dos:
+            score = int(round(max(0, min(100, 100 - abs(med_dos_val - 60) * 0.6 - max(0, 45 - avg_margin) * 1.5))))
+        else:
+            score = int(round(sum(health_score_points.get(i["health"], 50) for i in items) / len(items))) if items else 0
         category_summary[cat] = {
             "skus": len(items),
             "units": sum(i["current_stock"] for i in items),
@@ -1293,7 +1312,7 @@ def report_live(request: Request) -> dict[str, Any]:
     total_retail = round(sum(s["current_stock"] * s["retail_price_usd"] for s in inventory_skus), 2)
     blended_margin = round((total_retail - total_cost) / total_retail * 100, 1) if total_retail > 0 else 0.0
     all_dos = [s["days_of_supply"] for s in inventory_skus if s["days_of_supply"] < 999]
-    med_dos_global = round(float(_median(all_dos)), 1) if all_dos else 0.0
+    med_dos_global = round(float(_median(all_dos)), 1) if all_dos else 999.0
     cash_on_hand = round(total_cost * 0.25, 2) if total_cost > 0 else 0.0
     monthly_burn = round(max(total_cost / 12, 0), 2) if total_cost > 0 else 0.0
     cash_runway = round(cash_on_hand / monthly_burn, 1) if monthly_burn > 0 else 0.0
@@ -1313,15 +1332,20 @@ def report_live(request: Request) -> dict[str, Any]:
     hold_items = []
 
     for s in inventory_skus:
+        unknown_dos = s["days_of_supply"] >= 999
         if s["decision"] == "PROMOTE":
             lift = round(max(s["margin_pct"] - 35, 0) / 5 + 10, 1)
-            dos_disp = int(s["days_of_supply"]) if s["days_of_supply"] < 900 else s["current_stock"]
+            reason = (
+                f"Good margin ({s['margin_pct']:.0f}%) with {s['current_stock']} units on hand. No sales history yet; push visibility and start measuring velocity."
+                if unknown_dos
+                else f"Good margin ({s['margin_pct']:.0f}%) and sufficient stock ({int(s['days_of_supply'])} DOS). Push this now."
+            )
             promote_items.append({
                 "sku_id": s["sku_id"],
                 "product_name": s["product_name"],
                 "brand": s["brand"],
                 "category": s["category"],
-                "reason": f"Good margin ({s['margin_pct']:.0f}%) and sufficient stock ({dos_disp} DOS). Push this now.",
+                "reason": reason,
                 "expected_lift_pct": lift,
                 "channels": ["Instagram", "WhatsApp", "In-store window"],
             })
@@ -1330,8 +1354,13 @@ def report_live(request: Request) -> dict[str, Any]:
             margin_after = round(s["margin_pct"] - discount * (s["retail_price_usd"] / max(s["retail_price_usd"], 0.01)), 1)
             margin_after = round(s["margin_pct"] * (1 - discount / 100), 1)
             suggested_price = round(s["retail_price_usd"] * (1 - discount / 100), 2)
-            dos_disp = int(s["days_of_supply"]) if s["days_of_supply"] < 900 else "high"
-            urgency = "high" if s["days_of_supply"] > 180 else "medium" if s["days_of_supply"] > 120 else "low"
+            if unknown_dos:
+                reason = f"No sales history yet and margin is lower than stronger SKUs. A controlled {discount}% markdown can test demand."
+                urgency = "medium"
+            else:
+                dos_disp = int(s["days_of_supply"])
+                reason = f"Slow-moving stock ({dos_disp} DOS). A {discount}% markdown accelerates sell-through."
+                urgency = "high" if s["days_of_supply"] > 180 else "medium" if s["days_of_supply"] > 120 else "low"
             markdown_items.append({
                 "sku_id": s["sku_id"],
                 "product_name": s["product_name"],
@@ -1340,7 +1369,7 @@ def report_live(request: Request) -> dict[str, Any]:
                 "suggested_discount_pct": float(discount),
                 "suggested_price_usd": suggested_price,
                 "margin_after_pct": margin_after,
-                "reason": f"Slow-moving stock ({dos_disp} DOS). A {discount}% markdown accelerates sell-through.",
+                "reason": reason,
                 "urgency": urgency,
             })
         elif s["decision"] == "CLEAR":
@@ -1355,7 +1384,7 @@ def report_live(request: Request) -> dict[str, Any]:
                 "age_days": s["days_since_launch"],
                 "suggested_price_usd": suggested_price,
                 "recovered_cash_usd": recovered,
-                "urgency": "critical" if s["days_of_supply"] > 365 else "high",
+                "urgency": "high" if unknown_dos else "critical" if s["days_of_supply"] > 365 else "high",
             })
         else:  # HOLD
             hold_items.append({

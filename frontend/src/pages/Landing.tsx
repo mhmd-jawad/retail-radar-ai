@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 import {
   Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone, Wallet,
-  ListChecks, Upload, ScrollText, ChevronLeft, ChevronRight, Database,
+  ListChecks, ScrollText, ChevronLeft, ChevronRight, Database,
   CircleDot, Pause, TrendingUp, Tag, Flame,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
@@ -24,14 +24,13 @@ const MODULES = [
   { to: '/competitive', icon: Radar, title: 'Competitive Intelligence', desc: 'Price gaps across 7 Lebanese sportswear shops.', status: 'live' },
   { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
   { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, current ratio, lollar exposure.', status: 'live' },
-  { to: '/upload', icon: Upload, title: 'Upload & Batch', desc: 'CSV ingestion and batch recommendations.', status: 'partial' },
   { to: '/audit', icon: ScrollText, title: 'Audit Trail', desc: 'Every approval, edit, snooze and rejection.', status: 'live' },
   { to: '/ops', icon: Activity, title: 'Ops & Pipeline', desc: 'Scraper runs, service health, freshness.', status: 'live' },
 ];
 
 const SERVICES = [
   { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Financial · Promotions JSON' },
-  { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend · /recommend/batch' },
+  { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend' },
   { name: 'IE1 — Forecasting', status: 'planned', desc: 'Demand & seasonality forecasts (in design)' },
   { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy, IG/FB/WhatsApp variants' },
   { name: 'EEP — Orchestrator', status: 'partial', desc: 'Unified API on :8000 for report, ops, and recommendation delivery' },
@@ -176,7 +175,7 @@ export default function Landing() {
             <div>
               <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Module overview</div>
               <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight max-w-2xl">
-                Eight control rooms.<br />
+                Seven control rooms.<br />
                 <span className="text-gradient-warm">One retail brain.</span>
               </h2>
             </div>

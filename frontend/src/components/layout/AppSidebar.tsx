@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  Upload, ScrollText, Activity, Settings, Radio, Home, ExternalLink,
+  ScrollText, Activity, Settings, Radio, Home, ExternalLink,
   User, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,6 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
   {
     label: 'Operations',
     items: [
-      { to: '/upload', label: 'Upload & Batch', icon: Upload },
       { to: '/audit', label: 'Audit Trail', icon: ScrollText },
       { to: '/ops', label: 'Ops & Pipeline', icon: Activity },
       { to: '/shop-profile', label: 'Shop Profile', icon: User },

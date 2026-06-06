@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -27,7 +27,6 @@ import FinancialCashflow from "./pages/financial/Cashflow";
 import FinancialLollar from "./pages/financial/Lollar";
 import FinancialCosts from "./pages/financial/Costs";
 import FinancialAlerts from "./pages/financial/Alerts";
-import UploadBatch from "./pages/UploadBatch";
 import Audit from "./pages/Audit";
 import Ops from "./pages/Ops";
 import SettingsPage from "./pages/Settings";
@@ -69,7 +68,7 @@ const App = () => (
               <Route path="/financial/lollar" element={<FinancialLollar />} />
               <Route path="/financial/costs" element={<FinancialCosts />} />
               <Route path="/financial/alerts" element={<FinancialAlerts />} />
-              <Route path="/upload" element={<UploadBatch />} />
+              <Route path="/upload" element={<Navigate to="/inventory" replace />} />
               <Route path="/audit" element={<Audit />} />
               <Route path="/ops" element={<Ops />} />
               <Route path="/shop-profile" element={<ShopProfile />} />

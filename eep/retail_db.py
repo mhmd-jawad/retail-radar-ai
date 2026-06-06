@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,8 +36,8 @@ class InventoryItemPayload(BaseModel):
     brand: str = Field(default="Unknown", max_length=200)
     category: str = Field(default="uncategorized", max_length=160)
     current_stock: int = Field(default=0, ge=0)
-    retail_price_usd: float = Field(default=0, ge=0)
-    cost_price_usd: float = Field(default=0, ge=0)
+    retail_price_usd: float = Field(gt=0)
+    cost_price_usd: float = Field(gt=0)
     barcode: str | None = Field(default=None, max_length=160)
     style_code: str | None = Field(default=None, max_length=160)
     color: str | None = Field(default=None, max_length=120)
@@ -78,10 +78,48 @@ class InventoryItemPayload(BaseModel):
             return value
         return "Unknown" if info.field_name == "brand" else "uncategorized"
 
+    @model_validator(mode="after")
+    def _cost_below_retail(self):
+        if self.cost_price_usd >= self.retail_price_usd:
+            raise ValueError("cost_price_usd must be lower than retail_price_usd")
+        return self
+
 
 class InventoryImportPayload(BaseModel):
     mode: Literal["upsert", "replace"] = "upsert"
     items: list[InventoryItemPayload] = Field(min_length=1, max_length=5000)
+
+
+class InventoryMovementPayload(BaseModel):
+    movement_type: Literal[
+        "sale",
+        "purchase_receipt",
+        "return",
+        "adjustment_in",
+        "adjustment_out",
+        "damaged",
+    ]
+    quantity: int = Field(gt=0, le=100_000)
+    unit_price_usd: float | None = Field(default=None, gt=0)
+    unit_cost_usd: float | None = Field(default=None, ge=0)
+    discount_pct: float = Field(default=0, ge=0, le=100)
+    channel: str = Field(default="manual", max_length=80)
+    reference_id: str | None = Field(default=None, max_length=160)
+    notes: str | None = Field(default=None, max_length=1000)
+    sold_at: datetime | None = None
+
+    @field_validator("channel", "reference_id", "notes", mode="before")
+    @classmethod
+    def _clean_movement_text(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("channel", mode="after")
+    @classmethod
+    def _default_channel(cls, value: str | None) -> str:
+        return value or "manual"
 
 
 def database_url() -> str:
@@ -405,6 +443,113 @@ def archive_inventory_item(sku_id: str, tenant_id: Any | None = None) -> dict[st
     return after
 
 
+def record_inventory_movement(
+    sku_id: str,
+    payload: InventoryMovementPayload,
+    tenant_id: Any | None = None,
+) -> dict[str, Any]:
+    """Record an inventory event in the correct core tables.
+
+    A sale writes both the sales transaction tables and inventory_movements.
+    Other stock changes write inventory_balances + inventory_movements + audit.
+    """
+    data = payload.model_dump()
+    movement_type = data["movement_type"]
+    quantity = int(data["quantity"])
+    positive_movements = {"purchase_receipt", "return", "adjustment_in"}
+    delta = quantity if movement_type in positive_movements else -quantity
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            before = _get_inventory_item(cur, ctx, sku_id)
+            if not before:
+                raise KeyError(sku_id)
+
+            variant_id = before["variant_id"]
+            unit_cost = float(data["unit_cost_usd"] if data["unit_cost_usd"] is not None else before["cost_price_usd"])
+            unit_price = float(data["unit_price_usd"] if data["unit_price_usd"] is not None else before["retail_price_usd"])
+            discount_pct = float(data["discount_pct"] or 0)
+            reference_type = "inventory_ui"
+            reference_id = data.get("reference_id")
+            sale_payload: dict[str, Any] | None = None
+
+            if movement_type == "sale":
+                total_amount = round(unit_price * quantity * (1 - discount_pct / 100), 2)
+                cur.execute(
+                    """
+                    insert into core.sales_transactions (
+                        tenant_id, store_id, external_sale_id, sold_at, channel, total_amount_usd
+                    )
+                    values (%s, %s, %s, coalesce(%s::timestamptz, now()), %s, %s)
+                    returning id, sold_at, total_amount_usd
+                    """,
+                    (
+                        ctx["tenant_id"],
+                        ctx["store_id"],
+                        reference_id,
+                        data.get("sold_at"),
+                        data["channel"],
+                        total_amount,
+                    ),
+                )
+                sale = cur.fetchone()
+                cur.execute(
+                    """
+                    insert into core.sales_transaction_lines (
+                        sales_transaction_id, variant_id, quantity,
+                        unit_price_usd, unit_cost_usd, discount_pct
+                    )
+                    values (%s, %s, %s, %s, %s, %s)
+                    returning id
+                    """,
+                    (sale["id"], variant_id, quantity, unit_price, unit_cost, discount_pct),
+                )
+                sale_line = cur.fetchone()
+                reference_type = "sales_transaction"
+                reference_id = str(sale["id"])
+                sale_payload = {
+                    "id": str(sale["id"]),
+                    "line_id": str(sale_line["id"]),
+                    "sold_at": _jsonable(sale["sold_at"]),
+                    "quantity": quantity,
+                    "unit_price_usd": round(unit_price, 2),
+                    "discount_pct": discount_pct,
+                    "total_amount_usd": _number(sale["total_amount_usd"]),
+                    "channel": data["channel"],
+                }
+
+            movement = _apply_inventory_delta(
+                cur,
+                ctx,
+                variant_id,
+                delta,
+                movement_type,
+                unit_cost,
+                reference_type,
+                reference_id,
+                data.get("notes"),
+                "inventory_ui",
+            )
+            after = _get_inventory_item(cur, ctx, sku_id)
+            if not after:
+                raise RuntimeError(f"Failed to reload SKU {sku_id} after inventory movement")
+
+            audit_after = {
+                "sku_id": sku_id,
+                "movement": movement,
+                "sale": sale_payload,
+                "item": after,
+            }
+            _audit(cur, ctx["tenant_id"], "inventory_item", sku_id, movement_type, before, audit_after)
+
+    return {
+        "item": after,
+        "movement": movement,
+        "sale": sale_payload,
+    }
+
+
 def import_inventory(payload: InventoryImportPayload, tenant_id: Any | None = None) -> dict[str, Any]:
     seen: set[str] = set()
     items: list[dict[str, Any]] = []
@@ -652,6 +797,81 @@ def _set_current_stock(
         """,
         (delta, ctx["tenant_id"], ctx["store_id"], variant_id),
     )
+
+
+def _apply_inventory_delta(
+    cur,
+    ctx: dict[str, Any],
+    variant_id: Any,
+    delta: int,
+    movement_type: str,
+    unit_cost: float,
+    reference_type: str,
+    reference_id: str | None,
+    notes: str | None,
+    actor: str,
+) -> dict[str, Any]:
+    cur.execute(
+        """
+        select id, quantity_on_hand
+        from core.inventory_balances
+        where tenant_id = %s and store_id = %s and variant_id = %s
+        for update
+        """,
+        (ctx["tenant_id"], ctx["store_id"], variant_id),
+    )
+    balance = cur.fetchone()
+    current_stock = int(balance["quantity_on_hand"]) if balance else 0
+    next_stock = current_stock + int(delta)
+    if next_stock < 0:
+        raise ValueError(f"Cannot reduce stock below zero. Current stock is {current_stock}.")
+
+    if not balance:
+        cur.execute(
+            """
+            insert into core.inventory_balances (tenant_id, store_id, variant_id, quantity_on_hand)
+            values (%s, %s, %s, 0)
+            """,
+            (ctx["tenant_id"], ctx["store_id"], variant_id),
+        )
+
+    cur.execute(
+        """
+        insert into core.inventory_movements (
+            tenant_id, store_id, variant_id, movement_type, quantity_delta,
+            unit_cost_usd, reference_type, reference_id, notes, created_by
+        )
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        returning id, movement_type, quantity_delta, unit_cost_usd,
+                  reference_type, reference_id, notes, created_by, created_at
+        """,
+        (
+            ctx["tenant_id"],
+            ctx["store_id"],
+            variant_id,
+            movement_type,
+            delta,
+            unit_cost,
+            reference_type,
+            reference_id,
+            notes,
+            actor,
+        ),
+    )
+    movement = cur.fetchone()
+    cur.execute(
+        """
+        update core.inventory_balances
+        set quantity_on_hand = %s, updated_at = now()
+        where tenant_id = %s and store_id = %s and variant_id = %s
+        """,
+        (next_stock, ctx["tenant_id"], ctx["store_id"], variant_id),
+    )
+    return {
+        **{key: _jsonable(value) for key, value in movement.items()},
+        "quantity_before": current_stock,
+        "quantity_after": next_stock,
+    }
 
 
 def _get_inventory_item(cur, ctx: dict[str, Any], sku_id: str) -> dict[str, Any] | None:
