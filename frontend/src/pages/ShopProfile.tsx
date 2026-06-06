@@ -8,9 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { fetchAvailableCompetitors, fetchShopProfile, updateShopProfile } from '@/lib/adapter';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import type { CompetitorOption, ShopProfile } from '@/types/domain';
 
 export default function ShopProfilePage() {
+  const tenantScope = useTenantScopeKey();
   const [profile, setProfile] = useState<ShopProfile | null>(null);
   const [competitors, setCompetitors] = useState<CompetitorOption[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -29,6 +31,8 @@ export default function ShopProfilePage() {
   });
 
   useEffect(() => {
+    setLoading(true);
+    setProfile(null);
     Promise.all([fetchShopProfile(), fetchAvailableCompetitors()])
       .then(([nextProfile, nextCompetitors]) => {
         setProfile(nextProfile);
@@ -46,7 +50,7 @@ export default function ShopProfilePage() {
       })
       .catch((error) => toast.error(error?.message || 'Could not load shop profile'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tenantScope]);
 
   const pendingRequests = useMemo(
     () => profile?.competitor_requests.filter((request) => request.status === 'pending') ?? [],

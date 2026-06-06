@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -34,6 +36,8 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ShopProfile from "./pages/ShopProfile";
+import { tenantScopeKey } from "./lib/tenantScope";
+import { useAuth } from "./store/auth";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -42,6 +46,7 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider delayDuration={150}>
+      <SessionCacheBoundary />
       <AuthModeSync />
       <Toaster />
       <Sonner position="top-right" />
@@ -89,3 +94,21 @@ const App = () => (
 );
 
 export default App;
+
+function SessionCacheBoundary() {
+  const queryClient = useQueryClient();
+  const token = useAuth((state) => state.token);
+  const role = useAuth((state) => state.user?.global_role);
+  const tenantScope = useAuth((state) => tenantScopeKey(state.user));
+  const sessionKey = `${token || 'no-token'}::${role || 'no-role'}::${tenantScope}`;
+  const previous = useRef(sessionKey);
+
+  useEffect(() => {
+    if (previous.current !== sessionKey) {
+      queryClient.clear();
+      previous.current = sessionKey;
+    }
+  }, [queryClient, sessionKey]);
+
+  return null;
+}

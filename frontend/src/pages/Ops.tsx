@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { Activity, Database, Radio, Zap } from 'lucide-react';
 import { relativeTime, fmtNum, fmtUSD } from '@/lib/format';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 
 const services = [
   { key: 'ie2', name: 'IE2 Decision Intelligence', desc: 'Active · port 8002', state: 'live' },
@@ -15,10 +16,11 @@ const services = [
 ];
 
 export default function Ops() {
+  const tenantScope = useTenantScopeKey();
   const [ie2Health, setIe2Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
   const [ie3Health, setIe3Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
-  const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: fetchScrapeRuns });
-  const { data: latest } = useQuery({ queryKey: ['latest'], queryFn: fetchCompetitorLatest });
+  const { data: runs } = useQuery({ queryKey: ['runs', tenantScope], queryFn: fetchScrapeRuns });
+  const { data: latest } = useQuery({ queryKey: ['latest', tenantScope], queryFn: fetchCompetitorLatest });
 
   useEffect(() => {
     pingIE2().then(setIe2Health);

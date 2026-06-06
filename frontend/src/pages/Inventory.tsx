@@ -16,6 +16,7 @@ import {
   updateRetailInventoryItem,
 } from '@/lib/adapter';
 import { parseInventoryCsv } from '@/lib/inventoryCsv';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import type { Report, RetailInventoryInput, RetailInventoryItem, RetailInventoryResponse } from '@/types/domain';
 import { AlertTriangle, Archive, Boxes, Database, Pencil, Plus, RefreshCw, Save, Search, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Cell } from 'recharts';
@@ -87,6 +88,7 @@ export default function Inventory() {
 
 function InventoryManager() {
   const queryClient = useQueryClient();
+  const tenantScope = useTenantScopeKey();
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,13 +98,13 @@ function InventoryManager() {
   const [importMode, setImportMode] = useState<'upsert' | 'replace'>('upsert');
 
   const status = useQuery({
-    queryKey: ['retail-db-status'],
+    queryKey: ['retail-db-status', tenantScope],
     queryFn: fetchRetailDbStatus,
     retry: false,
   });
 
   const inventory = useQuery({
-    queryKey: ['retail-inventory', search],
+    queryKey: ['retail-inventory', tenantScope, search],
     queryFn: () => fetchRetailInventory(search),
     retry: false,
   });
@@ -120,7 +122,7 @@ function InventoryManager() {
     onSuccess: (savedItem) => {
       const wasEditing = Boolean(editing);
       queryClient.setQueryData<RetailInventoryResponse>(
-        ['retail-inventory', search],
+        ['retail-inventory', tenantScope, search],
         (current) => upsertInventoryCache(current, savedItem, search),
       );
       queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
@@ -153,7 +155,7 @@ function InventoryManager() {
     mutationFn: () => importRetailInventory(parsed.rows, importMode),
     onSuccess: (result) => {
       if (!search.trim()) {
-        queryClient.setQueryData<RetailInventoryResponse>(['retail-inventory', search], {
+        queryClient.setQueryData<RetailInventoryResponse>(['retail-inventory', tenantScope, search], {
           items: result.items,
           summary: result.summary,
         });

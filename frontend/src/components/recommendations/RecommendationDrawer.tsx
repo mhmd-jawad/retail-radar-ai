@@ -6,6 +6,8 @@ import { recommend, fetchPortfolioAccuracy } from '@/lib/adapter';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
+import { scopedSkuKey } from '@/lib/tenantScope';
 import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity, Target } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
@@ -21,11 +23,12 @@ interface Props {
 export function RecommendationDrawer({ sku, open, onClose }: Props) {
   const { recState, setRecStatus, mode } = useSettings();
   const { data: report } = useReport();
+  const tenantScope = useTenantScopeKey();
   const [discount, setDiscount] = useState(15);
   const isLive = mode === 'eep-live';
 
   const { data: ie2 } = useQuery({
-    queryKey: ['ie2', sku?.sku_id],
+    queryKey: ['ie2', tenantScope, sku?.sku_id],
     enabled: !!sku,
     queryFn: async (): Promise<IE2Result> =>
       recommend({
@@ -53,14 +56,14 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
   });
 
   const { data: accuracy } = useQuery({
-    queryKey: ['portfolio-accuracy', ie2?.recommendation],
+    queryKey: ['portfolio-accuracy', tenantScope, ie2?.recommendation],
     queryFn: () => fetchPortfolioAccuracy(ie2?.recommendation),
     enabled: isLive && !!ie2?.recommendation,
     staleTime: 5 * 60_000,
   });
 
   const promo = useMemo(() => sku && report ? report.promotions.promote.find((p) => p.sku_id === sku.sku_id) : null, [sku, report]);
-  const status = sku ? recState[sku.sku_id]?.status || 'pending' : 'pending';
+  const status = sku ? recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status || 'pending' : 'pending';
 
   const newPrice = sku ? sku.retail_price_usd * (1 - discount / 100) : 0;
   const marginAfter = sku ? ((newPrice - sku.cost_price_usd) / newPrice) * 100 : 0;

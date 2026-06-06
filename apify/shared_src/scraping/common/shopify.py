@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -30,6 +31,7 @@ class ShopifyShopConfig:
     currency: str = "USD"
     endpoint_path: str = "/products.json"
     default_limit: int = 250
+    page_sleep_seconds: float = 0.0
 
 
 def scrape_shopify_catalog(
@@ -48,7 +50,7 @@ def scrape_shopify_catalog(
         try:
             payload = get_json(session, url)
         except RuntimeError as exc:
-            if page > 1 and "400 Client Error" in str(exc):
+            if page > 1 and _is_terminal_page_rejection(exc):
                 break
             raise
         products = payload.get("products") or []
@@ -64,8 +66,15 @@ def scrape_shopify_catalog(
         page += 1
         if max_pages is not None and page > max_pages:
             break
+        if config.page_sleep_seconds > 0:
+            time.sleep(config.page_sleep_seconds)
 
     return records
+
+
+def _is_terminal_page_rejection(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "400 Client Error" in message or "403 Client Error" in message or "429 Client Error" in message
 
 
 def _catalog_url(config: ShopifyShopConfig, *, page: int, limit: int) -> str:

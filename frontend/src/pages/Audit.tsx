@@ -8,6 +8,7 @@ import { fmtUSD, statusStyles, relativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { fetchOutcomesBySku, fetchPortfolioAccuracy } from '@/lib/adapter';
 import { useSettings } from '@/store/settings';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import OutcomePanel, { OutcomeChip } from '@/components/outcomes/OutcomePanel';
 import type { OutcomeSnapshot } from '@/types/domain';
 import { ChevronDown, ChevronUp, Target } from 'lucide-react';
@@ -17,10 +18,11 @@ import { ChevronDown, ChevronUp, Target } from 'lucide-react';
 function AuditRow({ entry }: { entry: typeof MOCK_AUDIT[0] }) {
   const [expanded, setExpanded] = useState(false);
   const mode = useSettings(s => s.mode);
+  const tenantScope = useTenantScopeKey();
   const isLive = mode === 'eep-live';
 
   const { data: outcomes = [] } = useQuery<OutcomeSnapshot[]>({
-    queryKey: ['outcomes-by-sku', entry.sku_id],
+    queryKey: ['outcomes-by-sku', tenantScope, entry.sku_id],
     queryFn: () => fetchOutcomesBySku(entry.sku_id),
     enabled: isLive && entry.status === 'approved' && expanded,
     staleTime: 2 * 60_000,
@@ -92,6 +94,7 @@ function AuditRow({ entry }: { entry: typeof MOCK_AUDIT[0] }) {
 export default function Audit() {
   const [filter, setFilter] = useState<string>('ALL');
   const mode = useSettings(s => s.mode);
+  const tenantScope = useTenantScopeKey();
   const isLive = mode === 'eep-live';
 
   const filtered = useMemo(
@@ -101,7 +104,7 @@ export default function Audit() {
 
   // Portfolio accuracy header (live mode only)
   const { data: accuracy } = useQuery({
-    queryKey: ['portfolio-accuracy'],
+    queryKey: ['portfolio-accuracy', tenantScope],
     queryFn: () => fetchPortfolioAccuracy(),
     enabled: isLive,
     staleTime: 5 * 60_000,

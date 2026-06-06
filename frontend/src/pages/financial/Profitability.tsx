@@ -6,6 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { fmtUSD, fmtPct } from '@/lib/format';
 import { fetchDetailedProfitability } from '@/lib/adapter';
 import { cn } from '@/lib/utils';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -41,8 +42,9 @@ const MARGIN_COLORS = ['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#6366F
 // ── page ──────────────────────────────────────────────────────────────────────
 export default function FinancialProfitability() {
   const navigate = useNavigate();
+  const tenantScope = useTenantScopeKey();
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<DetailedProfitability>({
-    queryKey: ['financial-profitability'],
+    queryKey: ['financial-profitability', tenantScope],
     queryFn: fetchDetailedProfitability,
     staleTime: 60_000,
   });

@@ -6,6 +6,8 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { decisionStyles, fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
+import { scopedSkuKey } from '@/lib/tenantScope';
 import type { Decision, SkuAnalysis } from '@/types/domain';
 import { Search, LayoutGrid, Table as TableIcon, Filter, Check, X, Clock, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,6 +19,7 @@ const decisionOrder: Decision[] = ['CLEAR', 'MARKDOWN', 'PROMOTE', 'HOLD'];
 export default function Queue() {
   const { data: report, isLoading } = useReport();
   const { recState, setRecStatus } = useSettings();
+  const tenantScope = useTenantScopeKey();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<{ brand: string; category: string; decision: Decision | 'ALL' }>({
@@ -122,7 +125,7 @@ export default function Queue() {
                     {items.slice(0, 60).map((sku) => (
                       <SkuCard key={sku.sku_id} sku={sku} onOpen={() => setOpenSku(sku.sku_id)}
                         selected={selected.has(sku.sku_id)} onSelect={() => toggleSel(sku.sku_id)}
-                        status={recState[sku.sku_id]?.status} />
+                        status={recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status} />
                     ))}
                   </div>
                 </div>
@@ -162,8 +165,8 @@ export default function Queue() {
                       <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(s.retail_price_usd)}</td>
                       <td className="px-4 py-2.5"><DecisionBadge decision={s.decision} size="sm" /></td>
                       <td className="px-4 py-2.5">
-                        <span className={cn('inline-flex px-2 py-0.5 rounded text-[10.5px] font-mono uppercase tracking-wider', statusStyles[recState[s.sku_id]?.status || 'pending'])}>
-                          {recState[s.sku_id]?.status || 'pending'}
+                        <span className={cn('inline-flex px-2 py-0.5 rounded text-[10.5px] font-mono uppercase tracking-wider', statusStyles[recState[scopedSkuKey(s.sku_id, tenantScope)]?.status || 'pending'])}>
+                          {recState[scopedSkuKey(s.sku_id, tenantScope)]?.status || 'pending'}
                         </span>
                       </td>
                     </tr>
