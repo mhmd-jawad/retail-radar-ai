@@ -16,8 +16,8 @@ Team contract:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ── Incoming from IE1 — Market Intelligence ───────────────────────────────────
@@ -48,6 +48,8 @@ class CompetitorSignals(BaseModel):
     confidence_score: float = Field(ge=0.0, le=1.0)
     fallback_used: bool = False
     fallback_reason: Optional[str] = None
+    match_type: Optional[str] = None
+    match_score: Optional[float] = None
 
     @field_validator("fallback_reason")
     @classmethod
@@ -203,3 +205,31 @@ class RecommendationRequest(BaseModel):
 class BatchRecommendationRequest(BaseModel):
     """Request body for POST /recommend/batch. Max 50 SKUs."""
     items: list[RecommendationRequest] = Field(min_length=1, max_length=50)
+
+
+class DecisionFeatureInstance(BaseModel):
+    """Prepared IE1 feature instance consumed by IE2's system decision flow."""
+    model_config = ConfigDict(extra="allow")
+
+    sku_id: str
+    product_name: str
+    brand: str = "Unknown"
+    category: str = "other"
+    retail_price_usd: float = Field(gt=0, le=10_000)
+    cost_price_usd: float = Field(gt=0, le=10_000)
+    current_stock: int = Field(ge=0, le=100_000)
+    features: dict[str, Any]
+    competitor_signals: Optional[CompetitorSignals] = None
+
+    @field_validator("cost_price_usd")
+    @classmethod
+    def prepared_cost_below_retail(cls, v, info):
+        retail = info.data.get("retail_price_usd", float("inf"))
+        if v >= retail:
+            raise ValueError("cost_price_usd must be less than retail_price_usd")
+        return v
+
+
+class BatchDecisionFeatureRequest(BaseModel):
+    """Prepared feature batch. IE2 returns one system decision per item."""
+    items: list[DecisionFeatureInstance] = Field(min_length=1, max_length=100)

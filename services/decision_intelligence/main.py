@@ -39,9 +39,12 @@ from .features.engineer import (
     _estimate_daily_demand,
     _get_seasonal_multiplier,
 )
+from .features.runtime_features import add_decision_derived_features, align_feature_defaults
 from .rules.engine import run_rules
 from .schemas import (
+    BatchDecisionFeatureRequest,
     BatchRecommendationRequest,
+    DecisionFeatureInstance,
     RecommendationRequest,
     RecommendationResult,
     RuleOverride,
@@ -278,85 +281,7 @@ def _market_position_from_gap(price_gap: float) -> str:
 
 
 def _augment_model_features(features: dict) -> dict:
-    days_of_supply = float(features.get("days_of_supply", 0.0) or 0.0)
-    total_qty = float(features.get("total_qty", 0.0) or 0.0)
-    margin_pct = float(features.get("current_margin_pct", 0.0) or 0.0)
-    price_gap_pct = float(features.get("price_gap_pct", 0.0) or 0.0)
-    competitors_on_sale = float(features.get("competitors_on_sale", 0.0) or 0.0)
-    competitors_out_of_stock = float(features.get("competitors_out_of_stock", 0.0) or 0.0)
-    num_competitors = float(features.get("num_competitors", 0.0) or 0.0)
-    season_sell_through = min(max(float(features.get("season_sell_through_pct", 0.0) or 0.0), 0.0), 1.0)
-    days_since_launch = float(features.get("days_since_launch", 0.0) or 0.0)
-    days_since_discount = float(features.get("days_since_last_discount", 999.0) or 999.0)
-    event_score = min(max(float(features.get("event_proximity_score", 0.0) or 0.0), 0.0), 1.0)
-
-    sale_pressure_ratio = min(max((competitors_on_sale / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
-    competitor_oos_ratio = min(max((competitors_out_of_stock / num_competitors) if num_competitors > 0 else 0.0, 0.0), 1.0)
-    recent_discount_cooldown = min(max((21.0 - days_since_discount) / 21.0, 0.0), 1.0)
-    overpricing_signal = min(max(price_gap_pct, 0.0), 0.40)
-    stale_pressure = min(max(1.0 - season_sell_through, 0.0), 1.0)
-    stock_staleness_index = min(max((min(days_of_supply, 240.0) / 150.0) * stale_pressure, 0.0), 2.5)
-    inventory_age_pressure = min(
-        max(
-            (max(days_of_supply - 90.0, 0.0) / 180.0) * (max(days_since_launch - 180.0, 0.0) / 240.0),
-            0.0,
-        ),
-        1.5,
-    )
-    overpricing_sale_pressure = min(max(overpricing_signal * sale_pressure_ratio, 0.0), 0.50)
-    clearance_pressure_index = min(
-        max(
-            (max(days_of_supply - 120.0, 0.0) / 140.0) * 0.34
-            + stale_pressure * 0.28
-            + (max(days_since_launch - 220.0, 0.0) / 220.0) * 0.18
-            + min(overpricing_signal / 0.35, 1.0) * 0.12
-            + sale_pressure_ratio * 0.08,
-            0.0,
-        ),
-        1.5,
-    )
-    low_stock_signal = max(
-        min(max(14.0 - days_of_supply, 0.0) / 14.0, 1.0),
-        min(max(12.0 - total_qty, 0.0) / 12.0, 1.0),
-    )
-    stable_high_dos_signal = min(
-        max(
-            (max(days_of_supply - 70.0, 0.0) / 80.0)
-            * (1.0 - sale_pressure_ratio)
-            * (1.0 - min(overpricing_signal / 0.15, 1.0)),
-            0.0,
-        ),
-        1.0,
-    )
-    moderate_stock = min(max(1.0 - (abs(days_of_supply - 70.0) / 70.0), 0.0), 1.0)
-    low_margin_signal = min(max((35.5 - margin_pct) / 15.0, 0.0), 1.0)
-    hold_guardrail_index = min(
-        max(
-            low_margin_signal * 0.40
-            + recent_discount_cooldown * 0.24
-            + low_stock_signal * 0.20
-            + stable_high_dos_signal * 0.10
-            + (moderate_stock * event_score) * 0.06,
-            0.0,
-        ),
-        1.5,
-    )
-
-    features.update(
-        {
-            "sale_pressure_ratio": round(sale_pressure_ratio, 4),
-            "competitor_oos_ratio": round(competitor_oos_ratio, 4),
-            "markdown_margin_buffer": round(margin_pct - 35.0, 4),
-            "promote_margin_buffer": round(margin_pct - 38.0, 4),
-            "recent_discount_cooldown": round(recent_discount_cooldown, 4),
-            "stock_staleness_index": round(stock_staleness_index, 4),
-            "inventory_age_pressure": round(inventory_age_pressure, 4),
-            "overpricing_sale_pressure": round(overpricing_sale_pressure, 4),
-            "clearance_pressure_index": round(clearance_pressure_index, 4),
-            "hold_guardrail_index": round(hold_guardrail_index, 4),
-        }
-    )
-    return features
+    return add_decision_derived_features(features)
 
 
 def _build_model_features(req: RecommendationRequest) -> dict:
@@ -799,6 +724,37 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
     return _recommend_with_features(req, features, t_start=t_start)
 
 
+def _request_from_feature_instance(instance: DecisionFeatureInstance) -> RecommendationRequest:
+    features = instance.features
+    sell_through = float(features.get("season_sell_through_pct", 0.0) or 0.0)
+    current_stock = int(features.get("total_qty", instance.current_stock) or instance.current_stock)
+    if 0.0 <= sell_through < 1.0:
+        initial_stock = max(int(round(current_stock / max(1.0 - sell_through, 0.01))), current_stock, 1)
+    else:
+        initial_stock = max(current_stock, 1)
+    return RecommendationRequest(
+        sku_id=instance.sku_id,
+        product_name=instance.product_name,
+        brand=instance.brand,
+        category=instance.category,
+        retail_price_usd=float(features.get("retail_price_usd", instance.retail_price_usd) or instance.retail_price_usd),
+        cost_price_usd=float(features.get("cost_price_usd", instance.cost_price_usd) or instance.cost_price_usd),
+        current_stock=current_stock,
+        days_since_launch=int(features.get("days_since_launch", 180) or 180),
+        initial_stock=initial_stock,
+        days_since_last_discount=int(features.get("days_since_last_discount", 999) or 999),
+        days_at_current_price=int(features.get("days_at_current_price", 30) or 30),
+        competitor_signals=instance.competitor_signals,
+    )
+
+
+def _recommend_prepared_feature_instance(instance: DecisionFeatureInstance) -> RecommendationResult:
+    t_start = time.time()
+    req = _request_from_feature_instance(instance)
+    features = align_feature_defaults(dict(instance.features), MODEL_FEATURE_COLUMNS)
+    return _recommend_with_features(req, features, t_start=t_start)
+
+
 @app.get("/health")
 def health():
     return {
@@ -822,3 +778,15 @@ def recommend(req: RecommendationRequest):
 def recommend_batch(req: BatchRecommendationRequest):
     with REQUEST_LATENCY.labels(endpoint="/recommend/batch").time():
         return [_recommend_single(item) for item in req.items]
+
+
+@app.post("/recommend/features", response_model=RecommendationResult, dependencies=[Depends(_verify_api_key)])
+def recommend_features(req: DecisionFeatureInstance):
+    with REQUEST_LATENCY.labels(endpoint="/recommend/features").time():
+        return _recommend_prepared_feature_instance(req)
+
+
+@app.post("/recommend/features/batch", response_model=list[RecommendationResult], dependencies=[Depends(_verify_api_key)])
+def recommend_features_batch(req: BatchDecisionFeatureRequest):
+    with REQUEST_LATENCY.labels(endpoint="/recommend/features/batch").time():
+        return [_recommend_prepared_feature_instance(item) for item in req.items]

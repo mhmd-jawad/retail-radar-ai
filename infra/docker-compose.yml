@@ -55,6 +55,7 @@ services:
       args:
         VITE_DATA_MODE: eep-live
         VITE_API_BASE_URL: ""
+        VITE_IE1_BASE_URL: /ie1
         VITE_IE2_BASE_URL: /ie2
         VITE_IE3_BASE_URL: /ie3
         VITE_API_KEY: ${IE2_API_KEY:-ie2-local-postman-key}

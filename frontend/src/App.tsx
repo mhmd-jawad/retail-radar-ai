@@ -20,6 +20,7 @@ import Inventory from "./pages/Inventory";
 import Competitive from "./pages/Competitive";
 import Promotions from "./pages/Promotions";
 import Financial from "./pages/Financial";
+import Ops from "./pages/Ops";
 import FinancialBalanceSheet from "./pages/financial/BalanceSheet";
 import FinancialProfitability from "./pages/financial/Profitability";
 import FinancialCashflow from "./pages/financial/Cashflow";
@@ -66,7 +67,7 @@ const App = () => (
               <Route path="/financial/alerts" element={<FinancialAlerts />} />
               <Route path="/upload" element={<Navigate to="/inventory" replace />} />
               <Route path="/audit" element={<Navigate to="/overview" replace />} />
-              <Route path="/ops" element={<Navigate to="/overview" replace />} />
+              <Route path="/ops" element={<Ops />} />
               <Route path="/shop-profile" element={<ShopProfile />} />
               <Route path="/settings" element={<Navigate to="/shop-profile" replace />} />
             </Route>
