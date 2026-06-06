@@ -40,14 +40,17 @@ export function parseInventoryCsv(text: string): InventoryCsvParseResult {
     });
 
     const rowNumber = index + 2;
+    const currentStock = readRequiredNumber(source, 'current_stock');
+    const retailPrice = readRequiredNumber(source, 'retail_price_usd');
+    const costPrice = readRequiredNumber(source, 'cost_price_usd');
     const item: RetailInventoryInput = {
       sku_id: readText(source, 'sku_id'),
       product_name: readText(source, 'product_name'),
       brand: readText(source, 'brand') || 'Unknown',
       category: readText(source, 'category') || 'uncategorized',
-      current_stock: readNumber(source, 'current_stock'),
-      retail_price_usd: readNumber(source, 'retail_price_usd'),
-      cost_price_usd: readNumber(source, 'cost_price_usd'),
+      current_stock: currentStock ?? 0,
+      retail_price_usd: retailPrice ?? 0,
+      cost_price_usd: costPrice ?? 0,
       barcode: emptyToNull(readText(source, 'barcode')),
       style_code: emptyToNull(readText(source, 'style_code')),
       color: emptyToNull(readText(source, 'color')),
@@ -62,8 +65,13 @@ export function parseInventoryCsv(text: string): InventoryCsvParseResult {
 
     if (!item.sku_id) errors.push(`Row ${rowNumber}: missing sku_id.`);
     if (!item.product_name) errors.push(`Row ${rowNumber}: missing product_name.`);
+    if (currentStock === null) errors.push(`Row ${rowNumber}: current_stock is required and must be a valid number.`);
     if (item.current_stock < 0) errors.push(`Row ${rowNumber}: stock cannot be negative.`);
-    if (item.retail_price_usd < 0 || item.cost_price_usd < 0) errors.push(`Row ${rowNumber}: prices cannot be negative.`);
+    if (retailPrice === null || item.retail_price_usd <= 0) errors.push(`Row ${rowNumber}: retail_price_usd is required and must be greater than 0.`);
+    if (costPrice === null || item.cost_price_usd <= 0) errors.push(`Row ${rowNumber}: cost_price_usd is required and must be greater than 0.`);
+    if (retailPrice !== null && costPrice !== null && item.cost_price_usd >= item.retail_price_usd) {
+      errors.push(`Row ${rowNumber}: cost_price_usd must be lower than retail_price_usd.`);
+    }
     rows.push(item);
   });
 
@@ -80,6 +88,13 @@ function readNumber(source: Record<string, string>, field: keyof RetailInventory
   if (!value) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readRequiredNumber(source: Record<string, string>, field: keyof RetailInventoryInput): number | null {
+  const value = readText(source, field).replace(/[$,\s]/g, '');
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function emptyToNull(value: string): string | null {

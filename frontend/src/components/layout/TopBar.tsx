@@ -1,13 +1,5 @@
-import { Search, Command, Bell, ChevronDown } from 'lucide-react';
-import { useSettings } from '@/store/settings';
+import { Search, Command, Bell, Radio } from 'lucide-react';
 import { useAuth } from '@/store/auth';
-import { modeLabel } from '@/lib/adapter';
-import { cn } from '@/lib/utils';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-  DropdownMenuLabel, DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import type { DataMode } from '@/types/domain';
 
 interface Props {
   title: string;
@@ -15,17 +7,7 @@ interface Props {
   actions?: React.ReactNode;
 }
 
-const modes: DataMode[] = ['mock-report', 'ie2-live', 'eep-live', 'supabase-ready'];
-
-const modeColor: Record<DataMode, string> = {
-  'mock-report': 'bg-amber-100 text-amber-800 border-amber-300',
-  'ie2-live': 'bg-decision-promote-bg text-decision-promote border-decision-promote/30',
-  'eep-live': 'bg-accent text-accent-foreground border-primary/20',
-  'supabase-ready': 'bg-secondary text-secondary-foreground border-border',
-};
-
 export function TopBar({ title, subtitle, actions }: Props) {
-  const { mode, setMode } = useSettings();
   const user = useAuth((state) => state.user);
 
   return (
@@ -55,30 +37,11 @@ export function TopBar({ title, subtitle, actions }: Props) {
 
         {actions}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                'inline-flex items-center gap-1.5 h-9 px-3 rounded-md border text-[12px] font-mono uppercase tracking-wider transition-colors',
-                modeColor[mode]
-              )}
-            >
-              <span className={cn('h-1.5 w-1.5 rounded-full', mode === 'ie2-live' ? 'bg-decision-promote animate-pulse' : 'bg-current opacity-70')} />
-              {modeLabel(mode)}
-              <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Data Source Mode</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {modes.map((m) => (
-              <DropdownMenuItem key={m} onClick={() => setMode(m)} className="flex items-center justify-between">
-                {modeLabel(m)}
-                {m === mode && <span className="text-primary text-xs">●</span>}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-primary/20 bg-accent text-accent-foreground text-[12px] font-mono uppercase tracking-wider">
+          <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" />
+          Live data
+          <Radio className="h-3 w-3" />
+        </div>
 
         <button className="relative h-9 w-9 rounded-md border border-border bg-surface-raised flex items-center justify-center hover:bg-muted transition-colors">
           <Bell className="h-4 w-4 text-muted-foreground" />

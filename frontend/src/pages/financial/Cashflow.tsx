@@ -7,6 +7,7 @@ import { fmtUSD } from '@/lib/format';
 import { fetchCashflow } from '@/lib/adapter';
 import { useReport } from '@/hooks/useReport';
 import { cn } from '@/lib/utils';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -27,9 +28,10 @@ function MonthBadge({ net }: { net: number }) {
 
 export default function FinancialCashflow() {
   const navigate = useNavigate();
+  const tenantScope = useTenantScopeKey();
   const { data: report } = useReport();
   const { data, isLoading, isFetching, refetch } = useQuery<CashflowMonth[]>({
-    queryKey: ['financial-cashflow'],
+    queryKey: ['financial-cashflow', tenantScope],
     queryFn: fetchCashflow,
     staleTime: 60_000,
   });

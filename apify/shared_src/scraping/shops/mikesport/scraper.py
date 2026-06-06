@@ -9,6 +9,7 @@ CONFIG = ShopifyShopConfig(
     competitor_name="mikesport",
     base_url="https://lb.mikesport.com",
     currency="USD",
+    page_sleep_seconds=1.0,
 )
 
 

@@ -6,6 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { fmtUSD } from '@/lib/format';
 import { fetchDetailedBalanceSheet } from '@/lib/adapter';
 import { cn } from '@/lib/utils';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import type { DetailedBalanceSheet } from '@/types/domain';
 
@@ -80,8 +81,9 @@ function RatioRow({ label, formula, value, status }: {
 // ── page ──────────────────────────────────────────────────────────────────────
 export default function FinancialBalanceSheet() {
   const navigate = useNavigate();
+  const tenantScope = useTenantScopeKey();
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<DetailedBalanceSheet>({
-    queryKey: ['financial-balance-sheet'],
+    queryKey: ['financial-balance-sheet', tenantScope],
     queryFn: fetchDetailedBalanceSheet,
     staleTime: 60_000,
   });

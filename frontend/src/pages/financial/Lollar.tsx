@@ -7,15 +7,17 @@ import { fmtUSD, fmtPct } from '@/lib/format';
 import { fetchDetailedBalanceSheet } from '@/lib/adapter';
 import { useReport } from '@/hooks/useReport';
 import { cn } from '@/lib/utils';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import type { DetailedBalanceSheet } from '@/types/domain';
 
 // ── page ──────────────────────────────────────────────────────────────────────
 export default function FinancialLollar() {
   const navigate = useNavigate();
+  const tenantScope = useTenantScopeKey();
   const { data: report } = useReport();
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<DetailedBalanceSheet>({
-    queryKey: ['financial-balance-sheet'],
+    queryKey: ['financial-balance-sheet', tenantScope],
     queryFn: fetchDetailedBalanceSheet,
     staleTime: 60_000,
   });

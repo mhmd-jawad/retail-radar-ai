@@ -6,6 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { fmtUSD, fmtPct } from '@/lib/format';
 import { fetchDetailedProfitability } from '@/lib/adapter';
 import { cn } from '@/lib/utils';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import type { DetailedProfitability, OpExItem } from '@/types/domain';
 
@@ -34,8 +35,9 @@ function CostRow({ item }: { item: OpExItem }) {
 
 export default function FinancialCosts() {
   const navigate = useNavigate();
+  const tenantScope = useTenantScopeKey();
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<DetailedProfitability>({
-    queryKey: ['financial-profitability'],
+    queryKey: ['financial-profitability', tenantScope],
     queryFn: fetchDetailedProfitability,
     staleTime: 60_000,
   });

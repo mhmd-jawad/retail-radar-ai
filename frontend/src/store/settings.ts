@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DataMode, RecommendationStatus, Decision, CampaignCreative } from '@/types/domain';
+import { scopedSkuKey, tenantScopeKey } from '@/lib/tenantScope';
+import { useAuth } from '@/store/auth';
 
 interface RecState {
   status: RecommendationStatus;
@@ -42,6 +44,10 @@ const configuredIe1BaseUrl = env.VITE_IE1_BASE_URL ?? defaultIe1BaseUrl;
 const configuredIe2BaseUrl = env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl;
 const configuredIe3BaseUrl = env.VITE_IE3_BASE_URL ?? defaultIe3BaseUrl;
 
+function currentSkuScope(skuId: string) {
+  return scopedSkuKey(skuId, tenantScopeKey(useAuth.getState().user));
+}
+
 function isLocalhostUrl(value: unknown) {
   return typeof value === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(value.trim());
 }
@@ -69,12 +75,17 @@ export const useSettings = create<SettingsState>()(
         set((s) => ({
           recState: {
             ...s.recState,
-            [sku]: { ...(s.recState[sku] || ({} as RecState)), ...patch, status, updatedAt: new Date().toISOString() },
+            [currentSkuScope(sku)]: {
+              ...(s.recState[currentSkuScope(sku)] || ({} as RecState)),
+              ...patch,
+              status,
+              updatedAt: new Date().toISOString(),
+            },
           },
         })),
       resetRecs: () => set({ recState: {} }),
       setCampaign: (skuId, creative) =>
-        set((s) => ({ campaignCache: { ...s.campaignCache, [skuId]: creative } })),
+        set((s) => ({ campaignCache: { ...s.campaignCache, [currentSkuScope(skuId)]: creative } })),
     }),
     {
       name: 'rr-settings-v1',

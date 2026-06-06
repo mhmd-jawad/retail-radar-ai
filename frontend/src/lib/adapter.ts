@@ -18,6 +18,8 @@ import type {
   RetailInventoryImportResult,
   RetailInventoryInput,
   RetailInventoryItem,
+  RetailInventoryMovementInput,
+  RetailInventoryMovementResult,
   RetailInventoryResponse,
   AuthResponse,
   AdminTenant,
@@ -241,6 +243,20 @@ export async function archiveRetailInventoryItem(skuId: string): Promise<RetailI
   return r.json();
 }
 
+export async function recordRetailInventoryMovement(
+  skuId: string,
+  payload: RetailInventoryMovementInput,
+): Promise<RetailInventoryMovementResult> {
+  const { base } = settings();
+  const r = await fetch(`${base}/inventory/items/${encodeURIComponent(skuId)}/movement`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /inventory/items/${skuId}/movement`));
+  return r.json();
+}
+
 export async function importRetailInventory(
   items: RetailInventoryInput[],
   mode: 'upsert' | 'replace',
@@ -315,24 +331,6 @@ export async function recommend(req: IE2Request): Promise<IE2Result> {
   }
 
   return mockRecommend(req);
-}
-
-export async function recommendBatch(items: IE2Request[]): Promise<IE2Result[]> {
-  const { mode, base } = settings();
-
-  if (mode === 'eep-live' || hasAuthSession()) {
-    const r = await fetch(`${base}/recommend/batch`, {
-      method: 'POST',
-      headers: apiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ items: items.map(normalizeRequest) }),
-    });
-    if (!r.ok) throw new Error(await apiError(r, 'EEP /recommend/batch'));
-    const payload = await r.json();
-    return Array.isArray(payload) ? payload.map(normalizeRecommendation) : [];
-  }
-
-  await wait(120);
-  return items.map((item) => mockRecommend(item));
 }
 
 export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {

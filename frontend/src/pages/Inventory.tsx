@@ -5,7 +5,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { KpiCard } from '@/components/shared/KpiCard';
 import { Section } from '@/components/shared/Section';
 import { PageSkeleton } from '@/components/shared/Skeleton';
-import { fmtNum, fmtPct, fmtUSD } from '@/lib/format';
+import { fmtDos, fmtNum, fmtPct, fmtUSD, isUnknownDos } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   archiveRetailInventoryItem,
@@ -13,11 +13,34 @@ import {
   fetchRetailDbStatus,
   fetchRetailInventory,
   importRetailInventory,
+  recordRetailInventoryMovement,
   updateRetailInventoryItem,
 } from '@/lib/adapter';
 import { parseInventoryCsv } from '@/lib/inventoryCsv';
-import type { Report, RetailInventoryInput, RetailInventoryItem, RetailInventoryResponse } from '@/types/domain';
-import { AlertTriangle, Archive, Boxes, Database, Pencil, Plus, RefreshCw, Save, Search, Upload } from 'lucide-react';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
+import type {
+  Report,
+  RetailInventoryInput,
+  RetailInventoryItem,
+  RetailInventoryMovementInput,
+  RetailInventoryMovementType,
+  RetailInventoryResponse,
+} from '@/types/domain';
+import {
+  AlertTriangle,
+  Archive,
+  Boxes,
+  Database,
+  PackagePlus,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  ShoppingCart,
+  SlidersHorizontal,
+  Upload,
+} from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -35,6 +58,18 @@ type InventoryFormState = Omit<
   cost_price_usd: string;
   reorder_point: string;
   reorder_quantity: string;
+};
+
+type InventoryMovementFormState = {
+  item: RetailInventoryItem;
+  movement_type: RetailInventoryMovementType;
+  quantity: string;
+  unit_price_usd: string;
+  unit_cost_usd: string;
+  discount_pct: string;
+  channel: string;
+  reference_id: string;
+  notes: string;
 };
 
 const EMPTY_FORM: InventoryFormState = {
@@ -56,6 +91,17 @@ const EMPTY_FORM: InventoryFormState = {
   supplier_name: '',
   notes: '',
 };
+
+const MOVEMENT_LABELS: Record<RetailInventoryMovementType, string> = {
+  sale: 'Sold',
+  purchase_receipt: 'Restock',
+  return: 'Return',
+  adjustment_in: 'Add stock',
+  adjustment_out: 'Remove stock',
+  damaged: 'Damaged',
+};
+
+const NEGATIVE_MOVEMENTS = new Set<RetailInventoryMovementType>(['sale', 'adjustment_out', 'damaged']);
 
 const SAMPLE_CSV = `sku_id,product_name,brand,category,current_stock,retail_price_usd,cost_price_usd,barcode,style_code,reorder_point,reorder_quantity
 AD-RUN-001,Adidas Ultraboost 5,Adidas,footwear,18,180,92,,UB5-BLK,5,12
@@ -87,22 +133,24 @@ export default function Inventory() {
 
 function InventoryManager() {
   const queryClient = useQueryClient();
+  const tenantScope = useTenantScopeKey();
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RetailInventoryItem | null>(null);
   const [form, setForm] = useState<InventoryFormState>(EMPTY_FORM);
+  const [movement, setMovement] = useState<InventoryMovementFormState | null>(null);
   const [csvText, setCsvText] = useState(SAMPLE_CSV);
   const [importMode, setImportMode] = useState<'upsert' | 'replace'>('upsert');
 
   const status = useQuery({
-    queryKey: ['retail-db-status'],
+    queryKey: ['retail-db-status', tenantScope],
     queryFn: fetchRetailDbStatus,
     retry: false,
   });
 
   const inventory = useQuery({
-    queryKey: ['retail-inventory', search],
+    queryKey: ['retail-inventory', tenantScope, search],
     queryFn: () => fetchRetailInventory(search),
     retry: false,
   });
@@ -120,7 +168,7 @@ function InventoryManager() {
     onSuccess: (savedItem) => {
       const wasEditing = Boolean(editing);
       queryClient.setQueryData<RetailInventoryResponse>(
-        ['retail-inventory', search],
+        ['retail-inventory', tenantScope, search],
         (current) => upsertInventoryCache(current, savedItem, search),
       );
       queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
@@ -149,11 +197,33 @@ function InventoryManager() {
     onError: (error: Error) => toast.error('Archive failed', { description: error.message }),
   });
 
+  const movementMutation = useMutation({
+    mutationFn: async () => {
+      if (!movement) throw new Error('No inventory action selected.');
+      return recordRetailInventoryMovement(movement.item.sku_id, normalizedMovement(movement));
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<RetailInventoryResponse>(
+        ['retail-inventory', tenantScope, search],
+        (current) => upsertInventoryCache(current, result.item, search),
+      );
+      queryClient.invalidateQueries({ queryKey: ['retail-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['retail-db-status'] });
+      queryClient.invalidateQueries({ queryKey: ['report-live'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
+      toast.success(`${MOVEMENT_LABELS[result.movement.movement_type]} saved`, {
+        description: `${result.item.sku_id}: ${result.movement.quantity_before} -> ${result.movement.quantity_after} units.`,
+      });
+      setMovement(null);
+    },
+    onError: (error: Error) => toast.error('Inventory action failed', { description: error.message }),
+  });
+
   const importMutation = useMutation({
     mutationFn: () => importRetailInventory(parsed.rows, importMode),
     onSuccess: (result) => {
       if (!search.trim()) {
-        queryClient.setQueryData<RetailInventoryResponse>(['retail-inventory', search], {
+        queryClient.setQueryData<RetailInventoryResponse>(['retail-inventory', tenantScope, search], {
           items: result.items,
           summary: result.summary,
         });
@@ -195,6 +265,20 @@ function InventoryManager() {
       notes: item.notes || '',
     });
     setDialogOpen(true);
+  };
+
+  const openMovement = (item: RetailInventoryItem, movementType: RetailInventoryMovementType) => {
+    setMovement({
+      item,
+      movement_type: movementType,
+      quantity: '1',
+      unit_price_usd: String(item.retail_price_usd ?? ''),
+      unit_cost_usd: String(item.cost_price_usd ?? ''),
+      discount_pct: '0',
+      channel: 'manual',
+      reference_id: '',
+      notes: movementType === 'sale' ? 'Manual sale from inventory screen' : '',
+    });
   };
 
   const readCsvFile = async (file: File) => {
@@ -299,11 +383,38 @@ function InventoryManager() {
                       <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(item.cost_price_usd)}</td>
                       <td className={cn('px-4 py-2.5 text-right font-mono', item.margin_pct < 35 ? 'text-decision-clear' : item.margin_pct >= 45 ? 'text-decision-promote' : '')}>{fmtPct(item.margin_pct, 0)}</td>
                       <td className="px-4 py-2.5">
-                        <div className="flex justify-end gap-1">
+                        <div className="flex justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Record sale"
+                            disabled={!canWrite || item.current_stock <= 0}
+                            onClick={() => openMovement(item, 'sale')}
+                          >
+                            <ShoppingCart className="h-3.5 w-3.5" /> Sold
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Add received stock"
+                            disabled={!canWrite}
+                            onClick={() => openMovement(item, 'purchase_receipt')}
+                          >
+                            <PackagePlus className="h-3.5 w-3.5" /> Restock
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Remove, damage, or adjust stock"
+                            disabled={!canWrite}
+                            onClick={() => openMovement(item, 'adjustment_out')}
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" /> Remove
+                          </Button>
                           <Button size="icon" variant="ghost" title="Edit SKU" onClick={() => openEdit(item)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" title="Archive SKU" onClick={() => archiveMutation.mutate(item.sku_id)}>
+                          <Button size="icon" variant="ghost" title="Archive SKU" disabled={!canWrite} onClick={() => archiveMutation.mutate(item.sku_id)}>
                             <Archive className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -316,7 +427,7 @@ function InventoryManager() {
           </div>
         </Section>
 
-        <Section title="Bulk import" subtitle="CSV upload or direct paste" bodyClassName="space-y-4">
+        <Section title="Inventory CSV import" subtitle="Upload or paste rows directly into the PostgreSQL inventory DB" bodyClassName="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
               <Upload className="h-3.5 w-3.5" /> CSV file
@@ -356,7 +467,7 @@ function InventoryManager() {
             </div>
           ) : (
             <div className="text-[12px] text-muted-foreground">
-              {parsed.rows.length} valid rows. Required headers: sku_id, product_name, brand, category, current_stock, retail_price_usd, cost_price_usd.
+              {parsed.rows.length} valid rows ready to save to DB. Required headers: sku_id, product_name, brand, category, current_stock, retail_price_usd, cost_price_usd.
             </div>
           )}
         </Section>
@@ -371,6 +482,14 @@ function InventoryManager() {
         canWrite={canWrite}
         onClose={() => setDialogOpen(false)}
         onSave={() => saveMutation.mutate()}
+      />
+      <InventoryMovementDialog
+        movement={movement}
+        setMovement={setMovement}
+        saving={movementMutation.isPending}
+        canWrite={canWrite}
+        onClose={() => setMovement(null)}
+        onSave={() => movementMutation.mutate()}
       />
     </div>
   );
@@ -440,6 +559,117 @@ function InventoryDialog({
   );
 }
 
+function InventoryMovementDialog({
+  movement,
+  setMovement,
+  saving,
+  canWrite,
+  onClose,
+  onSave,
+}: {
+  movement: InventoryMovementFormState | null;
+  setMovement: (value: InventoryMovementFormState | null) => void;
+  saving: boolean;
+  canWrite: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const update = (key: keyof InventoryMovementFormState, value: string) => {
+    if (!movement) return;
+    setMovement({ ...movement, [key]: value });
+  };
+  const errors = movement ? validateMovementForm(movement) : [];
+  const projectedStock = movement ? projectedMovementStock(movement) : 0;
+  const isSale = movement?.movement_type === 'sale';
+
+  return (
+    <Dialog open={!!movement} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-xl">
+        {movement && (
+          <>
+            <DialogHeader>
+              <DialogTitle>{MOVEMENT_LABELS[movement.movement_type]} stock</DialogTitle>
+            </DialogHeader>
+            <div className="rounded-md border border-border bg-surface-sunken p-3">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{movement.item.sku_id}</div>
+              <div className="mt-0.5 font-semibold">{movement.item.product_name}</div>
+              <div className="mt-2 grid grid-cols-3 gap-3 text-[12px]">
+                <div>
+                  <div className="text-muted-foreground">Current</div>
+                  <div className="font-mono text-[16px]">{fmtNum(movement.item.current_stock)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Change</div>
+                  <div className={cn('font-mono text-[16px]', NEGATIVE_MOVEMENTS.has(movement.movement_type) ? 'text-decision-clear' : 'text-decision-promote')}>
+                    {NEGATIVE_MOVEMENTS.has(movement.movement_type) ? '-' : '+'}{readNumber(movement.quantity)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">After</div>
+                  <div className={cn('font-mono text-[16px]', projectedStock < 0 ? 'text-decision-clear' : '')}>{fmtNum(projectedStock)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <Field label="Action">
+                <select
+                  value={movement.movement_type}
+                  onChange={(e) => update('movement_type', e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {(['sale', 'purchase_receipt', 'return', 'adjustment_in', 'adjustment_out', 'damaged'] as RetailInventoryMovementType[]).map((type) => (
+                    <option key={type} value={type}>{MOVEMENT_LABELS[type]}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Quantity">
+                <Input inputMode="numeric" value={movement.quantity} onChange={(e) => update('quantity', integerText(e.target.value))} />
+              </Field>
+              {isSale && (
+                <>
+                  <Field label="Sold price">
+                    <Input inputMode="decimal" value={movement.unit_price_usd} onChange={(e) => update('unit_price_usd', decimalText(e.target.value))} />
+                  </Field>
+                  <Field label="Discount %">
+                    <Input inputMode="decimal" value={movement.discount_pct} onChange={(e) => update('discount_pct', decimalText(e.target.value))} />
+                  </Field>
+                  <Field label="Channel">
+                    <Input value={movement.channel} onChange={(e) => update('channel', e.target.value)} />
+                  </Field>
+                </>
+              )}
+              {!isSale && (
+                <Field label="Unit cost">
+                  <Input inputMode="decimal" value={movement.unit_cost_usd} onChange={(e) => update('unit_cost_usd', decimalText(e.target.value))} />
+                </Field>
+              )}
+              <Field label="Reference">
+                <Input value={movement.reference_id} onChange={(e) => update('reference_id', e.target.value)} placeholder={isSale ? 'receipt id' : 'invoice / reason'} />
+              </Field>
+              <Field label="Notes" className="md:col-span-2">
+                <Textarea rows={3} value={movement.notes} onChange={(e) => update('notes', e.target.value)} />
+              </Field>
+            </div>
+
+            {errors.length > 0 && (
+              <div className="rounded-md border border-decision-markdown/30 bg-decision-markdown-bg p-3 text-[12px] text-decision-markdown">
+                {errors.map((error) => <div key={error}>{error}</div>)}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button disabled={errors.length > 0 || saving || !canWrite} onClick={onSave}>
+                <Save className="h-3.5 w-3.5" /> Save action
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   return (
     <label className={cn('space-y-1.5', className)}>
@@ -451,13 +681,16 @@ function Field({ label, className, children }: { label: string; className?: stri
 
 function InventoryAnalytics({ report: r }: { report: Report }) {
   const m = r.inventory.metrics;
+  const knownDosSkus = r.inventory.sku_analysis.filter(s => !isUnknownDos(s.days_of_supply));
+  const unknownDosCount = r.inventory.sku_analysis.length - knownDosSkus.length;
 
   const dosBands = [
-    { band: '<= 21', count: r.inventory.sku_analysis.filter(s => s.days_of_supply <= 21).length, color: 'hsl(var(--decision-clear))' },
-    { band: '22-44', count: r.inventory.sku_analysis.filter(s => s.days_of_supply > 21 && s.days_of_supply < 45).length, color: 'hsl(var(--decision-markdown))' },
-    { band: '45-90', count: r.inventory.sku_analysis.filter(s => s.days_of_supply >= 45 && s.days_of_supply <= 90).length, color: 'hsl(var(--decision-promote))' },
-    { band: '91-180', count: r.inventory.sku_analysis.filter(s => s.days_of_supply > 90 && s.days_of_supply <= 180).length, color: 'hsl(var(--decision-markdown))' },
-    { band: '> 180', count: r.inventory.sku_analysis.filter(s => s.days_of_supply > 180).length, color: 'hsl(var(--decision-clear))' },
+    { band: '<= 21', count: knownDosSkus.filter(s => s.days_of_supply <= 21).length, color: 'hsl(var(--decision-clear))' },
+    { band: '22-44', count: knownDosSkus.filter(s => s.days_of_supply > 21 && s.days_of_supply < 45).length, color: 'hsl(var(--decision-markdown))' },
+    { band: '45-90', count: knownDosSkus.filter(s => s.days_of_supply >= 45 && s.days_of_supply <= 90).length, color: 'hsl(var(--decision-promote))' },
+    { band: '91-180', count: knownDosSkus.filter(s => s.days_of_supply > 90 && s.days_of_supply <= 180).length, color: 'hsl(var(--decision-markdown))' },
+    { band: '> 180', count: knownDosSkus.filter(s => s.days_of_supply > 180).length, color: 'hsl(var(--decision-clear))' },
+    { band: 'No sales', count: unknownDosCount, color: 'hsl(var(--muted-foreground))' },
   ];
   const watchlist = r.inventory.sku_analysis.filter(s => s.days_of_supply <= 30).slice(0, 12);
 
@@ -471,7 +704,7 @@ function InventoryAnalytics({ report: r }: { report: Report }) {
       </div>
 
       <div className="grid lg:grid-cols-[1.3fr_1fr] gap-6">
-        <Section title="Days of Supply Distribution" subtitle="Active dashboard report">
+        <Section title="Days of Supply Distribution" subtitle={unknownDosCount > 0 ? `${unknownDosCount} SKUs need sales history` : 'Active dashboard report'}>
           <div className="h-72 -mx-2">
             <ResponsiveContainer>
               <BarChart data={dosBands} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -523,7 +756,7 @@ function InventoryAnalytics({ report: r }: { report: Report }) {
                   <td className="px-4 py-2.5 text-right font-mono">{fmtNum(v.units)}</td>
                   <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(v.value_usd, { compact: true })}</td>
                   <td className={cn('px-4 py-2.5 text-right font-mono', v.avg_margin_pct >= 45 ? 'text-decision-promote' : v.avg_margin_pct < 35 ? 'text-decision-clear' : '')}>{fmtPct(v.avg_margin_pct, 0)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono">{v.median_dos}d</td>
+                  <td className="px-4 py-2.5 text-right font-mono">{fmtDos(v.median_dos)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="inline-flex items-center gap-2">
                       <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
@@ -549,7 +782,7 @@ function InventoryAnalytics({ report: r }: { report: Report }) {
                   <div className="text-[13px] font-medium truncate">{s.product_name}</div>
                   <div className="text-[11px] text-muted-foreground">{s.brand} / {s.category}</div>
                 </div>
-                <div className={cn('text-[12px] font-mono font-semibold', s.days_of_supply <= 21 ? 'text-decision-clear' : 'text-decision-markdown')}>{s.days_of_supply}d</div>
+                <div className={cn('text-[12px] font-mono font-semibold', s.days_of_supply <= 21 ? 'text-decision-clear' : 'text-decision-markdown')}>{fmtDos(s.days_of_supply)}</div>
                 <div className="text-[11px] text-muted-foreground font-mono w-12 text-right">{s.current_stock} u</div>
               </li>
             ))}
@@ -649,14 +882,51 @@ function inventoryDetailPairs(item: RetailInventoryItem): Array<[string, string]
 
 function validateInventoryForm(form: InventoryFormState) {
   const errors: string[] = [];
+  const retailPrice = parseRequiredNumber(form.retail_price_usd);
+  const costPrice = parseRequiredNumber(form.cost_price_usd);
   if (!form.sku_id.trim()) errors.push('SKU is required.');
   if (!form.product_name.trim()) errors.push('Product name is required.');
   if (!form.brand.trim()) errors.push('Brand is required.');
   if (!form.category.trim()) errors.push('Category is required.');
   if (parseRequiredNumber(form.current_stock) === null) errors.push('Stock is required and must be a valid number.');
-  if (parseRequiredNumber(form.retail_price_usd) === null) errors.push('Retail price is required and must be a valid number.');
-  if (parseRequiredNumber(form.cost_price_usd) === null) errors.push('Cost price is required and must be a valid number.');
+  if (retailPrice === null || retailPrice <= 0) errors.push('Retail price is required and must be greater than 0.');
+  if (costPrice === null || costPrice <= 0) errors.push('Cost price is required and must be greater than 0.');
+  if (retailPrice !== null && costPrice !== null && costPrice >= retailPrice) errors.push('Cost price must be lower than retail price.');
   return errors;
+}
+
+function validateMovementForm(form: InventoryMovementFormState) {
+  const errors: string[] = [];
+  const quantity = readNumber(form.quantity);
+  const unitPrice = readNumber(form.unit_price_usd);
+  const unitCost = readNumber(form.unit_cost_usd);
+  const discountPct = readNumber(form.discount_pct);
+  if (!Number.isInteger(quantity) || quantity <= 0) errors.push('Quantity must be a whole number greater than 0.');
+  if (NEGATIVE_MOVEMENTS.has(form.movement_type) && quantity > form.item.current_stock) {
+    errors.push(`Quantity cannot exceed current stock (${form.item.current_stock}).`);
+  }
+  if (form.movement_type === 'sale' && unitPrice <= 0) errors.push('Sold price must be greater than 0.');
+  if (form.movement_type !== 'sale' && unitCost < 0) errors.push('Unit cost cannot be negative.');
+  if (discountPct < 0 || discountPct > 100) errors.push('Discount must be between 0 and 100.');
+  return errors;
+}
+
+function projectedMovementStock(form: InventoryMovementFormState) {
+  const quantity = readNumber(form.quantity);
+  return form.item.current_stock + (NEGATIVE_MOVEMENTS.has(form.movement_type) ? -quantity : quantity);
+}
+
+function normalizedMovement(form: InventoryMovementFormState): RetailInventoryMovementInput {
+  return {
+    movement_type: form.movement_type,
+    quantity: readNumber(form.quantity),
+    unit_price_usd: form.movement_type === 'sale' ? readNumber(form.unit_price_usd) : null,
+    unit_cost_usd: form.movement_type !== 'sale' ? readNumber(form.unit_cost_usd) : form.item.cost_price_usd,
+    discount_pct: readNumber(form.discount_pct),
+    channel: cleanNullable(form.channel) || 'manual',
+    reference_id: cleanNullable(form.reference_id),
+    notes: cleanNullable(form.notes),
+  };
 }
 
 function parseRequiredNumber(value: string) {

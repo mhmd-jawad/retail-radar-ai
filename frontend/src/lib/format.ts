@@ -16,6 +16,29 @@ export const fmtUSD = (n: number | null | undefined, opts: { decimals?: number; 
 export const fmtPct = (n: number | null | undefined, decimals = 1) => `${safeNumber(n).toFixed(decimals)}%`;
 export const fmtNum = (n: number | null | undefined) => safeNumber(n).toLocaleString('en-US');
 
+export const UNKNOWN_DOS_VALUE = 999;
+
+export function isUnknownDos(n: number | null | undefined): boolean {
+  return Number.isFinite(n) && Number(n) >= UNKNOWN_DOS_VALUE;
+}
+
+export function fmtDos(n: number | null | undefined, opts: { suffix?: boolean; unknown?: string } = {}): string {
+  const { suffix = true, unknown = 'No sales' } = opts;
+  if (!Number.isFinite(n)) return 'N/A';
+  if (isUnknownDos(n)) return unknown;
+  const value = safeNumber(n);
+  const rounded = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+  return suffix ? `${rounded}d` : rounded;
+}
+
+export function dosTextClass(n: number | null | undefined): string {
+  if (isUnknownDos(n)) return 'text-muted-foreground';
+  const value = safeNumber(n);
+  if (value <= 21) return 'text-decision-clear';
+  if (value > 90) return 'text-decision-markdown';
+  return 'text-foreground';
+}
+
 export const decisionStyles: Record<Decision, { label: string; chip: string; ring: string; dot: string; gradient: string; text: string }> = {
   HOLD: {
     label: 'HOLD',

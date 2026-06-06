@@ -504,6 +504,53 @@ export interface RetailInventoryInput {
   notes?: string | null;
 }
 
+export type RetailInventoryMovementType =
+  | 'sale'
+  | 'purchase_receipt'
+  | 'return'
+  | 'adjustment_in'
+  | 'adjustment_out'
+  | 'damaged';
+
+export interface RetailInventoryMovementInput {
+  movement_type: RetailInventoryMovementType;
+  quantity: number;
+  unit_price_usd?: number | null;
+  unit_cost_usd?: number | null;
+  discount_pct?: number;
+  channel?: string;
+  reference_id?: string | null;
+  notes?: string | null;
+  sold_at?: string | null;
+}
+
+export interface RetailInventoryMovementResult {
+  item: RetailInventoryItem;
+  movement: {
+    id: string;
+    movement_type: RetailInventoryMovementType;
+    quantity_delta: number;
+    quantity_before: number;
+    quantity_after: number;
+    unit_cost_usd?: number | null;
+    reference_type?: string | null;
+    reference_id?: string | null;
+    notes?: string | null;
+    created_by: string;
+    created_at: string;
+  };
+  sale?: {
+    id: string;
+    line_id: string;
+    sold_at: string;
+    quantity: number;
+    unit_price_usd: number;
+    discount_pct: number;
+    total_amount_usd: number;
+    channel: string;
+  } | null;
+}
+
 export interface RetailInventorySummary {
   total_skus: number;
   total_units: number;

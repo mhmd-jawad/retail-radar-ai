@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useLiveReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
@@ -14,6 +15,8 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/store/settings';
+import { useTenantScopeKey } from '@/hooks/useTenantScope';
+import { scopedSkuKey } from '@/lib/tenantScope';
 import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, fetchOutcomesBySku } from '@/lib/adapter';
 import type {
   CampaignCreative, ClearanceItem, Decision, HoldPricingItem,
@@ -175,20 +178,26 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
 
 function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
   const { campaignCache, setCampaign, whatsappNumber, mode } = useSettings();
+  const tenantScope = useTenantScopeKey();
+  const campaignKey = scopedSkuKey(item.sku_id, tenantScope);
   const [creative, setCreative] = useState<CampaignCreative | null>(
-    campaignCache[item.sku_id] ?? item.creative ?? null,
+    campaignCache[campaignKey] ?? item.creative ?? null,
   );
   const [expanded, setExpanded] = useState(false);
   void whatsappNumber;
 
   const isLive = mode === 'eep-live';
   const { data: outcomes = [] } = useQuery<OutcomeSnapshot[]>({
-    queryKey: ['outcomes-by-sku', item.sku_id],
+    queryKey: ['outcomes-by-sku', tenantScope, item.sku_id],
     queryFn: () => fetchOutcomesBySku(item.sku_id),
     enabled: isLive,
     staleTime: 5 * 60_000,
   });
   const latestOutcome = outcomes[0] ?? null;
+
+  useEffect(() => {
+    setCreative(campaignCache[campaignKey] ?? item.creative ?? null);
+  }, [campaignCache, campaignKey, item.creative]);
 
   const mutation = useMutation({
     mutationFn: () => generateAndPublishCampaign(item.sku_id, item.product_name, {
@@ -503,18 +512,19 @@ function HoldRow({ item }: { item: HoldPricingItem }) {
 export default function Promotions() {
   const { data: r, isLoading } = useLiveReport();
   const { campaignCache } = useSettings();
+  const tenantScope = useTenantScopeKey();
   const [generatingAll, setGeneratingAll] = useState(false);
 
   if (isLoading || !r) return (<><TopBar title="Promotions & Campaigns" /><PageSkeleton /></>);
 
   const p = r.promotions;
-  const generatedCount = p.promote.filter(item => !!campaignCache[item.sku_id]).length;
+  const generatedCount = p.promote.filter(item => !!campaignCache[scopedSkuKey(item.sku_id, tenantScope)]).length;
 
   async function handleGenerateAll() {
     setGeneratingAll(true);
     const { setCampaign } = useSettings.getState();
     for (const item of p.promote) {
-      if (campaignCache[item.sku_id]) continue;
+      if (campaignCache[scopedSkuKey(item.sku_id, tenantScope)]) continue;
       try {
         const creative = await generateAndPublishCampaign(item.sku_id, item.product_name, {
           recommendation: 'PROMOTE', confidence: 0.9, explanation: item.reason,

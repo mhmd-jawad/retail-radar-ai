@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 import {
   Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone, Wallet,
-  ListChecks, Upload, ScrollText, ChevronLeft, ChevronRight, Database,
+  ListChecks, ChevronLeft, ChevronRight, Database,
   CircleDot, Pause, TrendingUp, Tag, Flame,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
@@ -24,18 +24,24 @@ const MODULES = [
   { to: '/competitive', icon: Radar, title: 'Competitive Intelligence', desc: 'Price gaps across 7 Lebanese sportswear shops.', status: 'live' },
   { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
   { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, current ratio, lollar exposure.', status: 'live' },
-  { to: '/upload', icon: Upload, title: 'Upload & Batch', desc: 'CSV ingestion and batch recommendations.', status: 'partial' },
-  { to: '/audit', icon: ScrollText, title: 'Audit Trail', desc: 'Every approval, edit, snooze and rejection.', status: 'live' },
-  { to: '/ops', icon: Activity, title: 'Ops & Pipeline', desc: 'Scraper runs, service health, freshness.', status: 'live' },
 ];
 
 const SERVICES = [
   { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Financial · Promotions JSON' },
-  { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend · /recommend/batch' },
+  { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend' },
   { name: 'IE1 — Forecasting', status: 'planned', desc: 'Demand & seasonality forecasts (in design)' },
   { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy, IG/FB/WhatsApp variants' },
   { name: 'EEP — Orchestrator', status: 'partial', desc: 'Unified API on :8000 for report, ops, and recommendation delivery' },
   { name: 'Competitor Scraping Pipeline', status: 'live', desc: '7 shops · 37,102 records · Supabase-ready' },
+];
+
+const SHOP_SERVICES = [
+  { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, financial, and promotion signals in one workspace.' },
+  { name: 'Decision Recommendations', status: 'live', desc: 'SKU-level hold, markdown, promote, and clearance guidance.' },
+  { name: 'Demand Forecasting', status: 'planned', desc: 'Demand and seasonality forecasts for future planning.' },
+  { name: 'Campaign Creative', status: 'planned', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
+  { name: 'Tenant Data Sync', status: 'live', desc: 'Live shop data connected to the dashboard and recommendation queue.' },
+  { name: 'Competitor Tracking', status: 'live', desc: 'Market snapshots across selected Lebanese sportswear competitors.' },
 ];
 
 const ACTIONS = [
@@ -176,7 +182,7 @@ export default function Landing() {
             <div>
               <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Module overview</div>
               <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight max-w-2xl">
-                Eight control rooms.<br />
+                Five command surfaces.<br />
                 <span className="text-gradient-warm">One retail brain.</span>
               </h2>
             </div>
@@ -222,12 +228,12 @@ export default function Landing() {
             Real today. <span className="text-gradient-warm">Ready for tomorrow.</span>
           </h2>
           <p className="text-muted-foreground max-w-2xl mb-12">
-            The analytics engine and IE2 decision service run today. The orchestrator (EEP), forecasting (IE1) and
-            creative generation (IE3) services are scaffolded and adapter-ready.
+            The core retail workspace runs today: inventory, competitor signals, recommendations, and financial context.
+            Forecasting and campaign creative are prepared for controlled rollout.
           </p>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {SERVICES.map((s, i) => (
+            {SHOP_SERVICES.map((s, i) => (
               <div key={s.name} className="glass rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: `${i * 80}ms` }}>
                 <div className="flex items-center justify-between mb-4">
                   <StatusDot status={s.status} />
@@ -368,7 +374,6 @@ export default function Landing() {
               { to: '/competitive', icon: Database, title: 'Competitive Intelligence', desc: 'Live price-gap analysis across 7 shops.' },
               { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, lollar exposure, OPEX coverage.' },
               { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
-              { to: '/ops', icon: Activity, title: 'Ops & Pipeline', desc: 'Service health and scraper run history.' },
             ].map((m, i) => (
               <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">

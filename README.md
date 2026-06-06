@@ -255,7 +255,7 @@ pytest tests/ --cov=services --cov-report=html
 |---|---|---|
 | `POST` | `/recommend/{sku_id}` | Get recommendation for a single SKU |
 | `POST` | `/recommend/batch` | Up to 50 SKUs in one call |
-| `POST` | `/upload/csv` | Upload product CSV for batch processing |
+| `POST` | `/inventory/import` | Save validated inventory rows to PostgreSQL |
 | `GET` | `/recommendations` | List all pending recommendations |
 | `GET` | `/status/{sku_id}` | Get recommendation with confidence decay |
 | `PATCH` | `/review/{sku_id}` | Approve / Edit / Reject / Snooze |

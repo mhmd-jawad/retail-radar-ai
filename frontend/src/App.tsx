@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,21 +21,20 @@ import Inventory from "./pages/Inventory";
 import Competitive from "./pages/Competitive";
 import Promotions from "./pages/Promotions";
 import Financial from "./pages/Financial";
+import Ops from "./pages/Ops";
 import FinancialBalanceSheet from "./pages/financial/BalanceSheet";
 import FinancialProfitability from "./pages/financial/Profitability";
 import FinancialCashflow from "./pages/financial/Cashflow";
 import FinancialLollar from "./pages/financial/Lollar";
 import FinancialCosts from "./pages/financial/Costs";
 import FinancialAlerts from "./pages/financial/Alerts";
-import UploadBatch from "./pages/UploadBatch";
-import Audit from "./pages/Audit";
-import Ops from "./pages/Ops";
-import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ShopProfile from "./pages/ShopProfile";
+import { tenantScopeKey } from "./lib/tenantScope";
+import { useAuth } from "./store/auth";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -42,6 +43,7 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider delayDuration={150}>
+      <SessionCacheBoundary />
       <AuthModeSync />
       <Toaster />
       <Sonner position="top-right" />
@@ -64,11 +66,11 @@ const App = () => (
               <Route path="/financial/lollar" element={<FinancialLollar />} />
               <Route path="/financial/costs" element={<FinancialCosts />} />
               <Route path="/financial/alerts" element={<FinancialAlerts />} />
-              <Route path="/upload" element={<UploadBatch />} />
-              <Route path="/audit" element={<Audit />} />
+              <Route path="/upload" element={<Navigate to="/inventory" replace />} />
+              <Route path="/audit" element={<Navigate to="/overview" replace />} />
               <Route path="/ops" element={<Ops />} />
               <Route path="/shop-profile" element={<ShopProfile />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings" element={<Navigate to="/shop-profile" replace />} />
             </Route>
           </Route>
           <Route element={<ProtectedRoute roles={["admin"]} />}>
@@ -89,3 +91,21 @@ const App = () => (
 );
 
 export default App;
+
+function SessionCacheBoundary() {
+  const queryClient = useQueryClient();
+  const token = useAuth((state) => state.token);
+  const role = useAuth((state) => state.user?.global_role);
+  const tenantScope = useAuth((state) => tenantScopeKey(state.user));
+  const sessionKey = `${token || 'no-token'}::${role || 'no-role'}::${tenantScope}`;
+  const previous = useRef(sessionKey);
+
+  useEffect(() => {
+    if (previous.current !== sessionKey) {
+      queryClient.clear();
+      previous.current = sessionKey;
+    }
+  }, [queryClient, sessionKey]);
+
+  return null;
+}
