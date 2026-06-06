@@ -1,0 +1,56 @@
+{
+  "created_at": "2026-06-04T18:46:24.755908+00:00",
+  "source": "aws_rds_historical_competitor_snapshots",
+  "audit": {
+    "snapshot_rows": 285815,
+    "scrape_runs": 33,
+    "shops": 3,
+    "snapshot_style_codes": 21251,
+    "first_snapshot_at": "2026-05-24T03:00:14+00:00",
+    "last_snapshot_at": "2026-06-04T03:44:22+00:00",
+    "sku_count": 404,
+    "catalog_style_codes": 377,
+    "exact_style_codes": 75,
+    "scrape_weeks": 3,
+    "estimated_product_week_capacity": 1212,
+    "exact_style_coverage_ratio": 0.1989,
+    "data_sufficiency_hint": "ok"
+  },
+  "outputs": {
+    "states": "data\\features\\rds_smoke_product_week_states.csv",
+    "training_dataset": "data\\features\\rds_smoke_training_dataset.csv",
+    "ai_labeled_dataset": "data\\features\\rds_smoke_ai_labeled_dataset.csv",
+    "review_candidates": "data\\reports\\rds_smoke_label_review_candidates.csv",
+    "augmented_training_dataset": null,
+    "augmented_ai_labeled_dataset": null
+  },
+  "row_counts": {
+    "states": 808,
+    "training_rows": 808,
+    "ai_labeled_rows": 808,
+    "review_candidate_rows": 593,
+    "final_candidate_rows": 808
+  },
+  "label_distribution": {
+    "HOLD": 647,
+    "MARKDOWN": 161
+  },
+  "rules_distribution": {
+    "HOLD": 484,
+    "CLEAR": 230,
+    "PROMOTE": 94
+  },
+  "match_type_distribution": {
+    "no_match": 513,
+    "same_model_family": 208,
+    "exact_style": 72,
+    "similar_product": 15
+  },
+  "inventory_history_quality_distribution": {
+    "movement_reconstructed": 808
+  },
+  "augmentation": null,
+  "current_baseline_training_rows": 5968,
+  "larger_than_current_baseline": false,
+  "credential_note": "Rotate the exposed RDS password before running against production data."
+}

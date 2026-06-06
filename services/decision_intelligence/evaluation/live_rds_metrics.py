@@ -9,6 +9,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REPORT_PATH = ROOT / "data" / "reports" / "live_rds_competitor_eval.json"
+DEFAULT_RDS_DATASET_REPORT_PATH = ROOT / "data" / "reports" / "rds_expanded_training_dataset_summary.json"
+DEFAULT_CANDIDATE_META_PATH = (
+    ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision_rds_candidate" / "meta.json"
+)
 
 
 def load_latest_report(path: Path | None = None) -> dict[str, Any]:
@@ -67,7 +71,58 @@ def render_prometheus_metrics(report: dict[str, Any] | None = None) -> str:
     for group, ratio in matching.get("coverage_ratio", {}).items():
         _gauge(lines, "live_rds_eval_match_coverage_ratio", ratio, {"match_group": group})
 
+    _render_rds_candidate_dataset_metrics(lines)
+    _render_rds_candidate_training_metrics(lines)
+
     return "\n".join(lines) + "\n"
+
+
+def _render_rds_candidate_dataset_metrics(lines: list[str], path: Path = DEFAULT_RDS_DATASET_REPORT_PATH) -> None:
+    lines.extend(
+        [
+            "# HELP rds_candidate_dataset_present Whether the RDS expanded candidate dataset summary exists.",
+            "# TYPE rds_candidate_dataset_present gauge",
+        ]
+    )
+    if not path.exists():
+        lines.append("rds_candidate_dataset_present 0")
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    lines.append("rds_candidate_dataset_present 1")
+    row_counts = payload.get("row_counts", {})
+    _gauge(lines, "rds_candidate_dataset_rows", row_counts.get("final_candidate_rows", 0))
+    _gauge(lines, "rds_candidate_training_rows", row_counts.get("training_rows", 0))
+    _gauge(lines, "rds_candidate_review_candidate_rows", row_counts.get("review_candidate_rows", 0))
+    _gauge(lines, "rds_candidate_larger_than_current_baseline", 1 if payload.get("larger_than_current_baseline") else 0)
+    audit = payload.get("audit", {})
+    _gauge(lines, "rds_candidate_snapshot_rows", audit.get("snapshot_rows", 0))
+    _gauge(lines, "rds_candidate_scrape_weeks", audit.get("scrape_weeks", 0))
+    _gauge(lines, "rds_candidate_exact_style_coverage_ratio", audit.get("exact_style_coverage_ratio", 0))
+    for label, count in payload.get("label_distribution", {}).items():
+        _gauge(lines, "rds_candidate_label_total", count, {"label": label})
+    for match_type, count in payload.get("match_type_distribution", {}).items():
+        _gauge(lines, "rds_candidate_match_total", count, {"match_type": match_type})
+
+
+def _render_rds_candidate_training_metrics(lines: list[str], path: Path = DEFAULT_CANDIDATE_META_PATH) -> None:
+    lines.extend(
+        [
+            "# HELP rds_candidate_model_present Whether the RDS candidate model metadata exists.",
+            "# TYPE rds_candidate_model_present gauge",
+        ]
+    )
+    if not path.exists():
+        lines.append("rds_candidate_model_present 0")
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    lines.append("rds_candidate_model_present 1")
+    _gauge(lines, "rds_candidate_model_train_examples", payload.get("train_examples", 0))
+    _gauge(lines, "rds_candidate_model_val_examples", payload.get("val_examples", 0))
+    _gauge(lines, "rds_candidate_model_num_trials", payload.get("num_trials", 0))
+    metrics = payload.get("best_trial", {}).get("metrics", {})
+    for metric_name, value in metrics.items():
+        if metric_name.startswith(("val_", "precision_", "recall_", "f1_", "support_")) or metric_name == "best_iteration":
+            _gauge(lines, "rds_candidate_model_metric", value, {"metric": metric_name})
 
 
 def _gauge(lines: list[str], name: str, value: Any, labels: dict[str, Any] | None = None) -> None:

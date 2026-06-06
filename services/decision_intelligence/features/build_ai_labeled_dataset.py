@@ -71,8 +71,11 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
     inventory_intensity = to_float(row, "inventory_intensity", 0.5)
     market_position = str(row.get("market_position", "at_market") or "at_market")
     category = str(row.get("category", "other") or "other")
+    match_type = str(row.get("match_type", "exact_style") or "exact_style")
+    match_score = to_float(row, "match_score", 1.0)
 
     sale_pressure = clamp((comp_on_sale / num_comp) if num_comp > 0 else 0.0)
+    oos_pressure = clamp((comp_out / num_comp) if num_comp > 0 else 0.0)
     inventory_pressure = scale(dos, 75, 180)
     severe_inventory = scale(dos, 120, 220)
     low_stock = max(scale(14 - dos, 0, 12), scale(12 - qty, 0, 10))
@@ -94,6 +97,18 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
     if category in {"swimwear", "football_boots"}:
         season_strength = clamp(season_strength * 1.12)
         season_weakness = clamp(season_weakness * 1.10)
+
+    if match_type == "exact_style":
+        competitor_reliability = 1.0
+    elif match_type == "exact_sku":
+        competitor_reliability = 0.95
+    elif match_type == "same_model_family":
+        competitor_reliability = clamp(0.68 + match_score * 0.24, 0.68, 0.92)
+    elif match_type == "similar_product":
+        competitor_reliability = clamp(0.45 + match_score * 0.22, 0.45, 0.70)
+    else:
+        competitor_reliability = 0.0
+    reliable_competitor = competitor_reliability >= 0.55 and num_comp > 0
 
     score_clear = (
         severe_inventory * 0.28
@@ -248,6 +263,67 @@ def _score_row(row: pd.Series) -> tuple[str, float, dict[str, float], str]:
         best_label = "MARKDOWN"
         best_score = scores["MARKDOWN"]
         second_score = max(scores["HOLD"], scores["PROMOTE"], scores["CLEAR"])
+
+    # Prompt-aligned guardrails. The score model gives a ranking, but these
+    # rules enforce the decision semantics used for manual review labels.
+    low_availability = qty < 12 or dos < 14
+    thin_margin_guardrail = margin < 32
+    clear_pattern = (
+        qty >= 20
+        and dos >= 120
+        and sell_through <= 0.25
+        and days_since_launch >= 150
+        and (inventory_intensity >= 0.55 or cash_tight >= 1 or market_overpricing >= 0.10 or sale_pressure >= 0.35)
+    )
+    markdown_pattern = (
+        reliable_competitor
+        and qty >= 15
+        and dos >= 35
+        and margin >= 35
+        and price_gap >= 0.08
+        and market_position in {"above_market", "premium"}
+        and recent_discount_penalty <= 0.55
+        and (sale_pressure >= 0.20 or num_comp >= 2 or match_type == "exact_style" or price_gap >= 0.16)
+    )
+    promote_pattern = (
+        reliable_competitor
+        and qty >= 15
+        and 15 <= dos <= 120
+        and margin >= 38
+        and price_gap <= 0.04
+        and recent_discount_penalty <= 0.55
+        and (oos_pressure >= 0.25 or market_underpricing >= 0.20 or season_strength >= 0.35 or event_score >= 0.50)
+        and not markdown_pattern
+    )
+
+    if low_availability or thin_margin_guardrail:
+        best_label = "HOLD"
+        best_score = max(scores["HOLD"], 0.72)
+        second_score = max(scores["MARKDOWN"], scores["PROMOTE"], scores["CLEAR"])
+    elif match_type == "no_match" and clear_pattern:
+        best_label = "HOLD"
+        best_score = max(scores["HOLD"], 0.70)
+        second_score = max(scores["MARKDOWN"], scores["PROMOTE"], scores["CLEAR"])
+    elif clear_pattern:
+        best_label = "CLEAR"
+        best_score = max(scores["CLEAR"], 0.78)
+        second_score = max(scores["HOLD"], scores["MARKDOWN"], scores["PROMOTE"])
+    elif markdown_pattern:
+        best_label = "MARKDOWN"
+        best_score = max(scores["MARKDOWN"], 0.74)
+        second_score = max(scores["HOLD"], scores["PROMOTE"], scores["CLEAR"])
+    elif promote_pattern:
+        best_label = "PROMOTE"
+        best_score = max(scores["PROMOTE"], 0.72)
+        second_score = max(scores["HOLD"], scores["MARKDOWN"], scores["CLEAR"])
+    elif match_type == "no_match" and best_label in {"MARKDOWN", "PROMOTE", "CLEAR"}:
+        best_label = "HOLD"
+        best_score = max(scores["HOLD"], 0.68)
+        second_score = max(scores["MARKDOWN"], scores["PROMOTE"], scores["CLEAR"])
+    elif match_type == "similar_product" and best_label in {"MARKDOWN", "PROMOTE"} and match_score < 0.72:
+        best_label = "HOLD"
+        best_score = max(scores["HOLD"], 0.64)
+        second_score = max(scores["MARKDOWN"], scores["PROMOTE"], scores["CLEAR"])
 
     confidence = clamp(0.55 + (best_score - second_score) * 1.35, 0.55, 0.98)
 

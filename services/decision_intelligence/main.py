@@ -57,7 +57,7 @@ LOCAL_PINNED_MODEL_EXPORT_DIR = (
     / "decision_intelligence"
     / "models"
     / "mlflow_export"
-    / "retail_radar_decision_model_v6"
+    / "retail_radar_decision_model_rds_candidate_v1"
 )
 LOCAL_MODEL_EXPORT_DIR = (
     ROOT

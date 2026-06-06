@@ -1,0 +1,104 @@
+{
+  "input_training_dataset": "data\\features\\rds_training_dataset.csv",
+  "output_training_dataset": "data\\features\\rds_training_dataset_augmented.csv",
+  "output_ai_labeled_dataset": "data\\features\\rds_ai_labeled_dataset_augmented.csv",
+  "seed": 126,
+  "max_copies_per_anchor": 55,
+  "original_row_count": 1212,
+  "synthetic_row_count": 10760,
+  "augmented_row_count": 11972,
+  "original_rules_distribution": {
+    "HOLD": 905,
+    "CLEAR": 213,
+    "PROMOTE": 94
+  },
+  "augmented_rules_distribution": {
+    "HOLD": 5551,
+    "MARKDOWN": 4132,
+    "PROMOTE": 1398,
+    "CLEAR": 891
+  },
+  "original_ai_distribution": {
+    "HOLD": 968,
+    "MARKDOWN": 232,
+    "PROMOTE": 12
+  },
+  "augmented_ai_distribution": {
+    "HOLD": 6368,
+    "MARKDOWN": 4232,
+    "CLEAR": 700,
+    "PROMOTE": 672
+  },
+  "synthetic_target_distribution": {
+    "HOLD": 5400,
+    "MARKDOWN": 4000,
+    "CLEAR": 700,
+    "PROMOTE": 660
+  },
+  "synthetic_category_distribution": {
+    "footwear": 4104,
+    "apparel": 2090,
+    "accessories": 989,
+    "sportswear": 761,
+    "lifestyle": 625,
+    "kids": 622,
+    "other": 561,
+    "football_boots": 446,
+    "swimwear": 445,
+    "2": 52
+  },
+  "generation_summaries": [
+    {
+      "target_label": "CLEAR",
+      "requested_rows": 700,
+      "generated_rows": 700,
+      "attempts": 2165,
+      "unique_anchor_rows_used": 279,
+      "top_anchor_categories": {
+        "footwear": 399,
+        "apparel": 97,
+        "sportswear": 58,
+        "swimwear": 39,
+        "other": 38
+      }
+    },
+    {
+      "target_label": "HOLD",
+      "requested_rows": 5400,
+      "generated_rows": 5400,
+      "attempts": 7833,
+      "unique_anchor_rows_used": 959,
+      "top_anchor_categories": {
+        "footwear": 1967,
+        "apparel": 978,
+        "lifestyle": 458,
+        "football_boots": 409,
+        "kids": 358
+      }
+    },
+    {
+      "target_label": "PROMOTE",
+      "requested_rows": 900,
+      "generated_rows": 660,
+      "attempts": 81000,
+      "unique_anchor_rows_used": 12,
+      "top_anchor_categories": {
+        "accessories": 660
+      }
+    },
+    {
+      "target_label": "MARKDOWN",
+      "requested_rows": 4000,
+      "generated_rows": 4000,
+      "attempts": 5141,
+      "unique_anchor_rows_used": 387,
+      "top_anchor_categories": {
+        "footwear": 1738,
+        "apparel": 1015,
+        "sportswear": 457,
+        "other": 250,
+        "kids": 241
+      }
+    }
+  ]
+}

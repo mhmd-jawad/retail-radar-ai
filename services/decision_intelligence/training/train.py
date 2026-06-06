@@ -45,7 +45,7 @@ FEATURES_PATH = ROOT / "data" / "features" / "features.csv"
 LABELS_PATH = ROOT / "data" / "features" / "labels.csv"
 MODELS_DIR = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision"
 
-CATEGORICAL_FEATURES = ["category", "brand", "market_position", "brand_tier"]
+CATEGORICAL_FEATURES = ["category", "brand", "market_position", "brand_tier", "match_type", "inventory_history_quality"]
 IDENTIFIER_COLUMNS = {
     "state_id",
     "sku_id",
@@ -69,6 +69,17 @@ IDENTIFIER_COLUMNS = {
     "synthetic_target_label",
     "synthetic_anchor_state_id",
     "synthetic_mutation_profile",
+    "row_source",
+    "is_augmented",
+    "augmentation_family",
+    "anchor_state_id",
+    "sample_weight_hint",
+    "label_confidence",
+    "expected_label",
+    "audit_flags",
+    "label_prompt_version",
+    "labeler_model",
+    "labeled_at",
 }
 LABEL_MAP = {"HOLD": 0, "MARKDOWN": 1, "PROMOTE": 2, "CLEAR": 3}
 LABEL_INV = {value: key for key, value in LABEL_MAP.items()}
@@ -274,6 +285,7 @@ def _compute_sample_weights(df):
         is_synthetic = int(float(row.get("synthetic_is_augmented", 0) or 0)) == 1
         if is_synthetic:
             weight *= 0.90
+        weight *= _safe_weight_hint(row.get("sample_weight_hint", 1.0))
 
         dos = float(row.get("days_of_supply", 0.0) or 0.0)
         sell_through = float(row.get("season_sell_through_pct", 0.0) or 0.0)
@@ -330,9 +342,17 @@ def _compute_sample_weights(df):
             if 25 <= dos <= 90 and margin >= 38 and price_gap <= 0.05 and event_score >= 0.50:
                 weight *= 1.08
 
-        weights.append(round(min(6.0, max(0.60, weight)), 4))
+        weights.append(round(min(6.0, max(0.25, weight)), 4))
 
     return weights, class_weights
+
+
+def _safe_weight_hint(value) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return min(1.0, max(0.25, numeric))
 
 
 def _time_aware_split(df):
@@ -390,16 +410,16 @@ def _time_aware_split(df):
     return train_df, val_df
 
 
-def _compute_metrics(model, X_val, y_val):
+def _compute_metrics(model, X_val, y_val, prefix: str = "val"):
     import numpy as np
     from sklearn.metrics import accuracy_score, f1_score, precision_recall_fscore_support
 
     preds = model.predict(X_val)
     pred_labels = np.asarray(preds).reshape(-1).astype(int).tolist()
     metrics = {
-        "val_accuracy": float(accuracy_score(y_val, pred_labels)),
-        "val_macro_f1": float(f1_score(y_val, pred_labels, average="macro")),
-        "val_weighted_f1": float(f1_score(y_val, pred_labels, average="weighted")),
+        f"{prefix}_accuracy": float(accuracy_score(y_val, pred_labels)),
+        f"{prefix}_macro_f1": float(f1_score(y_val, pred_labels, average="macro")),
+        f"{prefix}_weighted_f1": float(f1_score(y_val, pred_labels, average="weighted")),
     }
 
     precision, recall, f1, support = precision_recall_fscore_support(
@@ -410,12 +430,46 @@ def _compute_metrics(model, X_val, y_val):
     )
     for idx, label_id in enumerate(LABEL_INV.keys()):
         label_name = LABEL_INV[label_id].lower()
-        metrics[f"precision_{label_name}"] = float(precision[idx])
-        metrics[f"recall_{label_name}"] = float(recall[idx])
-        metrics[f"f1_{label_name}"] = float(f1[idx])
-        metrics[f"support_{label_name}"] = float(support[idx])
+        metrics[f"{prefix}_precision_{label_name}"] = float(precision[idx])
+        metrics[f"{prefix}_recall_{label_name}"] = float(recall[idx])
+        metrics[f"{prefix}_f1_{label_name}"] = float(f1[idx])
+        metrics[f"{prefix}_support_{label_name}"] = float(support[idx])
+        if prefix == "val":
+            # Preserve the legacy MLflow metric names used by existing runs.
+            metrics[f"precision_{label_name}"] = float(precision[idx])
+            metrics[f"recall_{label_name}"] = float(recall[idx])
+            metrics[f"f1_{label_name}"] = float(f1[idx])
+            metrics[f"support_{label_name}"] = float(support[idx])
 
     return metrics
+
+
+def _load_holdout_dataframe(test_dataset_path: Path | None, label_column: str):
+    if test_dataset_path is None:
+        return None
+    if not test_dataset_path.exists():
+        raise FileNotFoundError(f"Test dataset not found: {test_dataset_path}")
+
+    import pandas as pd
+
+    df = pd.read_csv(test_dataset_path)
+    if label_column not in df.columns:
+        raise ValueError(f"Test dataset does not contain requested label column '{label_column}'.")
+    df["label"] = df[label_column].map(LABEL_MAP)
+    df = df.dropna(subset=["label"]).copy()
+    if df.empty:
+        raise ValueError(f"Test dataset has no usable labels in column '{label_column}'.")
+    return df
+
+
+def _build_aligned_feature_matrix(df, feature_cols: list[str]):
+    aligned = df.copy()
+    for column in feature_cols:
+        if column not in aligned.columns:
+            aligned[column] = -1
+    X = aligned[feature_cols].fillna(-1)
+    y = aligned["label"].astype(int)
+    return X, y
 
 
 def _log_run_to_mlflow(
@@ -468,6 +522,8 @@ def train(
     features_path: Path = FEATURES_PATH,
     labels_path: Path = LABELS_PATH,
     models_dir: Path = MODELS_DIR,
+    test_dataset_path: Path | None = None,
+    stress_test_dataset_path: Path | None = None,
     label_column: str = "rules_label",
     iterations_grid: list[int] | None = None,
     learning_rate_grid: list[float] | None = None,
@@ -510,9 +566,23 @@ def train(
 
     train_df = _enrich_feature_space(train_df)
     val_df = _enrich_feature_space(val_df)
+    test_df = _load_holdout_dataframe(test_dataset_path, label_column)
+    if test_df is not None:
+        test_df = _enrich_feature_space(test_df)
+    stress_df = _load_holdout_dataframe(stress_test_dataset_path, label_column)
+    if stress_df is not None:
+        stress_df = _enrich_feature_space(stress_df)
 
     X_train, y_train, feature_cols, cat_idxs = _build_feature_matrix(train_df)
     X_val, y_val, _, _ = _build_feature_matrix(val_df)
+    if test_df is not None:
+        X_test, y_test = _build_aligned_feature_matrix(test_df, feature_cols)
+    else:
+        X_test = y_test = None
+    if stress_df is not None:
+        X_stress, y_stress = _build_aligned_feature_matrix(stress_df, feature_cols)
+    else:
+        X_stress = y_stress = None
     train_weights, class_weights = _compute_sample_weights(train_df)
 
     train_pool = cb.Pool(X_train, y_train, cat_features=cat_idxs, feature_names=feature_cols, weight=train_weights)
@@ -556,7 +626,11 @@ def train(
         model = cb.CatBoostClassifier(**params)
         model.fit(train_pool, eval_set=val_pool)
 
-        metrics = _compute_metrics(model, X_val, y_val)
+        metrics = _compute_metrics(model, X_val, y_val, prefix="val")
+        if X_test is not None and y_test is not None:
+            metrics.update(_compute_metrics(model, X_test, y_test, prefix="test_real"))
+        if X_stress is not None and y_stress is not None:
+            metrics.update(_compute_metrics(model, X_stress, y_stress, prefix="clear_stress"))
         best_iteration = model.get_best_iteration()
         metrics["best_iteration"] = int(best_iteration if best_iteration is not None and best_iteration >= 0 else params["iterations"])
 
@@ -608,6 +682,10 @@ def train(
         "training_dataset_path": str(training_dataset_path if training_dataset_path.exists() else features_path),
         "train_examples": len(train_df),
         "val_examples": len(val_df),
+        "test_examples": len(test_df) if test_df is not None else 0,
+        "test_dataset_path": str(test_dataset_path) if test_dataset_path else None,
+        "stress_test_examples": len(stress_df) if stress_df is not None else 0,
+        "stress_test_dataset_path": str(stress_test_dataset_path) if stress_test_dataset_path else None,
         "feature_cols": feature_cols,
         "cat_features": CATEGORICAL_FEATURES,
         "train_class_weights": class_weights,
@@ -643,6 +721,9 @@ if __name__ == "__main__":
     parser.add_argument("--training-dataset", default=str(TRAINING_DATASET_PATH), help="Merged dataset with features and label column")
     parser.add_argument("--features-path", default=str(FEATURES_PATH), help="Fallback features.csv path if merged dataset is unavailable")
     parser.add_argument("--labels-path", default=str(LABELS_PATH), help="Fallback labels.csv path if merged dataset is unavailable")
+    parser.add_argument("--models-dir", default=str(MODELS_DIR), help="Output model directory. Use a candidate directory for experiments.")
+    parser.add_argument("--test-dataset", default=None, help="Optional real holdout dataset for test_real_* metrics")
+    parser.add_argument("--stress-test-dataset", default=None, help="Optional curated stress-test dataset for clear_stress_* metrics")
     parser.add_argument("--label-column", default="rules_label", help="Target column to train on, e.g. rules_label or ai_label")
     parser.add_argument("--iterations-grid", default="300,500,800", help="Comma-separated CatBoost iterations values")
     parser.add_argument("--learning-rate-grid", default="0.03,0.05,0.08", help="Comma-separated learning rates")
@@ -657,6 +738,9 @@ if __name__ == "__main__":
         training_dataset_path=Path(args.training_dataset),
         features_path=Path(args.features_path),
         labels_path=Path(args.labels_path),
+        models_dir=Path(args.models_dir),
+        test_dataset_path=Path(args.test_dataset) if args.test_dataset else None,
+        stress_test_dataset_path=Path(args.stress_test_dataset) if args.stress_test_dataset else None,
         label_column=args.label_column,
         iterations_grid=_parse_grid(args.iterations_grid, int),
         learning_rate_grid=_parse_grid(args.learning_rate_grid, float),

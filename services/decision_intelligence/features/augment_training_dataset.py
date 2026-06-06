@@ -152,7 +152,9 @@ def _prepare_base_dataframe(training_df: pd.DataFrame, ai_df: pd.DataFrame) -> p
         "ai_score_promote",
         "ai_score_clear",
     ]
-    merged = training_df.merge(ai_df[ai_columns], on="state_id", how="left", validate="one_to_one")
+    stale_ai_columns = [column for column in ai_columns if column != "state_id" and column in training_df.columns]
+    base_training = training_df.drop(columns=stale_ai_columns, errors="ignore")
+    merged = base_training.merge(ai_df[ai_columns], on="state_id", how="left", validate="one_to_one")
     if "data_source" not in merged.columns:
         merged["data_source"] = "real"
     merged["synthetic_is_augmented"] = merged.get("synthetic_is_augmented", 0)
