@@ -223,11 +223,12 @@ def _fetch_product_data_sync(sku_id: str) -> dict[str, Any] | None:
                 from core.sku_variants v
                 join core.products p on p.id = v.product_id
                 left join core.inventory_balances b
-                    on b.variant_id = v.id and b.store_id = %s
+                    on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
                 left join lateral (
                     select amount
                     from core.prices
                     where variant_id = v.id
+                      and tenant_id = v.tenant_id
                       and price_type = 'retail'
                       and valid_to is null
                     order by valid_from desc

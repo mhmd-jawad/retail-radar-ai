@@ -85,8 +85,12 @@ Open:
 | Grafana | `http://localhost:3001` |
 
 The local Compose file now points app services at `DATABASE_URL` from `.env`.
+The built dashboard uses same-origin API paths, so `http://localhost:4173/auth/*`,
+`/inventory/*`, `/financial/*`, `/outcomes/*`, and recommendation calls proxy
+through Docker to the right backend service.
 If you want a disposable local PostgreSQL instead, start the optional database
-profile and set `.env` to `postgresql://postgres:postgres@localhost:5432/retail_radar`:
+profile and set `.env` to `postgresql://postgres:postgres@postgres:5432/retail_radar`
+for the Docker app containers:
 
 ```powershell
 docker compose -f infra\docker-compose.yml --profile local-db up -d postgres adminer

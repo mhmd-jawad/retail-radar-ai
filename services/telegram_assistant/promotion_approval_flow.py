@@ -298,6 +298,7 @@ class PromoteFlow:
                 "confidence": float(row["confidence"]),
                 "recommendation": decision,
                 "explanation": row.get("explanation") or "",
+                "tenant_id": str(tenant_id),
             },
         )
         logger.info(
@@ -374,6 +375,7 @@ class PromoteFlow:
             decision_type=recommendation,
             recommendation_id=context.get("recommendation_id"),
             cost_price_usd=float(context.get("cost_price") or 0),
+            tenant_id=context.get("tenant_id"),
         )
         await self._update_notification_outcome(context["notification_id"], "approved")
         await self._conv.clear_flow(chat_id)

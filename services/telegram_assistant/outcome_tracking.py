@@ -229,12 +229,13 @@ async def record_decision_snapshot(
     decision_type: str,
     recommendation_id: str | None,
     cost_price_usd: float,
+    tenant_id: UUID | str | None = None,
 ) -> int | None:
     def _run() -> int | None:
         from eep.outcome_tracking import snapshot_decision
         from eep.retail_db import get_variant_id_for_sku
 
-        variant_id = get_variant_id_for_sku(sku_id)
+        variant_id = get_variant_id_for_sku(sku_id, tenant_id=tenant_id)
         if not variant_id:
             return None
         return snapshot_decision(
@@ -243,6 +244,7 @@ async def record_decision_snapshot(
             decision_type=decision_type,
             recommendation_id=recommendation_id,
             cost_price_usd=cost_price_usd,
+            tenant_id=tenant_id,
         )
 
     return await asyncio.to_thread(_run)
