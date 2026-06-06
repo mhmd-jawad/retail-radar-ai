@@ -13,9 +13,12 @@ Run:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 # Load .env from repo root (no-op if file absent or dotenv not installed)
 try:
@@ -58,7 +61,6 @@ from eep.frontend_bridge import (
     build_competitor_latest,
     build_frontend_report,
     build_scrape_runs,
-    prepare_ie2_request,
     report_overview,
     serialize_frontend_recommendation,
 )
@@ -89,7 +91,6 @@ from eep.retail_db import (
     update_inventory_item,
 )
 from pydantic import BaseModel
-from services.decision_intelligence.schemas import CompetitorSignals, RecommendationRequest
 
 
 class PriceDecisionPayload(BaseModel):
@@ -145,12 +146,6 @@ def _startup_accounts() -> None:
         ensure_default_admin_account()
     except Exception as exc:
         print(f"Admin account bootstrap skipped: {exc}")
-
-
-def _recommend_single(request_model: RecommendationRequest):
-    from services.decision_intelligence.main import _recommend_single as recommend_single
-
-    return recommend_single(request_model)
 
 
 @app.get("/health")
@@ -785,10 +780,67 @@ async def recommend_batch(
             raise HTTPException(status_code=400, detail="Each batch item must include sku_id.")
 
     tenant_id = _tenant_id_from_request(request)
-    return list(await asyncio.gather(*[
-        _recommend_batch_item(item, endpoint_label="/recommend/batch", tenant_id=tenant_id)
-        for item in items
-    ]))
+    feature_results = _ie1_feature_batch([str(item["sku_id"]) for item in items], tenant_id=tenant_id)
+    response_rows: list[dict[str, Any] | None] = [None] * len(feature_results)
+    valid_features: list[dict[str, Any]] = []
+    valid_indexes: list[int] = []
+
+    for index, feature_payload in enumerate(feature_results):
+        if not isinstance(feature_payload, dict):
+            response_rows[index] = _batch_error_row(str(items[index]["sku_id"]), "IE1 returned an invalid row.", 502)
+            continue
+        if feature_payload.get("error"):
+            response_rows[index] = _batch_error_row(
+                str(feature_payload.get("sku_id") or items[index]["sku_id"]),
+                str(feature_payload.get("error")),
+                int(feature_payload.get("status_code") or 503),
+            )
+            continue
+        valid_indexes.append(index)
+        valid_features.append(feature_payload)
+
+    if valid_features:
+        decision_results = _ie2_recommend_features_batch(valid_features)
+        for feature_payload, index, decision in zip(valid_features, valid_indexes, decision_results):
+            sku_id = str(feature_payload.get("sku_id") or items[index]["sku_id"])
+            competitor_metric_payload = feature_payload.get("competitor_signals")
+            if not isinstance(decision, dict) or decision.get("error"):
+                response_rows[index] = _batch_error_row(
+                    sku_id,
+                    str(decision.get("error") if isinstance(decision, dict) else "IE2 returned an invalid row."),
+                    int(decision.get("status_code") if isinstance(decision, dict) and decision.get("status_code") else 502),
+                )
+                continue
+            observe_competitor_match(competitor_metric_payload)
+            observe_recommendation("/recommend/batch", decision.get("recommendation"))
+            response_payload = serialize_frontend_recommendation(decision)
+            response_rows[index] = {
+                **response_payload,
+                "competitor_signals_used": competitor_metric_payload,
+                "input_context": _frontend_input_context(feature_payload, competitor_metric_payload),
+            }
+
+    return [
+        row if row is not None else _batch_error_row(str(items[index]["sku_id"]), "Recommendation row was not produced.", 500)
+        for index, row in enumerate(response_rows)
+    ]
+
+
+def _batch_error_row(sku_id: str, detail: str, status_code: int) -> dict[str, Any]:
+    return {
+        "sku_id": sku_id,
+        "recommendation": "HOLD",
+        "confidence": 0.0,
+        "explanation": detail,
+        "shap_top5": [],
+        "rule_override": None,
+        "fallback_used": True,
+        "model_version": "error",
+        "processing_time_ms": 0,
+        "requires_human_approval": True,
+        "error": detail,
+        "status_code": status_code,
+    }
 
 
 async def _recommend_batch_item(
@@ -875,28 +927,110 @@ async def _recommend_for_frontend(
     endpoint_label: str,
     tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    if tenant_id:
-        try:
-            payload = {**payload, **_live_recommendation_payload(sku_id, tenant_id)}
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=f"SKU not found for this shop: {sku_id}") from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except DatabaseUnavailable as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-    request_payload = prepare_ie2_request(sku_id, payload)
-    competitor_metric_payload = request_payload.get("competitor_signals")
-    request_payload = _strip_competitor_metadata(request_payload)
-    request_model = RecommendationRequest.model_validate(request_payload)
-    result = _recommend_single(request_model)
+    feature_payload = _ie1_feature_instance(sku_id, tenant_id=tenant_id)
+    competitor_metric_payload = feature_payload.get("competitor_signals")
+    result = _ie2_recommend_from_features(feature_payload)
     observe_competitor_match(competitor_metric_payload)
-    observe_recommendation(endpoint_label, getattr(result, "recommendation", None))
+    observe_recommendation(endpoint_label, result.get("recommendation"))
     response_payload = serialize_frontend_recommendation(result)
     return {
         **response_payload,
         "competitor_signals_used": competitor_metric_payload,
-        "input_context": _frontend_input_context(request_payload, competitor_metric_payload),
+        "input_context": _frontend_input_context(feature_payload, competitor_metric_payload),
     }
+
+
+def _service_json(
+    url: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 30.0,
+) -> Any:
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    request = urllib_request.Request(
+        url,
+        data=body,
+        method=method,
+        headers={
+            "Content-Type": "application/json",
+            **(headers or {}),
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(detail)
+            detail = parsed.get("detail", detail)
+        except Exception:
+            pass
+        raise HTTPException(status_code=exc.code, detail=detail) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Service call failed for {url}: {exc}") from exc
+
+
+def _ie1_base_url() -> str:
+    return os.environ.get("IE1_BASE_URL", "http://ie1_market_intelligence:8001").rstrip("/")
+
+
+def _ie2_base_url() -> str:
+    return os.environ.get("IE2_BASE_URL", "http://ie2_decision_intelligence:8002").rstrip("/")
+
+
+def _ie1_feature_instance(sku_id: str, tenant_id: str | None) -> dict[str, Any]:
+    query = f"?tenant_id={tenant_id}" if tenant_id else ""
+    payload = _service_json(f"{_ie1_base_url()}/features/{sku_id}{query}", timeout=45.0)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="IE1 returned an invalid feature payload.")
+    return payload
+
+
+def _ie1_feature_batch(sku_ids: list[str], tenant_id: str | None) -> list[dict[str, Any]]:
+    payload = {
+        "items": [{"sku_id": sku_id} for sku_id in sku_ids],
+        "tenant_id": tenant_id,
+    }
+    result = _service_json(
+        f"{_ie1_base_url()}/features/batch",
+        method="POST",
+        payload=payload,
+        timeout=90.0,
+    )
+    if not isinstance(result, list):
+        raise HTTPException(status_code=502, detail="IE1 returned an invalid feature batch payload.")
+    return result
+
+
+def _ie2_recommend_from_features(feature_payload: dict[str, Any]) -> dict[str, Any]:
+    api_key = os.environ.get("IE2_API_KEY", "ie2-local-postman-key")
+    result = _service_json(
+        f"{_ie2_base_url()}/recommend/features",
+        method="POST",
+        payload=feature_payload,
+        headers={"X-API-Key": api_key},
+        timeout=45.0,
+    )
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=502, detail="IE2 returned an invalid recommendation payload.")
+    return result
+
+
+def _ie2_recommend_features_batch(feature_payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    api_key = os.environ.get("IE2_API_KEY", "ie2-local-postman-key")
+    result = _service_json(
+        f"{_ie2_base_url()}/recommend/features/batch",
+        method="POST",
+        payload={"items": feature_payloads},
+        headers={"X-API-Key": api_key},
+        timeout=90.0,
+    )
+    if not isinstance(result, list):
+        raise HTTPException(status_code=502, detail="IE2 returned an invalid recommendation batch payload.")
+    return result
 
 
 def _frontend_input_context(
@@ -919,187 +1053,6 @@ def _frontend_input_context(
     context = {key: request_payload.get(key) for key in allowed_fields if key in request_payload}
     context["competitor_signals"] = competitor_signals if isinstance(competitor_signals, dict) else None
     return context
-
-
-def _strip_competitor_metadata(request_payload: dict[str, Any]) -> dict[str, Any]:
-    competitor_signals = request_payload.get("competitor_signals")
-    if not isinstance(competitor_signals, dict):
-        return request_payload
-
-    allowed_fields = set(CompetitorSignals.model_fields)
-    cleaned_signals = {
-        key: value
-        for key, value in competitor_signals.items()
-        if key in allowed_fields
-    }
-    return {**request_payload, "competitor_signals": cleaned_signals}
-
-
-def _live_recommendation_payload(sku_id: str, tenant_id: str) -> dict[str, Any]:
-    from datetime import datetime, timezone
-
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            ctx = _context(cur, tenant_id=tenant_id)
-            cur.execute(
-                """
-                select
-                    v.id as variant_id,
-                    v.sku_id,
-                    v.style_code,
-                    p.name as product_name,
-                    p.brand,
-                    p.category,
-                    v.cost_price_usd,
-                    coalesce(pr.amount, 0) as retail_price_usd,
-                    coalesce(b.quantity_on_hand, 0) as current_stock,
-                    v.created_at as variant_created_at
-                from core.sku_variants v
-                join core.products p on p.id = v.product_id
-                left join core.inventory_balances b
-                    on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
-                left join lateral (
-                    select amount
-                    from core.prices
-                    where variant_id = v.id and tenant_id = v.tenant_id and price_type = 'retail' and valid_to is null
-                    order by valid_from desc
-                    limit 1
-                ) pr on true
-                where v.tenant_id = %s and v.sku_id = %s and v.status = 'active'
-                """,
-                (ctx["store_id"], ctx["tenant_id"], sku_id),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise KeyError(sku_id)
-
-            retail = float(row["retail_price_usd"] or 0)
-            cost = float(row["cost_price_usd"] or 0)
-            if retail <= 0:
-                raise ValueError(f"SKU {sku_id} needs a retail price greater than 0 before recommending.")
-            if cost <= 0 or cost >= retail:
-                raise ValueError(f"SKU {sku_id} needs a cost price greater than 0 and lower than retail price.")
-
-            created_at = row["variant_created_at"]
-            if created_at is not None and created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
-            days_since_launch = (datetime.now(timezone.utc) - created_at).days if created_at else 180
-            current_stock = int(row["current_stock"] or 0)
-
-            return {
-                "sku_id": row["sku_id"],
-                "product_name": row["product_name"],
-                "brand": row["brand"] or "Unknown",
-                "category": row["category"] or "uncategorized",
-                "retail_price_usd": round(retail, 2),
-                "cost_price_usd": round(cost, 2),
-                "current_stock": current_stock,
-                "initial_stock": max(current_stock, 1),
-                "days_since_launch": max(days_since_launch, 0),
-                "days_since_last_discount": 999,
-                "days_at_current_price": 30,
-                "competitor_signals": _live_competitor_signals(cur, ctx["tenant_id"], row),
-            }
-
-
-def _live_competitor_signals(cur, tenant_id: Any, product_row: dict[str, Any]) -> dict[str, Any]:
-    from datetime import datetime, timezone
-    from statistics import mean
-
-    sku_id = str(product_row["sku_id"])
-    style_code = product_row.get("style_code")
-    brand = str(product_row.get("brand") or "").strip()
-    product_name = str(product_row.get("product_name") or "").strip()
-    retail = float(product_row.get("retail_price_usd") or 0)
-
-    match_sql = "lower(cpl.sku_id) = lower(%s)"
-    params: list[Any] = [tenant_id, sku_id]
-    if style_code:
-        match_sql = "(lower(coalesce(cpl.style_code, '')) = lower(%s) or lower(coalesce(cpl.sku_id, '')) = lower(%s))"
-        params = [tenant_id, style_code, sku_id]
-    elif brand and product_name:
-        token = product_name.split()[0]
-        match_sql = (
-            "(lower(coalesce(cpl.sku_id, '')) = lower(%s)"
-            " or (lower(coalesce(cpl.brand_name, '')) = lower(%s)"
-            " and lower(cpl.product_name) like %s))"
-        )
-        params = [tenant_id, sku_id, brand, f"%{token.lower()}%"]
-
-    cur.execute(
-        """
-        select cpl.shop_code, s.shop_name,
-               coalesce(cpl.competitor_sale_price, cpl.competitor_price) as price_usd,
-               cpl.is_on_sale,
-               cpl.availability,
-               cpl.last_seen_at
-        from intel.competitor_products_latest cpl
-        join intel.tenant_competitors tc
-            on tc.shop_code = cpl.shop_code and tc.tenant_id = %s and tc.is_active = true
-        join intel.shops s on s.shop_code = cpl.shop_code
-        where """
-        + match_sql
-        + """
-          and coalesce(cpl.competitor_sale_price, cpl.competitor_price) is not null
-        order by coalesce(cpl.competitor_sale_price, cpl.competitor_price) asc
-        limit 50
-        """,
-        params,
-    )
-    rows = cur.fetchall() or []
-    priced_rows = [
-        (row, float(row["price_usd"]))
-        for row in rows
-        if row.get("price_usd") is not None and float(row["price_usd"]) > 0
-    ]
-    prices = [price for _, price in priced_rows]
-    timestamp = datetime.now(timezone.utc)
-    if not prices or retail <= 0:
-        return {
-            "sku_id": sku_id,
-            "competitor_min_price": 0,
-            "competitor_avg_price": 0,
-            "price_gap_pct": 0,
-            "competitors_on_sale_count": 0,
-            "competitors_out_of_stock_count": 0,
-            "num_competitors_tracked": 0,
-            "cheapest_competitor_name": None,
-            "price_trend_direction": "STABLE",
-            "data_freshness_hours": 0,
-            "confidence_score": 0,
-            "fallback_used": True,
-            "fallback_reason": "No matching products found in this shop's selected competitors.",
-            "match_type": "no_match",
-            "match_score": 0.0,
-            "timestamp": timestamp.isoformat(),
-        }
-
-    cheapest_row, min_price = min(priced_rows, key=lambda item: item[1])
-    latest_seen = max((row.get("last_seen_at") for row, _ in priced_rows if row.get("last_seen_at")), default=None)
-    if latest_seen and latest_seen.tzinfo is None:
-        latest_seen = latest_seen.replace(tzinfo=timezone.utc)
-    freshness_hours = round((timestamp - latest_seen).total_seconds() / 3600, 2) if latest_seen else 0
-    out_of_stock = sum(1 for row, _ in priced_rows if "out" in str(row.get("availability") or "").lower())
-    on_sale = sum(1 for row, _ in priced_rows if bool(row.get("is_on_sale")))
-
-    return {
-        "sku_id": sku_id,
-        "competitor_min_price": round(min_price, 2),
-        "competitor_avg_price": round(mean(prices), 2),
-        "price_gap_pct": round((retail - min_price) / retail, 4),
-        "competitors_on_sale_count": on_sale,
-        "competitors_out_of_stock_count": out_of_stock,
-        "num_competitors_tracked": len(prices),
-        "cheapest_competitor_name": cheapest_row.get("shop_name") or cheapest_row.get("shop_code"),
-        "price_trend_direction": "STABLE",
-        "data_freshness_hours": freshness_hours,
-        "confidence_score": 0.85,
-        "fallback_used": False,
-        "fallback_reason": None,
-        "match_type": "exact_style" if style_code else "similar_product",
-        "match_score": 1.0 if style_code else 0.75,
-        "timestamp": timestamp.isoformat(),
-    }
 
 
 @app.get("/report/live")

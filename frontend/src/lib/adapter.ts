@@ -40,7 +40,7 @@ import { authHeader, useAuth } from '@/store/auth';
 
 function settings() {
   const s = useSettings.getState();
-  return { mode: s.mode, ie2: s.ie2BaseUrl, base: s.apiBaseUrl, key: s.apiKey };
+  return { mode: s.mode, ie1: s.ie1BaseUrl, ie2: s.ie2BaseUrl, base: s.apiBaseUrl, key: s.apiKey };
 }
 
 function apiHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -340,6 +340,28 @@ export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; deta
   const t0 = performance.now();
   try {
     const r = await fetch(`${ie2}/health`, { headers: { 'X-API-Key': key } });
+    return { ok: r.ok, latency_ms: Math.round(performance.now() - t0), detail: r.ok ? 'healthy' : `HTTP ${r.status}` };
+  } catch (e: any) {
+    return { ok: false, latency_ms: Math.round(performance.now() - t0), detail: e?.message || 'unreachable' };
+  }
+}
+
+export async function pingIE1(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+  const { ie1 } = settings();
+  const t0 = performance.now();
+  try {
+    const r = await fetch(`${ie1}/health`);
+    return { ok: r.ok, latency_ms: Math.round(performance.now() - t0), detail: r.ok ? 'healthy' : `HTTP ${r.status}` };
+  } catch (e: any) {
+    return { ok: false, latency_ms: Math.round(performance.now() - t0), detail: e?.message || 'unreachable' };
+  }
+}
+
+export async function pingEEP(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
+  const { base } = settings();
+  const t0 = performance.now();
+  try {
+    const r = await fetch(`${base}/health`, { headers: apiHeaders() });
     return { ok: r.ok, latency_ms: Math.round(performance.now() - t0), detail: r.ok ? 'healthy' : `HTTP ${r.status}` };
   } catch (e: any) {
     return { ok: false, latency_ms: Math.round(performance.now() - t0), detail: e?.message || 'unreachable' };

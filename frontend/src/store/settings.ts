@@ -13,6 +13,7 @@ interface RecState {
 interface SettingsState {
   mode: DataMode;
   apiBaseUrl: string;
+  ie1BaseUrl: string;
   ie2BaseUrl: string;
   ie3BaseUrl: string;
   apiKey: string;
@@ -21,6 +22,7 @@ interface SettingsState {
   whatsappNumber: string; // store WhatsApp number (e.g. 96170123456)
   setMode: (m: DataMode) => void;
   setApiBaseUrl: (u: string) => void;
+  setIe1BaseUrl: (u: string) => void;
   setIe2BaseUrl: (u: string) => void;
   setIe3BaseUrl: (u: string) => void;
   setApiKey: (k: string) => void;
@@ -32,9 +34,11 @@ interface SettingsState {
 
 const env = import.meta.env;
 const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
+const defaultIe1BaseUrl = env.PROD ? '/ie1' : 'http://localhost:8001';
 const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 const defaultIe3BaseUrl = env.PROD ? '/ie3' : 'http://localhost:8003';
 const configuredApiBaseUrl = env.VITE_API_BASE_URL ?? defaultApiBaseUrl;
+const configuredIe1BaseUrl = env.VITE_IE1_BASE_URL ?? defaultIe1BaseUrl;
 const configuredIe2BaseUrl = env.VITE_IE2_BASE_URL ?? defaultIe2BaseUrl;
 const configuredIe3BaseUrl = env.VITE_IE3_BASE_URL ?? defaultIe3BaseUrl;
 
@@ -47,6 +51,7 @@ export const useSettings = create<SettingsState>()(
     (set) => ({
       mode: (env.VITE_DATA_MODE as DataMode) || 'eep-live',
       apiBaseUrl: configuredApiBaseUrl,
+      ie1BaseUrl: configuredIe1BaseUrl,
       ie2BaseUrl: configuredIe2BaseUrl,
       ie3BaseUrl: configuredIe3BaseUrl,
       apiKey: env.VITE_API_KEY || 'ie2-local-postman-key',
@@ -56,6 +61,7 @@ export const useSettings = create<SettingsState>()(
       setMode: (mode) => set({ mode }),
       setWhatsappNumber: (whatsappNumber) => set({ whatsappNumber }),
       setApiBaseUrl: (apiBaseUrl) => set({ apiBaseUrl }),
+      setIe1BaseUrl: (ie1BaseUrl) => set({ ie1BaseUrl }),
       setIe2BaseUrl: (ie2BaseUrl) => set({ ie2BaseUrl }),
       setIe3BaseUrl: (ie3BaseUrl) => set({ ie3BaseUrl }),
       setApiKey: (apiKey) => set({ apiKey }),
@@ -87,6 +93,9 @@ export const useSettings = create<SettingsState>()(
         if (version < 4 && env.PROD) {
           if (!s.apiBaseUrl || isLocalhostUrl(s.apiBaseUrl)) {
             s.apiBaseUrl = configuredApiBaseUrl;
+          }
+          if (!s.ie1BaseUrl || isLocalhostUrl(s.ie1BaseUrl)) {
+            s.ie1BaseUrl = configuredIe1BaseUrl;
           }
           if (!s.ie2BaseUrl || isLocalhostUrl(s.ie2BaseUrl)) {
             s.ie2BaseUrl = configuredIe2BaseUrl;

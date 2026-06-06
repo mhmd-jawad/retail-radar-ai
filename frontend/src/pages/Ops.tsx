@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
-import { pingIE2, pingIE3, fetchScrapeRuns, fetchCompetitorLatest } from '@/lib/adapter';
+import { pingEEP, pingIE1, pingIE2, pingIE3, fetchScrapeRuns, fetchCompetitorLatest } from '@/lib/adapter';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { Activity, Database, Radio, Zap } from 'lucide-react';
 import { relativeTime, fmtNum, fmtUSD } from '@/lib/format';
 
 const services = [
+  { key: 'ie1', name: 'IE1 Market Intelligence', desc: 'Active · port 8001', state: 'live' },
   { key: 'ie2', name: 'IE2 Decision Intelligence', desc: 'Active · port 8002', state: 'live' },
-  { key: 'ie1', name: 'IE1 Inventory Intelligence', desc: 'Planned', state: 'planned' },
   { key: 'ie3', name: 'IE3 Creative Intelligence', desc: 'Active · port 8003', state: 'live' },
   { key: 'eep', name: 'EEP Orchestrator', desc: 'Active dashboard API · port 8000', state: 'live' },
 ];
 
 export default function Ops() {
+  const [eepHealth, setEepHealth] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
+  const [ie1Health, setIe1Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
   const [ie2Health, setIe2Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
   const [ie3Health, setIe3Health] = useState<{ ok: boolean; latency_ms: number; detail?: string } | null>(null);
   const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: fetchScrapeRuns });
   const { data: latest } = useQuery({ queryKey: ['latest'], queryFn: fetchCompetitorLatest });
 
   useEffect(() => {
+    pingEEP().then(setEepHealth);
+    pingIE1().then(setIe1Health);
     pingIE2().then(setIe2Health);
     pingIE3().then(setIe3Health);
   }, []);
@@ -31,11 +35,14 @@ export default function Ops() {
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {services.map(s => {
+            const isIe1 = s.key === 'ie1';
             const isIe2 = s.key === 'ie2';
             const isIe3 = s.key === 'ie3';
-            const health = isIe2 ? ie2Health : isIe3 ? ie3Health : null;
-            const live = (isIe2 || isIe3) ? health?.ok : s.state === 'live';
-            const checking = (isIe2 || isIe3) && !health;
+            const isEep = s.key === 'eep';
+            const isHealthChecked = isEep || isIe1 || isIe2 || isIe3;
+            const health = isEep ? eepHealth : isIe1 ? ie1Health : isIe2 ? ie2Health : isIe3 ? ie3Health : null;
+            const live = isHealthChecked ? health?.ok : s.state === 'live';
+            const checking = isHealthChecked && !health;
             return (
               <div key={s.key} className={cn('rounded-xl border p-5 shadow-sm-soft', s.state === 'live' ? 'bg-card border-border' : 'bg-surface-sunken border-dashed border-border')}>
                 <div className="flex items-center justify-between">
@@ -43,8 +50,8 @@ export default function Ops() {
                   <span className={cn('text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded',
                     live ? 'bg-decision-promote-bg text-decision-promote' :
                     checking ? 'bg-secondary text-secondary-foreground' :
-                    (isIe2 || isIe3) ? 'bg-decision-clear-bg text-decision-clear' : 'bg-secondary text-secondary-foreground')}>
-                    {checking ? 'checking' : live ? 'live' : (isIe2 || isIe3) ? 'down' : 'planned'}
+                    isHealthChecked ? 'bg-decision-clear-bg text-decision-clear' : 'bg-secondary text-secondary-foreground')}>
+                    {checking ? 'checking' : live ? 'live' : isHealthChecked ? 'down' : 'planned'}
                   </span>
                 </div>
                 <div className="mt-3 text-[14px] font-semibold">{s.name}</div>
