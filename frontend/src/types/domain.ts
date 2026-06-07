@@ -15,6 +15,8 @@ export interface AuthUser {
   tenant_slug?: string | null;
   tenant_name?: string | null;
   member_role?: 'owner' | 'manager' | 'staff' | null;
+  read_only?: boolean;
+  impersonated_by_email?: string | null;
 }
 
 export interface AuthResponse {

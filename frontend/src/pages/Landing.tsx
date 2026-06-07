@@ -110,13 +110,13 @@ export default function Landing() {
       {/* ===== Top Nav (transparent over hero) ===== */}
       <header className="absolute top-0 inset-x-0 z-30">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 animate-fade-in-down">
-            <div className="relative h-9 w-9 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">
-              <Radar className="h-5 w-5 text-primary-foreground" />
+          <div className="flex items-center gap-3 animate-fade-in-down">
+            <div className="relative h-12 w-12 rounded-xl overflow-hidden flex items-center justify-center shadow-glow-sm">
+              <img src="/logo.png" alt="Retail Radar AI" className="h-12 w-12 object-contain drop-shadow-[0_0_16px_hsl(28_96%_56%/.5)]" />
               <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-decision-promote ring-2 ring-background animate-pulse" />
             </div>
             <div className="leading-tight">
-              <div className="font-display font-bold text-[15px] tracking-tight">Retail Radar AI</div>
+              <div className="font-display font-bold text-[16px] tracking-tight">Retail Radar AI</div>
               <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">Powered by StylePulse</div>
             </div>
           </div>
@@ -136,6 +136,12 @@ export default function Landing() {
       <section className="relative min-h-[100vh] flex items-center justify-center overflow-hidden">
         <ShaderBackground />
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center pt-24">
+          {/* Brand logo */}
+          <img
+            src="/logo.png"
+            alt="Retail Radar AI"
+            className="mx-auto mb-8 h-28 w-28 md:h-36 md:w-36 object-contain drop-shadow-[0_0_40px_hsl(28_96%_56%/.55)] animate-fade-in-down"
+          />
           {/* Trust badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/5 backdrop-blur-md px-4 py-1.5 text-[12px] text-amber-200/90 animate-fade-in-down">
             <ShieldCheck className="h-3.5 w-3.5 text-amber-300" />

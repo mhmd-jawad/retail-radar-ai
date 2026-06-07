@@ -9,7 +9,6 @@ import { AuthModeSync } from "@/components/auth/AuthModeSync";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AppShell } from "@/components/layout/AppShell";
-import AdminCompetitorRequests from "./pages/admin/AdminCompetitorRequests";
 import AdminCompetitors from "./pages/admin/AdminCompetitors";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminNotifications from "./pages/admin/AdminNotifications";
@@ -77,7 +76,7 @@ const App = () => (
             <Route element={<AdminShell />}>
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/shops" element={<AdminShops />} />
-              <Route path="/admin/competitor-requests" element={<AdminCompetitorRequests />} />
+              <Route path="/admin/competitor-requests" element={<Navigate to="/admin/notifications" replace />} />
               <Route path="/admin/notifications" element={<AdminNotifications />} />
               <Route path="/admin/competitors" element={<AdminCompetitors />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

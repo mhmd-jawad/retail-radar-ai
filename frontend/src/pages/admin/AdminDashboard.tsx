@@ -161,9 +161,9 @@ export function Status({ value }: { value: string }) {
   const tone =
     value === 'unread' || value === 'pending'
       ? 'border-decision-markdown/35 bg-decision-markdown-bg text-decision-markdown'
-      : value === 'resolved' || value === 'active' || value === 'approved'
+      : value === 'resolved' || value === 'active' || value === 'approved' || value === 'onboarded'
         ? 'border-decision-promote/35 bg-decision-promote-bg text-decision-promote'
-        : value === 'dismissed' || value === 'rejected' || value === 'inactive'
+        : value === 'dismissed' || value === 'rejected' || value === 'inactive' || value === 'suspended' || value === 'archived'
           ? 'border-decision-clear/35 bg-decision-clear-bg text-decision-clear'
           : 'border-border bg-muted text-muted-foreground';
   return (

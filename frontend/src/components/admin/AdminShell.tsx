@@ -2,9 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   Bell,
   Building2,
-  ListChecks,
   LogOut,
-  Radio,
   Settings,
   Shield,
   Store,
@@ -17,8 +15,7 @@ import { useAuth } from '@/store/auth';
 const nav = [
   { to: '/admin', label: 'Dashboard', icon: Shield, end: true },
   { to: '/admin/shops', label: 'Shops', icon: Store },
-  { to: '/admin/competitor-requests', label: 'Competitor Requests', icon: ListChecks },
-  { to: '/admin/notifications', label: 'Notifications', icon: Bell },
+  { to: '/admin/notifications', label: 'Requests & Alerts', icon: Bell },
   { to: '/admin/competitors', label: 'Competitor Catalog', icon: Building2 },
   { to: '/admin/settings', label: 'Admin Settings', icon: Settings },
 ];
@@ -42,11 +39,8 @@ export function AdminShell() {
     <div className="min-h-screen flex bg-[radial-gradient(900px_520px_at_22%_0%,hsl(28_96%_56%/.18),transparent),radial-gradient(760px_500px_at_100%_18%,hsl(152_60%_48%/.12),transparent),radial-gradient(700px_460px_at_88%_100%,hsl(0_84%_60%/.10),transparent),linear-gradient(hsl(15_18%_6%),hsl(12_16%_5%))] text-foreground">
       <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-primary/15 bg-sidebar/80 text-sidebar-foreground backdrop-blur-xl">
         <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-2.5">
-            <div className="relative h-10 w-10 rounded-xl bg-gradient-data shadow-glow-sm flex items-center justify-center">
-              <Radio className="h-5 w-5 text-primary-foreground" />
-              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-decision-promote ring-2 ring-sidebar animate-pulse" />
-            </div>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="Retail Radar AI" className="h-16 w-16 shrink-0 object-contain" />
             <div className="min-w-0">
               <div className="font-display font-bold text-sidebar-foreground text-[15px] leading-tight tracking-tight">
                 Retail Radar Admin
