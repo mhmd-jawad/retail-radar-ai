@@ -1,0 +1,27 @@
+# ALTERNATIVE EDGE (deployment guide Appendix D) — only if you SKIP the Lightsail Load Balancer.
+# The default plan uses a Lightsail LB and leaves Box A untouched; this file is the no-LB option.
+#
+# Caddyfile for the EXISTING 2 GB Lightsail box (Box A).
+# Role: public HTTPS front door + load balancer into the k3s cluster.
+# - Terminates TLS for your existing sslip.io domain (auto Let's Encrypt — no change to Apify).
+# - Reverse-proxies EVERYTHING to the two cluster nodes' Traefik NodePort (30080),
+#   load-balanced with active health checks so a dead node drops out of rotation.
+# Path routing (/api, /ie2, /apify, SPA, …) is done by Traefik INSIDE the cluster,
+# so this file stays a thin forwarder.
+#
+# Replace the two node PRIVATE IPs below with your real cluster node private IPs.
+# Set WEBHOOK_DOMAIN in the environment (same value as before, e.g. 63-184-254-17.sslip.io).
+
+{$WEBHOOK_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy NODE1_PRIVATE_IP:30080 NODE2_PRIVATE_IP:30080 {
+		lb_policy round_robin
+		health_uri /api/health
+		health_interval 10s
+		health_timeout 5s
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
+}

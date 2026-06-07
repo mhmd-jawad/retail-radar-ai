@@ -10,5 +10,8 @@ __pycache__/
 .env.*
 !.env.example
 !frontend/.env.example
+# Local Kubernetes secret env files — never commit
+k8s.env
+pgbouncer.env
 uvicorn.log
 *.log
