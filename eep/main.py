@@ -1075,7 +1075,7 @@ def _ie2_base_url() -> str:
 
 def _ie1_feature_instance(sku_id: str, tenant_id: str | None) -> dict[str, Any]:
     query = f"?tenant_id={tenant_id}" if tenant_id else ""
-    payload = _service_json(f"{_ie1_base_url()}/features/{sku_id}{query}", timeout=45.0)
+    payload = _service_json(f"{_ie1_base_url()}/features/{sku_id}{query}", timeout=120.0)
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="IE1 returned an invalid feature payload.")
     return payload
@@ -1104,7 +1104,7 @@ def _ie2_recommend_from_features(feature_payload: dict[str, Any]) -> dict[str, A
         method="POST",
         payload=feature_payload,
         headers={"X-API-Key": api_key},
-        timeout=45.0,
+        timeout=90.0,
     )
     if not isinstance(result, dict):
         raise HTTPException(status_code=502, detail="IE2 returned an invalid recommendation payload.")
