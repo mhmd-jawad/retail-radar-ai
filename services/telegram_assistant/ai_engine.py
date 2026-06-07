@@ -176,10 +176,11 @@ class AIEngine:
         conversation_summary: str | None,
         tenant_id: UUID,
         role: str = "owner",
+        shop_name: str = "your store",
     ) -> tuple[str, list[str]]:
         messages = _build_messages(user_text, message_history, conversation_summary)
         tools_used: list[str] = []
-        system_text = SYSTEM_PROMPT + _role_system_suffix(role)
+        system_text = SYSTEM_PROMPT.replace("StylePulse", shop_name) + _role_system_suffix(role)
 
         for _ in range(MAX_TOOL_ITERATIONS):
             response = await self._client.messages.create(

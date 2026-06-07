@@ -262,7 +262,7 @@ def _fetch_product_data_sync(sku_id: str, tenant_id: str | None = None) -> dict[
             return cur.fetchone()
 
 
-def _write_campaigns_sync(package: CampaignPackage, sku_id: str) -> None:
+def _write_campaigns_sync(package: CampaignPackage, sku_id: str, tenant_id: str | None = None) -> None:
     """Write one marketing.campaigns row per channel (instagram, facebook, tiktok)."""
     body_map = {
         "instagram": package.instagram_caption,
@@ -274,7 +274,7 @@ def _write_campaigns_sync(package: CampaignPackage, sku_id: str) -> None:
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _get_tenant_context(cur)
+            ctx = _get_tenant_context(cur, tenant_id=tenant_id)
 
             # Resolve variant_id for FK reference
             cur.execute(
@@ -1202,7 +1202,7 @@ async def generate_campaign(
     # ── Step 6: write to DB (non-blocking — errors are logged, not raised) ────
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(_write_campaigns_sync, package, recommendation.sku_id),
+            asyncio.to_thread(_write_campaigns_sync, package, recommendation.sku_id, x_tenant_id),
             timeout=3.0,
         )
         logger.info(

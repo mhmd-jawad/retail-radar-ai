@@ -104,6 +104,10 @@ async def ensure_closed_loop_tables(db_url: str) -> None:
                 """
             )
             await cur.execute(
+                "ALTER TABLE telegram.promote_notifications "
+                "ADD COLUMN IF NOT EXISTS expiry_warning_sent BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+            await cur.execute(
                 """
                 create table if not exists telegram.closed_loop_notifications (
                     id bigserial primary key,
@@ -210,9 +214,19 @@ def format_closed_loop_summary(summary: dict[str, Any]) -> str:
             if measurements:
                 latest = measurements[-1]
                 if latest.get("data_available"):
+                    lift = latest.get("velocity_lift_pct")
+                    lift_val = float(lift) if lift is not None else None
+                    rev_delta = float(latest.get("revenue_delta_usd") or 0)
+                    if lift_val is not None and lift_val > 5:
+                        verdict = "✅ Good call"
+                    elif lift_val is not None and lift_val < -5:
+                        verdict = "⚠️ Below target"
+                    else:
+                        verdict = "➡️ Neutral"
+                    lift_str = f"{lift_val:+.1f}%" if lift_val is not None else "?"
                     result = (
-                        f"{latest.get('window_days')}d lift {latest.get('velocity_lift_pct')}%, "
-                        f"revenue delta ${float(latest.get('revenue_delta_usd') or 0):,.2f}"
+                        f"{latest.get('window_days')}d — {verdict} "
+                        f"(lift {lift_str}, revenue delta ${rev_delta:+,.0f})"
                     )
                 else:
                     result = f"{latest.get('window_days')}d check has no sales data"

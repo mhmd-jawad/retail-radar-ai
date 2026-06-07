@@ -29,6 +29,8 @@ import type {
   CompetitorOption,
   DetailedBalanceSheet,
   DetailedProfitability,
+  FinancialProgressPoint,
+  FinancialSnapshot,
   OutcomeSnapshot,
   DailySalesPoint,
   PortfolioAccuracy,
@@ -685,6 +687,24 @@ export async function fetchPortfolioAccuracy(decisionType?: string): Promise<Por
   return r.json();
 }
 
+export async function fetchAllOutcomes(limit = 50, offset = 0): Promise<import('@/types/domain').OutcomeRow[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes?limit=${limit}&offset=${offset}`, { headers: apiHeaders() });
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /outcomes'));
+  return r.json();
+}
+
+export async function measureAllDue(): Promise<{ measured: number; skipped: number; errors: number; results: unknown[] }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/outcomes/measure-all-due`, {
+    method: 'POST',
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP POST /outcomes/measure-all-due'));
+  return r.json();
+}
+
 // ─── Financial detail fetchers ────────────────────────────────────────────────
 
 export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
@@ -710,6 +730,41 @@ export async function fetchCashflow(): Promise<CashflowMonth[]> {
   const json = await r.json();
   // backend wraps series in { series: [...] }, unwrap if needed
   return Array.isArray(json) ? json : (json.series ?? []);
+}
+
+export async function fetchFinancialSnapshots(): Promise<FinancialSnapshot[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/snapshots?limit=12`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/financial/snapshots ${r.status}`);
+  const json = await r.json();
+  return json.snapshots ?? [];
+}
+
+export async function fetchCurrentFinancialSnapshot(): Promise<{ period_month: string; missing_snapshot: boolean; snapshot: FinancialSnapshot | null }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/snapshots/current`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/financial/snapshots/current ${r.status}`);
+  return r.json();
+}
+
+export async function saveFinancialSnapshot(periodMonth: string, payload: Partial<FinancialSnapshot>): Promise<FinancialSnapshot> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/snapshots/${encodeURIComponent(periodMonth)}`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
+  const json = await r.json();
+  return json.snapshot;
+}
+
+export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/financial/progress?limit=12`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/financial/progress ${r.status}`);
+  const json = await r.json();
+  return json.series ?? [];
 }
 
 // Supabase-ready stubs (future)

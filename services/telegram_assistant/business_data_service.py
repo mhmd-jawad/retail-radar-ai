@@ -547,18 +547,73 @@ class BusinessDataService:
             result["proactive_insight"] = proactive_insight
         return result
 
-    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
-        """Financial snapshot combining CSV profile and live revenue from DB."""
-        result: dict[str, Any] = {}
+    async def _fetch_financial_config_from_db(self, tenant_id: str) -> dict[str, Any]:
+        """Load per-tenant financial config from core.tenant_financial_config."""
+        conn = await self._db_connect()
         try:
-            fp = self._load_financial_profile()
-            cf = fp.get("cashflow_summary", {})
-            inv = fp.get("inventory_summary", {})
-            result["cash_runway_months"] = float(cf.get("cash_runway_months", 0))
-            result["monthly_fixed_opex_usd"] = float(cf.get("monthly_fixed_opex_usd", 0))
-            result["blended_margin_pct"] = float(inv.get("blended_margin_pct", 0))
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT monthly_fixed_opex_usd, blended_margin_pct
+                    FROM core.tenant_financial_config
+                    WHERE tenant_id = %s
+                    LIMIT 1
+                    """,
+                    (tenant_id,),
+                )
+                row = await cur.fetchone()
+            return dict(row) if row else {}
         except Exception as exc:
-            logger.warning("Failed to load financial_profile.json: %s", exc)
+            logger.warning("Failed to fetch tenant financial config: %s", exc)
+            return {}
+        finally:
+            await conn.close()
+
+    async def _fetch_latest_financial_snapshot_from_db(self, tenant_id: str) -> dict[str, Any]:
+        """Load the most recent monthly snapshot from core.tenant_financial_snapshots."""
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT cash_on_hand_usd, bank_balance_usd, receivables_usd,
+                           supplier_payables_usd, loan_balance_usd,
+                           monthly_sales_usd, monthly_expenses_usd, period_month
+                    FROM core.tenant_financial_snapshots
+                    WHERE tenant_id = %s
+                    ORDER BY period_month DESC
+                    LIMIT 1
+                    """,
+                    (tenant_id,),
+                )
+                row = await cur.fetchone()
+            return dict(row) if row else {}
+        except Exception as exc:
+            logger.warning("Failed to fetch tenant financial snapshot: %s", exc)
+            return {}
+        finally:
+            await conn.close()
+
+    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
+        """Financial snapshot from per-tenant DB tables with live revenue."""
+        result: dict[str, Any] = {}
+
+        # Per-tenant config (OPEX, margin)
+        fin_cfg = await self._fetch_financial_config_from_db(tenant_id)
+        result["monthly_fixed_opex_usd"] = float(fin_cfg.get("monthly_fixed_opex_usd") or 0)
+        result["blended_margin_pct"] = float(fin_cfg.get("blended_margin_pct") or 0)
+
+        # Per-tenant monthly snapshot (cash, bank, payables, loans)
+        snap = await self._fetch_latest_financial_snapshot_from_db(tenant_id)
+        cash = float(snap.get("cash_on_hand_usd") or 0) + float(snap.get("bank_balance_usd") or 0)
+        monthly_expenses = float(snap.get("monthly_expenses_usd") or result["monthly_fixed_opex_usd"] or 0)
+        if cash > 0 and monthly_expenses > 0:
+            result["cash_runway_months"] = round(cash / monthly_expenses, 1)
+        else:
+            result["cash_runway_months"] = 0.0
+        result["cash_on_hand_usd"] = cash
+        result["supplier_payables_usd"] = float(snap.get("supplier_payables_usd") or 0)
+        result["loan_balance_usd"] = float(snap.get("loan_balance_usd") or 0)
 
         try:
             rev = await self._fetch_revenue_from_db(tenant_id)
@@ -566,14 +621,7 @@ class BusinessDataService:
             result["revenue_last_7d_usd"] = float(rev.get("last_7d_usd") or 0)
             result["revenue_last_30d_usd"] = float(rev.get("last_30d_usd") or 0)
             result["transactions_this_month"] = int(rev.get("txn_count_this_month") or 0)
-            if result.get("revenue_current_month_usd", 0) == 0:
-                try:
-                    result["revenue_current_month_usd"] = self._load_cashflow_current_month()
-                    result["revenue_source"] = "csv_projection"
-                except Exception:
-                    result["revenue_source"] = "unavailable"
-            else:
-                result["revenue_source"] = "live_pos"
+            result["revenue_source"] = "live_pos" if result["revenue_current_month_usd"] > 0 else "unavailable"
         except Exception as exc:
             logger.warning("Failed to fetch revenue for financials snapshot: %s", exc)
 

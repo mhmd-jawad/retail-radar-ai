@@ -24,14 +24,17 @@ import Ops from "./pages/Ops";
 import FinancialBalanceSheet from "./pages/financial/BalanceSheet";
 import FinancialProfitability from "./pages/financial/Profitability";
 import FinancialCashflow from "./pages/financial/Cashflow";
-import FinancialLollar from "./pages/financial/Lollar";
 import FinancialCosts from "./pages/financial/Costs";
 import FinancialAlerts from "./pages/financial/Alerts";
+import FinancialProgress from "./pages/financial/Progress";
+import FinancialOutcomes from "./pages/financial/Outcomes";
+import UpdateFinancials from "./pages/financial/UpdateFinancials";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ShopProfile from "./pages/ShopProfile";
+import ChatAssistant from "./pages/assistant/ChatAssistant";
 import { tenantScopeKey } from "./lib/tenantScope";
 import { useAuth } from "./store/auth";
 
@@ -62,12 +65,15 @@ const App = () => (
               <Route path="/financial/balance-sheet" element={<FinancialBalanceSheet />} />
               <Route path="/financial/profitability" element={<FinancialProfitability />} />
               <Route path="/financial/cashflow" element={<FinancialCashflow />} />
-              <Route path="/financial/lollar" element={<FinancialLollar />} />
               <Route path="/financial/costs" element={<FinancialCosts />} />
               <Route path="/financial/alerts" element={<FinancialAlerts />} />
+              <Route path="/financial/progress" element={<FinancialProgress />} />
+              <Route path="/financial/outcomes" element={<FinancialOutcomes />} />
+              <Route path="/financial/update" element={<UpdateFinancials />} />
               <Route path="/upload" element={<Navigate to="/inventory" replace />} />
               <Route path="/audit" element={<Navigate to="/overview" replace />} />
               <Route path="/ops" element={<Ops />} />
+              <Route path="/assistant" element={<ChatAssistant />} />
               <Route path="/shop-profile" element={<ShopProfile />} />
               <Route path="/settings" element={<Navigate to="/shop-profile" replace />} />
             </Route>

@@ -155,7 +155,7 @@ Open: http://localhost:8082
 |---|---|
 | `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
 | `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
-| `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Lollar |
+| `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Progress |
 | `http://localhost:8000/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
 | `http://localhost:8000/report` | Static report JSON (financial pages) |
 | `http://localhost:8000/docs` | FastAPI Swagger UI |

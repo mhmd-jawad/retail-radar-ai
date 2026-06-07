@@ -73,20 +73,6 @@ def analyze(financial_profile, balance_sheet, cashflow, inventory_results):
                        f"Watch this — it's approaching the {T.INVENTORY_PCT_OF_ASSETS_MAX}% danger zone.",
         })
 
-    # Lollar exposure
-    lebanon = fp.get("lebanon_context", {})
-    lollar_balance = lebanon.get("lollar_balance_usd", 0)
-    lollar_real = lebanon.get("lollar_real_value_usd", 0)
-    lollar_loss = lollar_balance - lollar_real
-    if lollar_loss > 0:
-        alerts.append({
-            "severity": "low",
-            "type": "lollar_exposure",
-            "message": f"${lollar_balance:,.0f} trapped in Lebanese banks. "
-                       f"Real value is ${lollar_real:,.0f} (85% haircut). "
-                       f"Do not count this as working capital.",
-        })
-
     balance_sheet_health = {
         "total_assets_usd": total_assets,
         "total_liabilities_usd": total_liabilities,
@@ -96,8 +82,6 @@ def analyze(financial_profile, balance_sheet, cashflow, inventory_results):
         "inventory_pct_of_assets": inventory_pct,
         "dead_stock_pct_of_inventory": dead_stock_pct,
         "dead_stock_value_usd": dead_stock_value,
-        "lollar_exposure_usd": lollar_balance,
-        "lollar_real_value_usd": lollar_real,
         "equity_quality": "solid" if dead_stock_pct < 10 else "impaired",
     }
 

@@ -17,7 +17,9 @@ from typing import Any
 
 from eep.retail_db import (
     DatabaseUnavailable,
+    get_all_snapshots_for_tenant,
     get_current_stock_for_variant,
+    get_due_snapshots_for_tenant,
     get_portfolio_accuracy,
     get_recommendation_by_id,
     get_snapshot_by_id,
@@ -383,6 +385,45 @@ Step 3 — Output ONLY valid JSON (no markdown, no code fences):
 
 def get_outcomes_for_sku(variant_id: str, tenant_id: Any | None = None) -> list[dict[str, Any]]:
     return get_snapshots_for_variant(variant_id, tenant_id=tenant_id)
+
+
+def get_all_outcomes(
+    tenant_id: Any | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Return all outcome snapshots for a tenant with product info, paginated."""
+    try:
+        return get_all_snapshots_for_tenant(tenant_id=tenant_id, limit=limit, offset=offset)
+    except DatabaseUnavailable:
+        return []
+
+
+def measure_all_due(tenant_id: Any | None = None) -> dict[str, Any]:
+    """Measure all due snapshots for a tenant. Idempotent — UNIQUE constraint skips already-measured."""
+    try:
+        due = get_due_snapshots_for_tenant(tenant_id=tenant_id)
+    except DatabaseUnavailable:
+        return {"measured": 0, "skipped": 0, "errors": 0, "results": []}
+
+    measured = skipped = errors = 0
+    results: list[dict[str, Any]] = []
+
+    for snap in due:
+        snapshot_id = int(snap["id"])
+        window_days = int(snap["window_days"])
+        try:
+            result = measure_outcome(snapshot_id, window_days, tenant_id=tenant_id)
+            if result.get("data_available"):
+                measured += 1
+            else:
+                skipped += 1
+            results.append({"snapshot_id": snapshot_id, "window_days": window_days, "ok": True, **result})
+        except Exception as exc:
+            errors += 1
+            results.append({"snapshot_id": snapshot_id, "window_days": window_days, "ok": False, "error": str(exc)})
+
+    return {"measured": measured, "skipped": skipped, "errors": errors, "results": results}
 
 
 def get_accuracy(decision_type: str | None = None, tenant_id: Any | None = None) -> dict[str, Any]:

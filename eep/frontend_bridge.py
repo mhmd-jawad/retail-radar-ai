@@ -526,9 +526,6 @@ def build_frontend_report() -> dict[str, Any]:
     balance_sheet_raw = financial_raw.get("balance_sheet_health", {})
     cashflow_raw = financial_raw.get("cashflow_health", {})
     profitability_raw = financial_raw.get("profitability", {})
-    financial_profile = load_financial_profile()
-    lollar_balance = _to_float(financial_profile.get("lebanon_context", {}).get("lollar_balance_usd"), 0.0)
-
     category_values = sorted(
         (summary["value_usd"] for summary in inventory_category_summary.values()),
         reverse=True,
@@ -696,7 +693,6 @@ def build_frontend_report() -> dict[str, Any]:
                 "monthly_burn_usd": avg_outflow,
                 "monthly_cash_in_usd": avg_inflow,
                 "cash_on_hand_usd": round(latest_cash_balance, 2),
-                "lollar_exposure_pct": round(lollar_balance / max(_to_float(balance_sheet_raw.get("total_assets_usd"), 1.0), 1.0) * 100, 1),
                 "series": cash_series,
             },
             "profitability": {

@@ -171,20 +171,49 @@ def _verify_telegram_secret(request: Request) -> None:
 
 # ── Tenant resolution helpers ─────────────────────────────────────────────────
 
-async def _resolve_tenant_for_chat(chat_id: str) -> tuple[UUID | None, str]:
-    """Return (tenant_id, role) for a registered chat, or (None, '') if not registered."""
+async def _resolve_tenant_for_chat(chat_id: str) -> tuple[UUID | None, str, str]:
+    """Return (tenant_id, role, shop_name) for a registered chat, or (None, '', '') if not registered."""
     conn = await psycopg.AsyncConnection.connect(_db_url, row_factory=dict_row)
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT tenant_id, role FROM telegram.registered_chats "
-                "WHERE chat_id = %s AND is_active = true LIMIT 1",
+                """
+                SELECT rc.tenant_id, rc.role, COALESCE(sp.business_name, t.name, 'your store') AS shop_name
+                FROM telegram.registered_chats rc
+                JOIN core.tenants t ON t.id = rc.tenant_id
+                LEFT JOIN core.shop_profiles sp ON sp.tenant_id = rc.tenant_id
+                WHERE rc.chat_id = %s AND rc.is_active = true
+                LIMIT 1
+                """,
                 (chat_id,),
             )
             row = await cur.fetchone()
         if row:
-            return row["tenant_id"], row.get("role") or "owner"
-        return None, ""
+            return row["tenant_id"], row.get("role") or "owner", row.get("shop_name") or "your store"
+        return None, "", ""
+    finally:
+        await conn.close()
+
+
+async def _fetch_shop_name(tenant_id: str) -> str:
+    """Return the business name for a tenant, falling back to the tenant name."""
+    conn = await psycopg.AsyncConnection.connect(_db_url, row_factory=dict_row)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT COALESCE(sp.business_name, t.name, 'your store') AS shop_name
+                FROM core.tenants t
+                LEFT JOIN core.shop_profiles sp ON sp.tenant_id = t.id
+                WHERE t.id = %s
+                LIMIT 1
+                """,
+                (tenant_id,),
+            )
+            row = await cur.fetchone()
+        return row["shop_name"] if row else "your store"
+    except Exception:
+        return "your store"
     finally:
         await conn.close()
 
@@ -819,7 +848,7 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         return {"ok": True}
 
     # ④ Resolve which tenant owns this chat (also returns role)
-    tenant_id, role = await _resolve_tenant_for_chat(chat_id)
+    tenant_id, role, shop_name = await _resolve_tenant_for_chat(chat_id)
     if tenant_id is None:
         await _send_and_count(
             chat_id,
@@ -872,6 +901,7 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
             conversation_summary=session.conversation_summary,
             tenant_id=tenant_id,
             role=role,
+            shop_name=shop_name,
         )
 
         for tool in tools_used:
@@ -930,6 +960,8 @@ async def web_chat(request: Request):
 
     chat_id = f"web:{session_id}"
 
+    shop_name = await _fetch_shop_name(str(tenant_id))
+
     try:
         session = await _conv_manager.get_or_create_session(chat_id, tenant_id)
         reply, tools_used = await _ai_engine.chat(
@@ -939,6 +971,7 @@ async def web_chat(request: Request):
             conversation_summary=session.conversation_summary,
             tenant_id=tenant_id,
             role="owner",
+            shop_name=shop_name,
         )
         await _conv_manager.append_message(chat_id, "user", message, tenant_id=tenant_id)
         await _conv_manager.append_message(chat_id, "assistant", reply, tenant_id=tenant_id)

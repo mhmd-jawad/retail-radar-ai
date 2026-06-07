@@ -247,7 +247,6 @@ export interface CashflowHealth {
   monthly_burn_usd: number;
   monthly_cash_in_usd: number;
   cash_on_hand_usd: number;
-  lollar_exposure_pct: number;
   series: { month: string; in: number; out: number; net: number }[];
 }
 
@@ -602,17 +601,25 @@ export interface CategoryProfitability {
 export interface DetailedBalanceSheet {
   data_source: 'live-db' | 'static-file';
   generated_at: string;
+  missing_snapshot?: boolean;
+  period_month?: string | null;
   assets: {
     inventory_at_cost_usd: number;
     inventory_at_retail_usd: number;
     cash_on_hand_usd: number;
-    lollar_face_usd: number;
-    lollar_real_usd: number;
+    bank_balance_usd: number;
+    receivables_usd: number;
+    equipment_fixtures_usd: number;
     other_assets_usd: number;
     total_usd: number;
   };
   liabilities: {
     supplier_payables_usd: number;
+    rent_payable_usd: number;
+    salary_payable_usd: number;
+    loan_balance_usd: number;
+    tax_vat_payable_usd: number;
+    customer_deposits_usd: number;
     other_usd: number;
     total_usd: number;
   };
@@ -623,6 +630,45 @@ export interface DetailedBalanceSheet {
     debt_to_equity: number;
     top5_concentration_pct: number;
   };
+}
+
+export interface FinancialSnapshot {
+  id?: string;
+  period_month: string;
+  currency?: 'USD';
+  cash_on_hand_usd: number;
+  bank_balance_usd: number;
+  receivables_usd: number;
+  inventory_at_cost_usd?: number;
+  equipment_fixtures_usd: number;
+  other_assets_usd: number;
+  supplier_payables_usd: number;
+  rent_payable_usd: number;
+  salary_payable_usd: number;
+  loan_balance_usd: number;
+  tax_vat_payable_usd: number;
+  customer_deposits_usd: number;
+  other_liabilities_usd: number;
+  monthly_sales_usd: number;
+  monthly_expenses_usd: number;
+  owner_draw_usd: number;
+  notes?: string | null;
+  total_cash_usd?: number;
+  total_entered_assets_usd?: number;
+  total_entered_liabilities_usd?: number;
+}
+
+export interface FinancialProgressPoint {
+  period_month: string;
+  total_assets_usd: number;
+  total_liabilities_usd: number;
+  equity_usd: number;
+  cash_runway_months: number;
+  inventory_pct_of_assets: number;
+  debt_to_equity: number;
+  monthly_sales_usd: number;
+  monthly_expenses_usd: number;
+  owner_draw_usd: number;
 }
 
 export interface DetailedProfitability {
@@ -718,4 +764,11 @@ export interface PortfolioAccuracy {
   avg_accuracy: number | null;
   decision_count: number;
   by_type: Partial<Record<Decision, number>>;
+}
+
+// Extends OutcomeSnapshot with joined product info (from GET /outcomes)
+export interface OutcomeRow extends OutcomeSnapshot {
+  sku_id: string;
+  product_name: string;
+  brand: string | null;
 }
