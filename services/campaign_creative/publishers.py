@@ -113,17 +113,57 @@ class PublishResult:
         }
 
 
+# ── Per-tenant credential loader ─────────────────────────────────────────────
+
+async def _load_social_credentials(
+    db_url: str | None, tenant_id: str | None, platform: str
+) -> dict:
+    """Load social credentials from DB for a tenant, returning a dict with the keys
+    needed for that platform.  Returns empty dict if DB is unavailable or no row found."""
+    if not db_url or not tenant_id:
+        return {}
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT access_token, page_id, user_id
+                    FROM marketing.tenant_social_accounts
+                    WHERE tenant_id = %s AND platform = %s AND is_active = true
+                    LIMIT 1
+                    """,
+                    (tenant_id, platform),
+                )
+                row = await cur.fetchone()
+            return dict(row) if row else {}
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.warning("Could not load social credentials for tenant %s/%s: %s", tenant_id, platform, exc)
+        return {}
+
+
 # ── Facebook ──────────────────────────────────────────────────────────────────
 
-async def post_to_facebook(caption: str, image_url: str) -> PublishResult:
+async def post_to_facebook(
+    caption: str,
+    image_url: str,
+    tenant_id: str | None = None,
+    db_url: str | None = None,
+) -> PublishResult:
     """
     Post an image + caption to a Facebook Page.
 
     API: POST /{page-id}/photos
     Docs: https://developers.facebook.com/docs/graph-api/reference/page/photos/
     """
-    token   = os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
-    page_id = os.getenv("FB_PAGE_ID", "").strip()
+    # Try DB credentials first, fall back to env vars
+    creds = await _load_social_credentials(db_url, tenant_id, "facebook")
+    token   = creds.get("access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
+    page_id = creds.get("page_id") or os.getenv("FB_PAGE_ID", "").strip()
     logger.info("FB token in use (length: %d)", len(token))
 
     if not token or not page_id:
@@ -165,7 +205,12 @@ async def post_to_facebook(caption: str, image_url: str) -> PublishResult:
 
 # ── Instagram ─────────────────────────────────────────────────────────────────
 
-async def post_to_instagram(caption: str, image_url: str) -> PublishResult:
+async def post_to_instagram(
+    caption: str,
+    image_url: str,
+    tenant_id: str | None = None,
+    db_url: str | None = None,
+) -> PublishResult:
     """
     Post an image to an Instagram Business account via Meta Graph API.
 
@@ -176,9 +221,10 @@ async def post_to_instagram(caption: str, image_url: str) -> PublishResult:
     Docs: https://developers.facebook.com/docs/instagram-api/reference/ig-user/media
     NOTE: image_url must be a publicly reachable HTTPS URL.
     """
-    # Instagram Business API requires the Page access token (not the IGAAN-prefixed token)
-    token      = os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
-    ig_user_id = os.getenv("IG_USER_ID", "").strip()
+    # Try DB credentials first, fall back to env vars
+    creds = await _load_social_credentials(db_url, tenant_id, "instagram")
+    token      = creds.get("access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
+    ig_user_id = creds.get("user_id") or os.getenv("IG_USER_ID", "").strip()
 
     if not token or not ig_user_id:
         return PublishResult(
@@ -268,6 +314,8 @@ async def publish_to_all_platforms(
     instagram_caption: str,
     facebook_post: str,
     image_url: str,
+    tenant_id: str | None = None,
+    db_url: str | None = None,
 ) -> list[dict]:
     """
     Fire Facebook and Instagram publishers in parallel.
@@ -275,8 +323,8 @@ async def publish_to_all_platforms(
     Returns a list of 2 dicts (one per platform).
     """
     results = await asyncio.gather(
-        post_to_facebook(facebook_post, image_url),
-        post_to_instagram(instagram_caption, image_url),
+        post_to_facebook(facebook_post, image_url, tenant_id=tenant_id, db_url=db_url),
+        post_to_instagram(instagram_caption, image_url, tenant_id=tenant_id, db_url=db_url),
         return_exceptions=True,
     )
 

@@ -300,11 +300,73 @@ class PromoteFlow:
                 "explanation": row.get("explanation") or "",
                 "tenant_id": str(tenant_id),
             },
+            tenant_id=tenant_id,
         )
         logger.info(
             "Sent %s notification for %s (%s) → notification_id=%s",
             decision, sku_id, product_name, notification_id,
         )
+
+    # ── Expiry warnings ───────────────────────────────────────────────────────
+
+    async def check_and_send_expiry_warnings(
+        self, retailer_chat_id: str, tenant_id: UUID
+    ) -> int:
+        """Send a reminder for any pending notification expiring within the next 2 hours."""
+        conn = await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT n.id, n.sku_id, n.expires_at,
+                           r.recommendation, p.name AS product_name
+                    FROM telegram.promote_notifications n
+                    JOIN marketing.recommendations r ON r.id = n.recommendation_id
+                    JOIN core.sku_variants sv ON sv.sku_id = n.sku_id AND sv.tenant_id = %s
+                    JOIN core.products p ON p.id = sv.product_id
+                    WHERE n.tenant_id = %s
+                      AND n.chat_id = %s
+                      AND n.outcome = 'pending'
+                      AND n.expiry_warning_sent = FALSE
+                      AND n.expires_at <= now() + interval '2 hours'
+                      AND n.expires_at > now()
+                    """,
+                    (str(tenant_id), str(tenant_id), retailer_chat_id),
+                )
+                rows = await cur.fetchall()
+        finally:
+            await conn.close()
+
+        count = 0
+        for row in rows:
+            try:
+                expires_at = row["expires_at"]
+                minutes_left = int((expires_at - datetime.now(timezone.utc)).total_seconds() / 60)
+                product_name = row.get("product_name") or row["sku_id"]
+                decision = row["recommendation"]
+                warning = (
+                    f"⏰ *Reminder — decision expiring soon*\n\n"
+                    f"Your *{decision}* recommendation for *{product_name}* "
+                    f"expires in *{minutes_left} minutes*.\n\n"
+                    f"Reply *APPROVE*, *REJECT*, or ask me \"why this?\" for full reasoning."
+                )
+                await self._telegram.send_text_message(retailer_chat_id, warning)
+                conn2 = await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
+                try:
+                    async with conn2.cursor() as cur:
+                        await cur.execute(
+                            "UPDATE telegram.promote_notifications "
+                            "SET expiry_warning_sent = TRUE WHERE id = %s",
+                            (row["id"],),
+                        )
+                    await conn2.commit()
+                finally:
+                    await conn2.close()
+                count += 1
+                logger.info("Sent expiry warning for notification %s (%s min left)", row["id"], minutes_left)
+            except Exception as exc:
+                logger.error("Expiry warning send failed for notification %s: %s", row["id"], exc)
+        return count
 
     # ── Reply handler (entry point from main.py) ──────────────────────────────
 
@@ -378,7 +440,7 @@ class PromoteFlow:
             tenant_id=context.get("tenant_id"),
         )
         await self._update_notification_outcome(context["notification_id"], "approved")
-        await self._conv.clear_flow(chat_id)
+        await self._conv.clear_flow(chat_id, tenant_id=context.get("tenant_id"))
 
         tracking = (
             f"Closed-loop tracking started: snapshot *#{snapshot_id}*.\n"
@@ -438,7 +500,12 @@ class PromoteFlow:
             logger.warning("Roadmap mark_modification failed: %s", exc)
 
         # Update flow context with new numbers — keep the same flow name so APPROVE still works
-        await self._conv.set_flow(chat_id, "pending_recommendation", updated_context)
+        await self._conv.set_flow(
+            chat_id,
+            "pending_recommendation",
+            updated_context,
+            tenant_id=context.get("tenant_id"),
+        )
 
         product_name = updated_context.get("product_name", updated_context["sku_id"])
         reply = (
@@ -455,7 +522,7 @@ class PromoteFlow:
     async def _handle_reject(self, chat_id: str, context: dict) -> str:
         await self._update_recommendation_status(context.get("recommendation_id"), "rejected")
         await self._update_notification_outcome(context["notification_id"], "rejected")
-        await self._conv.clear_flow(chat_id)
+        await self._conv.clear_flow(chat_id, tenant_id=context.get("tenant_id"))
 
         # Advance roadmap to 'expired'
         from services.telegram_assistant.recommendation_roadmap import (

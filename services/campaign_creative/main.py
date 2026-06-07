@@ -33,7 +33,7 @@ from typing import Any, Literal, Optional
 import anthropic
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
@@ -186,7 +186,28 @@ def _connect():
         conn.close()
 
 
-def _get_tenant_context(cur) -> dict[str, Any]:
+def _get_tenant_context(cur, tenant_id: str | None = None) -> dict[str, Any]:
+    """Resolve tenant context.
+
+    If *tenant_id* (a UUID string) is supplied, look it up directly.
+    Otherwise fall back to RETAIL_TENANT_SLUG / RETAIL_STORE_CODE env vars
+    so that single-tenant deployments continue to work unchanged.
+    """
+    if tenant_id:
+        store = os.environ.get("RETAIL_STORE_CODE", DEFAULT_STORE_CODE)
+        cur.execute(
+            """
+            select t.id as tenant_id, s.id as store_id
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.id = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_id, store),
+        )
+        row = cur.fetchone()
+        if row:
+            return row
+    # Fallback: env-var resolution (single-tenant / local dev)
     slug = os.environ.get("RETAIL_TENANT_SLUG", DEFAULT_TENANT_SLUG)
     store = os.environ.get("RETAIL_STORE_CODE", DEFAULT_STORE_CODE)
     cur.execute(
@@ -204,11 +225,11 @@ def _get_tenant_context(cur) -> dict[str, Any]:
     return row
 
 
-def _fetch_product_data_sync(sku_id: str) -> dict[str, Any] | None:
+def _fetch_product_data_sync(sku_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
     """Fetch brand, category, pricing, stock, and variant info for a SKU."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _get_tenant_context(cur)
+            ctx = _get_tenant_context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 select
@@ -1023,7 +1044,10 @@ async def instagram_callback(code: str = "", error: str = "", error_reason: str 
 
 
 @app.post("/campaign/generate", response_model=CampaignPackage)
-async def generate_campaign(recommendation: RecommendationResult):
+async def generate_campaign(
+    recommendation: RecommendationResult,
+    x_tenant_id: str | None = Header(default=None, alias="x-tenant-id"),
+):
     """
     Generate and publish a full campaign for a PROMOTE recommendation.
 
@@ -1053,7 +1077,7 @@ async def generate_campaign(recommendation: RecommendationResult):
     product_data: dict[str, Any] = {}
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_product_data_sync, recommendation.sku_id),
+            asyncio.to_thread(_fetch_product_data_sync, recommendation.sku_id, x_tenant_id),
             timeout=3.0,
         )
         if result:
@@ -1195,11 +1219,14 @@ async def generate_campaign(recommendation: RecommendationResult):
     from services.campaign_creative.publishers import publish_to_all_platforms
 
     try:
+        _db_url = os.environ.get("DATABASE_URL", "")
         social_posts = await asyncio.wait_for(
             publish_to_all_platforms(
                 package.instagram_caption,
                 package.facebook_post,
                 package.image_url,
+                tenant_id=x_tenant_id,
+                db_url=_db_url or None,
             ),
             timeout=90.0,
         )

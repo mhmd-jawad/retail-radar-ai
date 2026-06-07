@@ -40,6 +40,28 @@ class TelegramClient:
             data = response.json()
             return str(data["result"]["message_id"])
 
+    async def get_updates(self, offset: int | None = None, timeout: int = 30) -> list[dict]:
+        """Poll Telegram for updates. Used by local deployments without a public webhook."""
+        params = {"timeout": timeout}
+        if offset is not None:
+            params["offset"] = offset
+        async with httpx.AsyncClient(timeout=timeout + 10.0) as client:
+            response = await client.get(f"{self._base}/getUpdates", params=params)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get("ok"):
+                raise RuntimeError(f"Telegram getUpdates failed: {data}")
+            return list(data.get("result") or [])
+
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> None:
+        """Clear Telegram webhook so getUpdates can receive messages."""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{self._base}/deleteWebhook",
+                params={"drop_pending_updates": str(drop_pending_updates).lower()},
+            )
+            response.raise_for_status()
+
     def parse_incoming_update(self, payload: dict) -> InboundMessage | None:
         """
         Parse a Telegram Update JSON payload.

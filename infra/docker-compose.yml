@@ -140,7 +140,6 @@ services:
     restart: unless-stopped
 
   telegram_assistant:
-    profiles: ["telegram"]
     build:
       context: ..
       dockerfile: services/telegram_assistant/Dockerfile

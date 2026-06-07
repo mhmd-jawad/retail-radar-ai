@@ -283,13 +283,14 @@ async def due_progress_notifications(
                 left join telegram.closed_loop_notifications n
                   on n.snapshot_id = d.snapshot_id
                  and n.window_days = d.window_days
+                 and n.tenant_id = %s
                  and n.chat_id = %s
                  and n.notification_type = 'measurement_due'
                 where n.id is null
                 order by d.approved_at asc
                 limit 3
                 """,
-                (str(tenant_id), chat_id),
+                (str(tenant_id), str(tenant_id), chat_id),
             )
             rows = await cur.fetchall()
     finally:
@@ -323,7 +324,7 @@ async def mark_progress_notification_sent(
                 insert into telegram.closed_loop_notifications
                     (tenant_id, chat_id, snapshot_id, window_days, notification_type, message_text)
                 values (%s, %s, %s, %s, 'measurement_due', %s)
-                on conflict (chat_id, snapshot_id, window_days, notification_type) do nothing
+                on conflict (tenant_id, chat_id, snapshot_id, window_days, notification_type) do nothing
                 """,
                 (str(tenant_id), chat_id, snapshot_id, window_days, message),
             )

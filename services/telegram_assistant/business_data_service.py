@@ -172,6 +172,10 @@ class BusinessDataService:
                 )                            AS price_gap_pct,
                 cl.last_seen_at
             FROM intel.competitor_products_latest cl
+            JOIN intel.tenant_competitors tc
+                ON tc.shop_code = cl.shop_code
+               AND tc.tenant_id = %s
+               AND tc.is_active = true
             JOIN core.sku_variants sv
                 ON sv.style_code = cl.style_code
                AND sv.tenant_id = %s
@@ -190,7 +194,7 @@ class BusinessDataService:
         conn = await self._db_connect()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(sql, (tenant_id,))
+                await cur.execute(sql, (tenant_id, tenant_id))
                 return await cur.fetchall()
         finally:
             await conn.close()
@@ -274,7 +278,7 @@ class BusinessDataService:
         # Check cache
         if not force_refresh:
             try:
-                cached_data, cached_at = await self._conv.get_cached_business_data(chat_id)
+                cached_data, cached_at = await self._conv.get_cached_business_data(chat_id, tenant_id=tenant_id)
                 if cached_data and cached_at:
                     age = (
                         datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)
@@ -449,7 +453,7 @@ class BusinessDataService:
 
         # Cache result
         try:
-            await self._conv.set_cached_business_data(chat_id, context)
+            await self._conv.set_cached_business_data(chat_id, context, tenant_id=_tenant_id)
         except Exception as exc:
             logger.warning("Failed to write business data cache: %s", exc)
 
@@ -846,6 +850,10 @@ class BusinessDataService:
                     SUM(CASE WHEN cl.is_on_sale THEN 1 ELSE 0 END)  AS on_sale_count,
                     SUM(CASE WHEN cl.availability = 'out_of_stock' THEN 1 ELSE 0 END) AS oos_count
                 FROM intel.competitor_products_latest cl
+                JOIN intel.tenant_competitors tc
+                    ON tc.shop_code = cl.shop_code
+                   AND tc.tenant_id = %s
+                   AND tc.is_active = true
                 JOIN core.sku_variants sv2
                     ON sv2.style_code = cl.style_code
                     AND sv2.tenant_id = %s
@@ -892,7 +900,7 @@ class BusinessDataService:
         conn = await self._db_connect()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(sql, (sku_id, tenant_id, tenant_id, sku_id, tenant_id, sku_id))
+                await cur.execute(sql, (sku_id, tenant_id, tenant_id, tenant_id, sku_id, tenant_id, sku_id))
                 row = await cur.fetchone()
         finally:
             await conn.close()

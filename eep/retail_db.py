@@ -16,12 +16,20 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "infra" / "postgres" / "001_retail_core.sql"
+ADDITIVE_SCHEMA_PATHS = [
+    ROOT / "infra" / "postgres" / "002_telegram_assistant.sql",
+    ROOT / "infra" / "postgres" / "003_recommendation_explainability.sql",
+    ROOT / "infra" / "postgres" / "004_multi_tenant_scalability.sql",
+    ROOT / "infra" / "postgres" / "005_financial_snapshots.sql",
+]
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
 DEFAULT_TENANT_SLUG = "default"
 DEFAULT_STORE_CODE = "MAIN"
 
 _SCHEMA_READY = False
 _SCHEMA_LOCK = threading.Lock()
+_ADDITIVE_SCHEMA_READY = False
+_ADDITIVE_SCHEMA_LOCK = threading.Lock()
 _DETAIL_COLUMNS_READY = False
 _DETAIL_COLUMNS_LOCK = threading.Lock()
 
@@ -172,6 +180,7 @@ def _connect():
 
     try:
         _ensure_schema(conn)
+        _ensure_additive_schema(conn)
         _ensure_inventory_detail_columns(conn)
         yield conn
         conn.commit()
@@ -195,6 +204,21 @@ def _ensure_schema(conn) -> None:
             cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.commit()
         _SCHEMA_READY = True
+
+
+def _ensure_additive_schema(conn) -> None:
+    global _ADDITIVE_SCHEMA_READY
+    if _ADDITIVE_SCHEMA_READY or os.environ.get("RETAIL_AUTO_INIT_DB", "true").lower() not in {"1", "true", "yes"}:
+        return
+    with _ADDITIVE_SCHEMA_LOCK:
+        if _ADDITIVE_SCHEMA_READY:
+            return
+        with conn.cursor() as cur:
+            for path in ADDITIVE_SCHEMA_PATHS:
+                if path.exists():
+                    cur.execute(path.read_text(encoding="utf-8"))
+        conn.commit()
+        _ADDITIVE_SCHEMA_READY = True
 
 
 def _ensure_inventory_detail_columns(conn) -> None:
@@ -777,6 +801,7 @@ def _set_current_stock(
             unit_cost_usd, reference_type, notes, created_by
         )
         values (%s, %s, %s, %s, %s, %s, 'inventory_ui', %s, %s)
+        returning id
         """,
         (
             ctx["tenant_id"],
@@ -789,6 +814,46 @@ def _set_current_stock(
             actor,
         ),
     )
+    movement_row = cur.fetchone()
+    if movement_row:
+        movement_id = movement_row["id"]
+        qty_abs = abs(delta)
+        cur.execute(
+            """
+            insert into core.inventory_financial_records (
+                tenant_id, movement_id, variant_id, store_id, movement_type,
+                quantity, cost_price_usd, total_cost_usd,
+                retail_price_usd, expected_revenue_usd, expected_margin_pct
+            )
+            select
+                %s, %s, v.id, %s, %s,
+                %s,
+                v.cost_price_usd,
+                v.cost_price_usd * %s,
+                pr.amount_usd,
+                pr.amount_usd * %s,
+                case
+                    when pr.amount_usd > 0
+                    then round((pr.amount_usd - v.cost_price_usd) / pr.amount_usd * 100, 2)
+                    else null
+                end
+            from core.sku_variants v
+            left join lateral (
+                select amount_usd from core.prices
+                where variant_id = v.id and price_type = 'retail'
+                order by valid_from desc limit 1
+            ) pr on true
+            where v.id = %s
+            on conflict (movement_id) do nothing
+            """,
+            (
+                ctx["tenant_id"], movement_id, ctx["store_id"], movement,
+                qty_abs,
+                qty_abs,
+                qty_abs,
+                variant_id,
+            ),
+        )
     cur.execute(
         """
         update core.inventory_balances
@@ -1425,3 +1490,74 @@ def get_portfolio_accuracy(decision_type: str | None = None, tenant_id: Any | No
         "decision_count": total_count,
         "by_type": by_type,
     }
+
+
+def get_all_snapshots_for_tenant(
+    tenant_id: Any | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Return all outcome snapshots for a tenant with product info joined, paginated."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                SELECT s.*,
+                       v.sku_id,
+                       p.name AS product_name,
+                       p.brand,
+                       json_agg(
+                           json_build_object(
+                               'id', m.id,
+                               'window_days', m.window_days,
+                               'measured_at', m.measured_at,
+                               'actual_velocity_daily', m.actual_velocity_daily,
+                               'actual_revenue_total', m.actual_revenue_total,
+                               'actual_qty_sold', m.actual_qty_sold,
+                               'actual_avg_price', m.actual_avg_price,
+                               'velocity_lift_pct', m.velocity_lift_pct,
+                               'revenue_delta_usd', m.revenue_delta_usd,
+                               'campaign_roi_usd', m.campaign_roi_usd,
+                               'accuracy_score', m.accuracy_score,
+                               'narrative', m.narrative,
+                               'data_available', m.data_available
+                           ) ORDER BY m.window_days
+                       ) FILTER (WHERE m.id IS NOT NULL) AS measurements
+                FROM outcome_tracking.decision_snapshots s
+                JOIN core.sku_variants v ON v.id = s.variant_id
+                JOIN core.products p ON p.id = v.product_id
+                LEFT JOIN outcome_tracking.outcome_measurements m ON m.snapshot_id = s.id
+                WHERE s.tenant_id = %s
+                GROUP BY s.id, v.sku_id, p.name, p.brand
+                ORDER BY s.approved_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (ctx["tenant_id"], limit, offset),
+            )
+            rows = cur.fetchall() or []
+            return [{k: _jsonable(v) for k, v in row.items()} for row in rows]
+
+
+def get_due_snapshots_for_tenant(tenant_id: Any | None = None) -> list[dict[str, Any]]:
+    """Return snapshots due for 7d or 14d measurement (status + check date criteria)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                SELECT s.id, s.tenant_id, s.variant_id, s.recommendation_id,
+                       s.decision_type, s.approved_at, s.status,
+                       CASE WHEN s.status = 'tracking' THEN 7 ELSE 14 END AS window_days
+                FROM outcome_tracking.decision_snapshots s
+                WHERE s.tenant_id = %s
+                  AND (
+                    (s.status = 'tracking' AND s.check_7d_at <= now())
+                    OR (s.status = 'measured_7d' AND s.check_14d_at <= now())
+                  )
+                ORDER BY s.approved_at ASC
+                """,
+                (ctx["tenant_id"],),
+            )
+            rows = cur.fetchall() or []
+            return [{k: _jsonable(v) for k, v in row.items()} for row in rows]

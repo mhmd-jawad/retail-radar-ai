@@ -38,7 +38,8 @@ export function OutcomeChip({ snapshot }: { snapshot: OutcomeSnapshot | null }) 
   );
 }
 
-export default function OutcomePanel({ snapshot }: { snapshot: OutcomeSnapshot }) {
+export default function OutcomePanel({ snapshot }: { snapshot: OutcomeSnapshot | null }) {
+  if (!snapshot) return null;
   const measurements = snapshot.measurements ?? [];
   const latest = measurements[measurements.length - 1] ?? null;
 
