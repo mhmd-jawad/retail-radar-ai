@@ -32,6 +32,8 @@ _ADDITIVE_SCHEMA_READY = False
 _ADDITIVE_SCHEMA_LOCK = threading.Lock()
 _DETAIL_COLUMNS_READY = False
 _DETAIL_COLUMNS_LOCK = threading.Lock()
+_CAMPAIGN_COLUMNS_READY = False
+_CAMPAIGN_COLUMNS_LOCK = threading.Lock()
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -182,6 +184,7 @@ def _connect():
         _ensure_schema(conn)
         _ensure_additive_schema(conn)
         _ensure_inventory_detail_columns(conn)
+        _ensure_campaign_columns(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -248,6 +251,30 @@ def _ensure_inventory_detail_columns(conn) -> None:
             )
         conn.commit()
         _DETAIL_COLUMNS_READY = True
+
+
+def _ensure_campaign_columns(conn) -> None:
+    """Add admin-analytics columns to marketing.campaigns if the table exists."""
+    global _CAMPAIGN_COLUMNS_READY
+    if _CAMPAIGN_COLUMNS_READY:
+        return
+    with _CAMPAIGN_COLUMNS_LOCK:
+        if _CAMPAIGN_COLUMNS_READY:
+            return
+        with conn.cursor() as cur:
+            cur.execute("select to_regclass('marketing.campaigns') as t")
+            if not cur.fetchone()["t"]:
+                _CAMPAIGN_COLUMNS_READY = True
+                return
+            cur.execute("""
+                alter table marketing.campaigns
+                    add column if not exists generation_confidence float,
+                    add column if not exists fallback_used boolean default false,
+                    add column if not exists tone varchar(32),
+                    add column if not exists channel varchar(32)
+            """)
+        conn.commit()
+        _CAMPAIGN_COLUMNS_READY = True
 
 
 def _context(cur, tenant_id: Any | None = None, store_code_override: str | None = None) -> dict[str, Any]:

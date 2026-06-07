@@ -25,6 +25,12 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
+from services.common.price_normalization import (
+    effective_competitor_price_usd,
+    normalize_competitor_price_usd,
+    price_gap_pct,
+)
+
 if TYPE_CHECKING:
     from services.telegram_assistant.telegram_client import TelegramClient
 
@@ -157,9 +163,13 @@ class AlertDispatcher:
             self._check_cash_runway,
             self._check_low_margin,
             self._check_revenue_drop,
-            self._check_competitor_sale,
-            self._check_competitor_price_undercut,
         ]
+        competitor_alerts = os.environ.get("TELEGRAM_COMPETITOR_ALERTS_ENABLED", "false").strip().lower()
+        if competitor_alerts in {"1", "true", "yes", "on"}:
+            checks.extend([
+                self._check_competitor_sale,
+                self._check_competitor_price_undercut,
+            ])
         for check in checks:
             try:
                 sent += await check()
@@ -419,7 +429,9 @@ class AlertDispatcher:
                 cl.shop_code AS competitor,
                 COALESCE(pr.amount, 0)       AS our_price,
                 cl.competitor_price          AS comp_price,
-                cl.competitor_sale_price     AS comp_sale_price
+                cl.competitor_sale_price     AS comp_sale_price,
+                cl.currency,
+                cl.is_on_sale
             FROM intel.competitor_products_latest cl
             JOIN core.sku_variants sv
                 ON sv.style_code = cl.style_code
@@ -442,9 +454,17 @@ class AlertDispatcher:
         for r in rows:
             subject = f"{r['sku_id']}:{r['competitor']}"
             our_price = float(r["our_price"] or 0)
-            sale_price = float(r["comp_sale_price"] or 0)
-            comp_price = float(r["comp_price"] or 0)
-            gap_pct = ((our_price - sale_price) / our_price * 100) if our_price > 0 else 0
+            sale_price = normalize_competitor_price_usd(r["comp_sale_price"], r.get("currency"))
+            comp_price = normalize_competitor_price_usd(r["comp_price"], r.get("currency"))
+            effective_price = effective_competitor_price_usd(
+                r["comp_price"],
+                r["comp_sale_price"],
+                r.get("currency"),
+                r.get("is_on_sale"),
+            )
+            gap_pct = price_gap_pct(our_price, effective_price)
+            if sale_price is None or comp_price is None or gap_pct is None:
+                continue
 
             msg = (
                 f"*🔔 Competitor Sale — {r['competitor']}*\n\n"
@@ -468,12 +488,10 @@ class AlertDispatcher:
                 p.brand,
                 cl.shop_code AS competitor,
                 COALESCE(pr.amount, 0)   AS our_price,
-                COALESCE(cl.competitor_sale_price, cl.competitor_price) AS their_price,
-                ROUND(
-                    (COALESCE(pr.amount, 0) -
-                     COALESCE(cl.competitor_sale_price, cl.competitor_price))
-                    / NULLIF(COALESCE(pr.amount, 0), 0) * 100
-                , 1)                     AS gap_pct
+                cl.competitor_price,
+                cl.competitor_sale_price,
+                cl.currency,
+                cl.is_on_sale
             FROM intel.competitor_products_latest cl
             JOIN core.sku_variants sv
                 ON sv.style_code = cl.style_code
@@ -488,17 +506,22 @@ class AlertDispatcher:
             ) pr ON true
             WHERE cl.data_valid = true
               AND COALESCE(pr.amount, 0) > 0
-            ORDER BY sv.sku_id, cl.shop_code, gap_pct DESC
+            ORDER BY sv.sku_id, cl.shop_code, cl.last_seen_at DESC
         """
         rows = await self._query(sql, (self._tid,))
         sent = 0
         for r in rows:
-            gap = float(r["gap_pct"] or 0)
-            if gap < 15:
-                continue
             subject = f"{r['sku_id']}:{r['competitor']}"
             our_price = float(r["our_price"] or 0)
-            their_price = float(r["their_price"] or 0)
+            their_price = effective_competitor_price_usd(
+                r["competitor_price"],
+                r["competitor_sale_price"],
+                r.get("currency"),
+                r.get("is_on_sale"),
+            )
+            gap = price_gap_pct(our_price, their_price)
+            if gap is None or gap < 15 or their_price is None:
+                continue
             msg = (
                 f"*💰 Price Alert — {r['competitor']} Undercutting Us*\n\n"
                 f"*{r['brand']} {r['our_product']}* ({r['sku_id']})\n"

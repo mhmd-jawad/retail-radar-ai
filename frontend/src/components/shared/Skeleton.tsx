@@ -1,7 +1,9 @@
 import { cn } from '@/lib/utils';
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('rounded-md bg-muted/60 animate-shimmer', className)} />;
+  return <div className={cn('rounded-md bg-muted/40 relative overflow-hidden', className)}>
+    <div className="absolute inset-0 animate-shimmer" />
+  </div>;
 }
 
 export function PageSkeleton() {

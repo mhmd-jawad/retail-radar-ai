@@ -510,12 +510,35 @@ function HoldRow({ item }: { item: HoldPricingItem }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Promotions() {
-  const { data: r, isLoading } = useLiveReport();
+  const { data: r, isLoading, isError, error, refetch } = useLiveReport();
   const { campaignCache } = useSettings();
   const tenantScope = useTenantScopeKey();
   const [generatingAll, setGeneratingAll] = useState(false);
 
-  if (isLoading || !r) return (<><TopBar title="Promotions & Campaigns" /><PageSkeleton /></>);
+  if (isLoading) return (<><TopBar title="Promotions & Campaigns" /><PageSkeleton /></>);
+
+  if (isError || !r) return (
+    <>
+      <TopBar title="Promotions & Campaigns" />
+      <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center">
+        <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+          <span className="text-destructive text-xl">!</span>
+        </div>
+        <div>
+          <p className="font-semibold text-[15px] mb-1">Unable to load promotions data</p>
+          <p className="text-[13px] text-muted-foreground max-w-sm">
+            {error instanceof Error ? error.message : 'The analytics engine could not be reached. Make sure the backend is running on port 8000.'}
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition"
+        >
+          Retry
+        </button>
+      </div>
+    </>
+  );
 
   const p = r.promotions;
   const generatedCount = p.promote.filter(item => !!campaignCache[scopedSkuKey(item.sku_id, tenantScope)]).length;

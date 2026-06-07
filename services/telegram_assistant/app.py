@@ -41,7 +41,7 @@ from services.telegram_assistant.conversation_store import (
 )
 from services.telegram_assistant.promotion_approval_flow import PromoteFlow, poll_loop
 from services.telegram_assistant.telegram_client import TelegramClient
-from services.telegram_assistant.alert_dispatcher import AlertDispatcher, alert_poll_loop, ensure_alert_tables
+from services.telegram_assistant.alert_dispatcher import AlertDispatcher, ensure_alert_tables
 from services.telegram_assistant.recommendation_roadmap import ensure_roadmap_tables, roadmap_followup_loop
 
 # ── Load .env ─────────────────────────────────────────────────────────────────
@@ -54,6 +54,13 @@ load_dotenv(_SERVICE_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("telegram_assistant")
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+def _env_enabled(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 # ── Required env vars ─────────────────────────────────────────────────────────
 _REQUIRED_ENV_VARS: list[tuple[str, str]] = [
@@ -592,20 +599,25 @@ async def lifespan(app: FastAPI):
     await _business_data_service.warmup()
 
     # Multi-tenant pollers — self-discover all registered tenants from DB on each cycle
+    direct_notifications_enabled = _env_enabled("TELEGRAM_DIRECT_ALERTS_ENABLED", False)
     _background_tasks = [
         asyncio.create_task(
             _telegram_polling_loop(),
             name="telegram_polling",
         ),
-        asyncio.create_task(
+    ]
+    if direct_notifications_enabled or _env_enabled("TELEGRAM_PROMOTION_NOTIFICATIONS_ENABLED", False):
+        _background_tasks.append(asyncio.create_task(
             _multi_tenant_promote_loop(_promote_flow),
             name="promote_poller",
-        ),
-        asyncio.create_task(
+        ))
+    if direct_notifications_enabled or _env_enabled("TELEGRAM_CLOSED_LOOP_NOTIFICATIONS_ENABLED", False):
+        _background_tasks.append(asyncio.create_task(
             _closed_loop_notification_loop(_db_url),
             name="closed_loop_poller",
-        ),
-        asyncio.create_task(
+        ))
+    if direct_notifications_enabled or _env_enabled("TELEGRAM_BUSINESS_ALERTS_ENABLED", False):
+        _background_tasks.append(asyncio.create_task(
             _multi_tenant_alert_loop(
                 _db_url,
                 _telegram_client,
@@ -613,19 +625,20 @@ async def lifespan(app: FastAPI):
                 interval_seconds=int(os.environ.get("ALERT_POLL_SECONDS", "1800")),
             ),
             name="alert_poller",
-        ),
-        asyncio.create_task(
+        ))
+    if direct_notifications_enabled or _env_enabled("TELEGRAM_ROADMAP_FOLLOWUPS_ENABLED", False):
+        _background_tasks.append(asyncio.create_task(
             _multi_tenant_roadmap_loop(
                 _db_url,
                 _telegram_client,
                 interval_seconds=int(os.environ.get("ROADMAP_FOLLOWUP_SECONDS", "3600")),
             ),
             name="roadmap_followup_poller",
-        ),
-    ]
+        ))
     logger.info(
-        "Multi-tenant background pollers started "
-        "(promote/5 min · closed-loop/15 min · alerts/30 min · roadmap/60 min)"
+        "Telegram background tasks started: %s; proactive notifications enabled=%s",
+        ", ".join(task.get_name() for task in _background_tasks),
+        direct_notifications_enabled,
     )
 
     yield
@@ -775,6 +788,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],

@@ -69,6 +69,7 @@ from eep.frontend_bridge import (
     report_overview,
     serialize_frontend_recommendation,
 )
+from services.common.price_normalization import effective_competitor_price_usd
 from eep.observability import (
     configure_metrics,
     observe_competitor_match,
@@ -383,6 +384,252 @@ def admin_impersonate(tenant_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# ─── Admin Platform Operations Endpoints ─────────────────────────────────────
+
+class AdminTriggerMeasurementPayload(BaseModel):
+    snapshot_id: int
+    window_days: Literal[7, 14] = 7
+
+
+class CampaignPersistPayload(BaseModel):
+    variant_id: str | None = None
+    recommendation_id: str | None = None
+    channel: str
+    headline: str
+    body: str = ""
+    tone: str | None = None
+    generation_confidence: float | None = None
+    fallback_used: bool = False
+
+
+class AdminAssistantPayload(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+@app.get("/admin/outcomes/aggregate")
+def admin_outcomes_aggregate(request: Request) -> dict[str, Any]:
+    """Cross-tenant model accuracy and outcome measurement aggregate."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_outcomes_aggregate
+        return get_outcomes_aggregate()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/outcomes/trigger")
+def admin_outcomes_trigger(payload: AdminTriggerMeasurementPayload, request: Request) -> dict[str, Any]:
+    """Admin triggers a 7d/14d measurement for any tenant's snapshot."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import admin_trigger_measurement
+        return admin_trigger_measurement(payload.snapshot_id, payload.window_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/financial/overview")
+def admin_financial_overview(request: Request) -> dict[str, Any]:
+    """Cross-tenant financial health aggregate — health signals only, no individual P&L."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_financial_overview
+        return get_financial_overview()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/campaigns/overview")
+def admin_campaigns_overview(request: Request) -> dict[str, Any]:
+    """Cross-tenant campaign activity summary."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_campaigns_overview
+        return get_campaigns_overview()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/campaigns")
+def persist_campaign_route(payload: CampaignPersistPayload, request: Request) -> dict[str, Any]:
+    """Shop persists a generated campaign after IE3 returns successfully."""
+    ctx = _required_shop(request)
+    try:
+        from eep.admin_analytics_db import persist_campaign
+        return persist_campaign(
+            tenant_id=ctx.tenant_id,
+            variant_id=payload.variant_id,
+            recommendation_id=payload.recommendation_id,
+            channel=payload.channel,
+            headline=payload.headline,
+            body=payload.body,
+            tone=payload.tone,
+            generation_confidence=payload.generation_confidence,
+            fallback_used=payload.fallback_used,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/assistant/chat")
+async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request) -> dict[str, Any]:
+    """
+    Platform-level AI assistant for admin operations.
+    Uses Claude with tool use to answer cross-tenant questions.
+    """
+    _required_admin(request)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        raise HTTPException(status_code=503, detail="Anthropic API key not configured.")
+
+    try:
+        from eep.admin_analytics_db import (
+            get_admin_assistant_context,
+            get_outcomes_aggregate,
+            get_financial_overview,
+            get_campaigns_overview,
+        )
+        from eep.auth_db import admin_list_tenants, admin_list_competitor_requests
+        import anthropic as _anthropic
+
+        client = _anthropic.Anthropic(api_key=anthropic_key)
+
+        ctx_summary = get_admin_assistant_context()
+        system_prompt = (
+            "You are the Platform Intelligence Assistant for Retail Radar AI, "
+            "an AI-powered retail analytics platform. You are speaking with a platform admin (operations manager). "
+            "You have access to real-time cross-tenant data. "
+            f"Current platform snapshot: {ctx_summary['tenant_count']} active shops, "
+            f"{ctx_summary['pending_competitor_requests']} pending competitor requests, "
+            f"{ctx_summary['pending_outcome_measurements']} outcome measurements due, "
+            f"{ctx_summary['tenants_missing_financials_this_month']} shops missing this month's financial snapshot. "
+            "Answer concisely and accurately. Use tools to fetch live data before answering data questions."
+        )
+
+        tools = [
+            {
+                "name": "get_platform_outcomes",
+                "description": "Get cross-tenant recommendation accuracy, pending measurements, revenue impact, and accuracy trend.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "get_financial_health",
+                "description": "Get aggregate financial health across all shops — runway, margin, at-risk shops, missing snapshots.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "get_campaigns_activity",
+                "description": "Get campaign generation activity across all shops — volumes, channels, fallback rate, recent campaigns.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "list_tenants",
+                "description": "List all registered shops with their onboarding status, SKU count, and competitor count.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "Filter by status: pending, active, suspended, archived",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "get_pending_items",
+                "description": "Get all pending competitor requests and unread admin notifications.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+        ]
+
+        from eep.auth_db import AuthContext as _AuthContext, _require_admin as _db_require_admin
+        _fake_admin_ctx = type("C", (), {"global_role": "admin", "tenant_id": None, "user_id": "admin"})()
+
+        messages = [{"role": "user", "content": payload.message}]
+
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            tools=tools,
+            messages=messages,
+        )
+
+        tools_used: list[str] = []
+
+        while response.stop_reason == "tool_use":
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                tools_used.append(block.name)
+                try:
+                    if block.name == "get_platform_outcomes":
+                        data = get_outcomes_aggregate()
+                    elif block.name == "get_financial_health":
+                        data = get_financial_overview()
+                    elif block.name == "get_campaigns_activity":
+                        data = get_campaigns_overview()
+                    elif block.name == "list_tenants":
+                        import eep.auth_db as _adb
+                        class _FakeCtx:
+                            global_role = "admin"
+                            tenant_id = None
+                        data = _adb.admin_list_tenants(_FakeCtx())
+                    elif block.name == "get_pending_items":
+                        import eep.auth_db as _adb
+                        class _FakeCtx:
+                            global_role = "admin"
+                            tenant_id = None
+                        pending_requests = _adb.admin_list_competitor_requests(_FakeCtx(), status="pending")
+                        pending_notifications = _adb.admin_list_notifications(_FakeCtx(), status="unread", limit=20)
+                        data = {"pending_requests": pending_requests, "unread_notifications": pending_notifications}
+                    else:
+                        data = {"error": f"Unknown tool: {block.name}"}
+                except Exception as tool_exc:
+                    data = {"error": str(tool_exc)}
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(data, default=str),
+                })
+
+            messages = [
+                {"role": "user", "content": payload.message},
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": tool_results},
+            ]
+
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=system_prompt,
+                tools=tools,
+                messages=messages,
+            )
+
+        reply = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                reply += block.text
+
+        return {
+            "reply": reply,
+            "tools_used": list(dict.fromkeys(tools_used)),
+            "session_id": payload.session_id or "",
+        }
+
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Assistant error: {exc}") from exc
+
+
 @app.post("/webhooks/apify/run-succeeded")
 @app.post("/apify/webhook")
 async def apify_run_succeeded_webhook(
@@ -575,7 +822,7 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
                     """
                     select cpl.shop_code, cpl.product_key, cpl.competitor_product_id,
                            cpl.product_name, cpl.brand_name,
-                           coalesce(cpl.competitor_sale_price, cpl.competitor_price, 0) as price_usd,
+                           cpl.competitor_price, cpl.competitor_sale_price, cpl.currency,
                            cpl.is_on_sale, cpl.availability, cpl.source_url, cpl.last_seen_at
                     from intel.competitor_products_latest cpl
                     join intel.tenant_competitors tc
@@ -597,7 +844,12 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
             "external_id": row["competitor_product_id"] or row["product_key"],
             "product_name": row["product_name"],
             "brand": row["brand_name"] or "Unknown",
-            "price_usd": float(row["price_usd"] or 0),
+            "price_usd": effective_competitor_price_usd(
+                row["competitor_price"],
+                row["competitor_sale_price"],
+                row["currency"],
+                row["is_on_sale"],
+            ) or 0.0,
             "on_sale": bool(row["is_on_sale"]),
             "in_stock": "out" not in str(row["availability"] or "").lower(),
             "url": row["source_url"] or "",

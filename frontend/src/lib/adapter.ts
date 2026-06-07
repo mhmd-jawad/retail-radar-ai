@@ -37,6 +37,10 @@ import type {
   ShopProfile,
   ShopProfileInput,
   ShopSignupInput,
+  AdminOutcomesAggregate,
+  AdminFinancialOverview,
+  AdminCampaignsOverview,
+  AdminAssistantMessage,
 } from '@/types/domain';
 import { MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
@@ -809,6 +813,76 @@ export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]
   if (!r.ok) throw new Error(`/financial/progress ${r.status}`);
   const json = await r.json();
   return json.series ?? [];
+}
+
+// ─── Admin Platform Operations ────────────────────────────────────────────────
+
+export async function fetchAdminOutcomes(): Promise<AdminOutcomesAggregate> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/outcomes/aggregate`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/outcomes/aggregate ${r.status}`);
+  return r.json();
+}
+
+export async function triggerAdminMeasurement(snapshotId: number, windowDays: 7 | 14): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/outcomes/trigger`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ snapshot_id: snapshotId, window_days: windowDays }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'trigger measurement'));
+  return r.json();
+}
+
+export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/financial/overview`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/financial/overview ${r.status}`);
+  return r.json();
+}
+
+export async function fetchAdminCampaignsOverview(): Promise<AdminCampaignsOverview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/campaigns/overview`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/campaigns/overview ${r.status}`);
+  return r.json();
+}
+
+export interface PersistCampaignInput {
+  variant_id?: string;
+  recommendation_id?: string;
+  channel: string;
+  headline: string;
+  body?: string;
+  tone?: string;
+  generation_confidence?: number;
+  fallback_used?: boolean;
+}
+
+export async function persistCampaign(input: PersistCampaignInput): Promise<{ campaign_id: string; ok: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/campaigns`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'persist campaign'));
+  return r.json();
+}
+
+export async function adminAssistantChat(
+  message: string,
+  sessionId?: string,
+): Promise<{ reply: string; tools_used: string[]; session_id: string }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/assistant/chat`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message, session_id: sessionId ?? '' }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'admin assistant'));
+  return r.json();
 }
 
 // Supabase-ready stubs (future)

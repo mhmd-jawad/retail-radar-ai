@@ -25,7 +25,8 @@ interface Message {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ASSISTANT_BASE =
-  (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ?? 'http://localhost:8004';
+  (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ??
+  (import.meta.env.PROD ? '/assistant-api' : 'http://localhost:8004');
 
 const TOOL_LABELS: Record<string, string> = {
   get_inventory_overview: 'Inventory',
@@ -266,7 +267,8 @@ export default function ChatAssistant() {
       setLoading(true);
 
       try {
-        const res = await fetch(`${ASSISTANT_BASE}/chat`, {
+        const assistantBase = ASSISTANT_BASE.replace(/\/$/, '');
+        const res = await fetch(`${assistantBase}/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -280,6 +282,9 @@ export default function ChatAssistant() {
         });
 
         if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Your dashboard session is not authorized for Radar Assistant. Log in again.');
+          }
           const errText = await res.text().catch(() => '');
           throw new Error(errText || `HTTP ${res.status}`);
         }
@@ -297,13 +302,16 @@ export default function ChatAssistant() {
         ]);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
+        const authError = msg.includes('not authorized') || msg.includes('Log in again');
         setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             role: 'assistant',
             content:
-              'Something went wrong — please try again in a moment. If the issue persists, check that the assistant service is running.',
+              authError
+                ? 'Your session is not authorized for Radar Assistant. Please log in again.'
+                : 'Something went wrong — please try again in a moment. If the issue persists, check that the assistant service is running.',
             timestamp: new Date(),
             error: true,
           },

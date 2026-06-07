@@ -1,23 +1,56 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   Bell,
+  BotMessageSquare,
   Building2,
+  LineChart,
   LogOut,
+  Megaphone,
   Settings,
   Shield,
   Store,
+  Target,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logoutAccount } from '@/lib/adapter';
 import { useAuth } from '@/store/auth';
 
-const nav = [
-  { to: '/admin', label: 'Dashboard', icon: Shield, end: true },
-  { to: '/admin/shops', label: 'Shops', icon: Store },
-  { to: '/admin/notifications', label: 'Requests & Alerts', icon: Bell },
-  { to: '/admin/competitors', label: 'Competitor Catalog', icon: Building2 },
-  { to: '/admin/settings', label: 'Admin Settings', icon: Settings },
+type NavSection = {
+  heading: string;
+  items: { to: string; label: string; icon: React.ElementType; end?: boolean }[];
+};
+
+const sections: NavSection[] = [
+  {
+    heading: 'Platform Operations',
+    items: [
+      { to: '/admin', label: 'Dashboard', icon: Shield, end: true },
+      { to: '/admin/outcomes', label: 'Model Intelligence', icon: Target },
+      { to: '/admin/financial', label: 'Client Financial', icon: LineChart },
+      { to: '/admin/campaigns', label: 'Content Ops', icon: Megaphone },
+    ],
+  },
+  {
+    heading: 'Client Management',
+    items: [
+      { to: '/admin/shops', label: 'Shops', icon: Store },
+      { to: '/admin/notifications', label: 'Requests & Alerts', icon: Bell },
+    ],
+  },
+  {
+    heading: 'Platform Catalog',
+    items: [
+      { to: '/admin/competitors', label: 'Competitor Catalog', icon: Building2 },
+    ],
+  },
+  {
+    heading: 'Tools',
+    items: [
+      { to: '/admin/assistant', label: 'Admin Assistant', icon: BotMessageSquare },
+      { to: '/admin/settings', label: 'Settings', icon: Settings },
+    ],
+  },
 ];
 
 export function AdminShell() {
@@ -46,34 +79,43 @@ export function AdminShell() {
                 Retail Radar Admin
               </div>
               <div className="text-[10.5px] uppercase tracking-[0.14em] text-sidebar-foreground/50 mt-0.5">
-                Control workspace
+                Platform Operations
               </div>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-1">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                cn(
-                  'group flex items-center gap-3 rounded-md px-3 py-2 text-[13.5px] font-medium transition-all',
-                  isActive
-                    ? 'bg-gradient-data text-primary-foreground shadow-glow-sm outline-none'
-                    : 'text-sidebar-foreground/75 hover:bg-primary/10 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary-foreground' : 'text-sidebar-primary')} />
-                  <span>{item.label}</span>
-                </>
-              )}
-            </NavLink>
+        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-5">
+          {sections.map((section) => (
+            <div key={section.heading}>
+              <div className="px-3 mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/35 select-none">
+                {section.heading}
+              </div>
+              <div className="space-y-0.5">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      cn(
+                        'group flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-all',
+                        isActive
+                          ? 'bg-gradient-data text-primary-foreground shadow-glow-sm outline-none'
+                          : 'text-sidebar-foreground/75 hover:bg-primary/10 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary-foreground' : 'text-sidebar-primary')} />
+                        <span>{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
@@ -88,13 +130,13 @@ export function AdminShell() {
                   {user?.full_name || 'Admin'}
                 </div>
                 <div className="truncate text-[10.5px] uppercase tracking-wider text-sidebar-foreground/50">
-                  {user?.global_role || 'admin'}
+                  Platform Operations Manager
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/60">
               <Users className="h-3.5 w-3.5" />
-              Shop management and requests
+              Full platform access
             </div>
             <button
               onClick={handleLogout}
