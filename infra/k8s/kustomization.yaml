@@ -1,0 +1,31 @@
+# Apply the whole stack with:  kubectl apply -k infra/k8s/
+#
+# Secrets are NOT in this repo. Create them first (see deployment guide Part 9):
+#   kubectl create secret docker-registry ghcr-creds ... -n retail-radar
+#   kubectl create secret generic retail-secrets   --from-env-file=k8s.env       -n retail-radar
+#   kubectl create secret generic pgbouncer-secret --from-env-file=pgbouncer.env -n retail-radar
+#
+# Set the image tag once here (the git short SHA you built/pushed), then apply.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: retail-radar
+
+resources:
+  - 00-namespace.yaml
+  - 00-config.yaml
+  - 10-pgbouncer.yaml
+  - 20-backends.yaml
+  - 30-frontend-telegram.yaml
+  - 40-ingress.yaml
+  - 50-monitoring.yaml
+
+# One place to pin the version of every app image. Replace `latest` with your
+# pushed tag, e.g. the output of `git rev-parse --short HEAD`.
+images:
+  - { name: ghcr.io/mhmd-jawad/retail-radar-eep,      newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie1,      newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie2,      newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie3,      newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-frontend, newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-telegram, newTag: latest }

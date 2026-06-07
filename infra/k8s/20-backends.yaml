@@ -1,0 +1,151 @@
+# Internal intelligence services + the EEP orchestrator.
+# Image tags are set centrally in kustomization.yaml (images: newTag).
+# ─────────────────────────────────────────── IE1 — market_intelligence (8001)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ie1, namespace: retail-radar }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ie1 } }
+  template:
+    metadata: { labels: { app: ie1 } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: ie1 } } }
+      containers:
+        - name: ie1
+          image: ghcr.io/mhmd-jawad/retail-radar-ie1:latest
+          ports: [{ containerPort: 8001 }]
+          envFrom:
+            - configMapRef: { name: retail-config }
+            - secretRef:    { name: retail-secrets }
+          readinessProbe: { httpGet: { path: /health, port: 8001 }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe:  { httpGet: { path: /health, port: 8001 }, initialDelaySeconds: 30, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "75m", memory: "192Mi" }
+            limits:   { cpu: "400m", memory: "384Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ie1, namespace: retail-radar }
+spec: { selector: { app: ie1 }, ports: [{ port: 8001, targetPort: 8001 }] }
+---
+# ─────────────────────────────────────────── IE2 — decision_intelligence (8002, the model)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ie2, namespace: retail-radar }
+spec:
+  selector: { matchLabels: { app: ie2 } }     # replica count owned by the HPA below (min 2)
+  template:
+    metadata: { labels: { app: ie2 } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: ie2 } } }
+      containers:
+        - name: ie2
+          image: ghcr.io/mhmd-jawad/retail-radar-ie2:latest
+          ports: [{ containerPort: 8002 }]
+          envFrom:
+            - configMapRef: { name: retail-config }
+            - secretRef:    { name: retail-secrets }   # supplies IE2_API_KEY
+          readinessProbe: { httpGet: { path: /health, port: 8002 }, initialDelaySeconds: 25, periodSeconds: 10 }
+          livenessProbe:  { httpGet: { path: /health, port: 8002 }, initialDelaySeconds: 70, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "200m", memory: "1Gi" }
+            limits:   { cpu: "1000m", memory: "1600Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ie2, namespace: retail-radar }
+spec: { selector: { app: ie2 }, ports: [{ port: 8002, targetPort: 8002 }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: ie2, namespace: retail-radar }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ie2 }
+  minReplicas: 2
+  maxReplicas: 3        # on 2 small nodes a 3rd copy may stay Pending until capacity frees — that's fine
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } } }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: ie2, namespace: retail-radar }
+spec: { minAvailable: 1, selector: { matchLabels: { app: ie2 } } }
+---
+# ─────────────────────────────────────────── IE3 — campaign_creative (8003)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ie3, namespace: retail-radar }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ie3 } }
+  template:
+    metadata: { labels: { app: ie3 } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: ie3 } } }
+      containers:
+        - name: ie3
+          image: ghcr.io/mhmd-jawad/retail-radar-ie3:latest
+          ports: [{ containerPort: 8003 }]
+          envFrom:
+            - configMapRef: { name: retail-config }
+            - secretRef:    { name: retail-secrets }
+          readinessProbe: { httpGet: { path: /health, port: 8003 }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe:  { httpGet: { path: /health, port: 8003 }, initialDelaySeconds: 30, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "75m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "640Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ie3, namespace: retail-radar }
+spec: { selector: { app: ie3 }, ports: [{ port: 8003, targetPort: 8003 }] }
+---
+# ─────────────────────────────────────────── EEP — orchestrator / public API (8000)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: eep, namespace: retail-radar }
+spec:
+  selector: { matchLabels: { app: eep } }     # replica count owned by the HPA below (min 2)
+  template:
+    metadata: { labels: { app: eep } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: eep } } }
+      containers:
+        - name: eep
+          image: ghcr.io/mhmd-jawad/retail-radar-eep:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: retail-config }
+            - secretRef:    { name: retail-secrets }
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 20, periodSeconds: 10 }
+          livenessProbe:  { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 60, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "150m", memory: "384Mi" }
+            limits:   { cpu: "1000m", memory: "700Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: eep, namespace: retail-radar }
+spec: { selector: { app: eep }, ports: [{ port: 8000, targetPort: 8000 }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: eep, namespace: retail-radar }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: eep }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } } }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: eep, namespace: retail-radar }
+spec: { minAvailable: 1, selector: { matchLabels: { app: eep } } }
