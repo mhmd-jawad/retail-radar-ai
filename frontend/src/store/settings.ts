@@ -35,7 +35,7 @@ interface SettingsState {
 }
 
 const env = import.meta.env;
-const defaultApiBaseUrl = env.PROD ? '' : 'http://localhost:8000';
+const defaultApiBaseUrl = env.PROD ? '/api' : 'http://localhost:8000';
 const defaultIe1BaseUrl = env.PROD ? '/ie1' : 'http://localhost:8001';
 const defaultIe2BaseUrl = env.PROD ? '/ie2' : 'http://localhost:8002';
 const defaultIe3BaseUrl = env.PROD ? '/ie3' : 'http://localhost:8003';
@@ -89,7 +89,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'rr-settings-v1',
-      version: 4,
+      version: 5,
       migrate: (persistedState: unknown, version: number) => {
         const s = (persistedState ?? {}) as Record<string, unknown>;
         if (version < 3) {
@@ -113,6 +113,11 @@ export const useSettings = create<SettingsState>()(
           }
           if (!s.ie3BaseUrl || isLocalhostUrl(s.ie3BaseUrl)) {
             s.ie3BaseUrl = configuredIe3BaseUrl;
+          }
+        }
+        if (version < 5 && env.PROD) {
+          if (!s.apiBaseUrl || s.apiBaseUrl === '' || isLocalhostUrl(s.apiBaseUrl)) {
+            s.apiBaseUrl = configuredApiBaseUrl;
           }
         }
         return s;

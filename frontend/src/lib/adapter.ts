@@ -374,6 +374,43 @@ export async function recommend(req: IE2Request): Promise<IE2Result> {
   return mockRecommend(req);
 }
 
+export async function recommendBatch(items: IE2Request[]): Promise<IE2Result[]> {
+  if (items.length === 0) return [];
+
+  const { mode, ie2, base, key } = settings();
+  const normalizedItems = items.map(normalizeRequest);
+  const chunks = chunk(normalizedItems, 50);
+  const results: IE2Result[] = [];
+
+  if (mode === 'ie2-live' && !hasAuthSession()) {
+    for (const batchItems of chunks) {
+      const r = await fetch(`${ie2}/recommend/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify({ items: batchItems }),
+      });
+      if (!r.ok) throw new Error(`IE2 /recommend/batch ${r.status}`);
+      results.push(...(await r.json()).map(normalizeRecommendation));
+    }
+    return results;
+  }
+
+  if (mode === 'eep-live' || hasAuthSession()) {
+    for (const batchItems of chunks) {
+      const r = await fetch(`${base}/recommend/batch`, {
+        method: 'POST',
+        headers: apiHeaders({ 'Content-Type': 'application/json', 'X-API-Key': key }),
+        body: JSON.stringify({ items: batchItems }),
+      });
+      if (!r.ok) throw new Error(await apiError(r, 'EEP /recommend/batch'));
+      results.push(...(await r.json()).map(normalizeRecommendation));
+    }
+    return results;
+  }
+
+  return Promise.all(items.map(mockRecommend));
+}
+
 export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
   const { ie2, key } = settings();
   const t0 = performance.now();
@@ -628,6 +665,13 @@ function explain(d: string, dos: number, gap: number, margin: number) {
 function round(n: number, d: number) { return Math.round(n * 10 ** d) / 10 ** d; }
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
 
 async function apiError(response: Response, label: string) {
   try {

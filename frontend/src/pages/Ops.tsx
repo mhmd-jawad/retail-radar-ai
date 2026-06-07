@@ -4,14 +4,14 @@ import { Section } from '@/components/shared/Section';
 import { pingEEP, pingIE1, pingIE2, pingIE3, fetchScrapeRuns, fetchCompetitorLatest } from '@/lib/adapter';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-import { Activity, Database, Radio, Zap } from 'lucide-react';
+import { Radio } from 'lucide-react';
 import { relativeTime, fmtNum, fmtUSD } from '@/lib/format';
 
 const services = [
-  { key: 'ie1', name: 'IE1 Market Intelligence', desc: 'Active · port 8001', state: 'live' },
-  { key: 'ie2', name: 'IE2 Decision Intelligence', desc: 'Active · port 8002', state: 'live' },
-  { key: 'ie3', name: 'IE3 Creative Intelligence', desc: 'Active · port 8003', state: 'live' },
-  { key: 'eep', name: 'EEP Orchestrator', desc: 'Active dashboard API · port 8000', state: 'live' },
+  { key: 'ie1', name: 'IE1 Market Intelligence', desc: 'Active · port 8001' },
+  { key: 'ie2', name: 'IE2 Decision Intelligence', desc: 'Active · port 8002' },
+  { key: 'ie3', name: 'IE3 Creative Intelligence', desc: 'Active · port 8003' },
+  { key: 'eep', name: 'EEP Orchestrator', desc: 'Active dashboard API · port 8000' },
 ];
 
 export default function Ops() {
@@ -39,19 +39,18 @@ export default function Ops() {
             const isIe2 = s.key === 'ie2';
             const isIe3 = s.key === 'ie3';
             const isEep = s.key === 'eep';
-            const isHealthChecked = isEep || isIe1 || isIe2 || isIe3;
             const health = isEep ? eepHealth : isIe1 ? ie1Health : isIe2 ? ie2Health : isIe3 ? ie3Health : null;
-            const live = isHealthChecked ? health?.ok : s.state === 'live';
-            const checking = isHealthChecked && !health;
+            const live = health?.ok === true;
+            const checking = !health;
             return (
-              <div key={s.key} className={cn('rounded-xl border p-5 shadow-sm-soft', s.state === 'live' ? 'bg-card border-border' : 'bg-surface-sunken border-dashed border-border')}>
+              <div key={s.key} className="rounded-xl border p-5 shadow-sm-soft bg-card border-border">
                 <div className="flex items-center justify-between">
                   <Radio className={cn('h-5 w-5', live ? 'text-decision-promote' : 'text-muted-foreground')} />
                   <span className={cn('text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded',
                     live ? 'bg-decision-promote-bg text-decision-promote' :
                     checking ? 'bg-secondary text-secondary-foreground' :
-                    isHealthChecked ? 'bg-decision-clear-bg text-decision-clear' : 'bg-secondary text-secondary-foreground')}>
-                    {checking ? 'checking' : live ? 'live' : isHealthChecked ? 'down' : 'planned'}
+                    'bg-decision-clear-bg text-decision-clear')}>
+                    {checking ? 'checking' : live ? 'live' : 'down'}
                   </span>
                 </div>
                 <div className="mt-3 text-[14px] font-semibold">{s.name}</div>
