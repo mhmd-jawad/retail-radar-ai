@@ -13390,8 +13390,6 @@
       "inventory_pct_of_assets": 82.6,
       "dead_stock_pct_of_inventory": 1.0,
       "dead_stock_value_usd": 1712.88,
-      "lollar_exposure_usd": 12000,
-      "lollar_real_value_usd": 1800.0,
       "equity_quality": "solid"
     },
     "cashflow_health": {
@@ -13428,11 +13426,6 @@
         "severity": "medium",
         "type": "cash_runway",
         "message": "Cash runway is 3.0 months. Target 4.0 months minimum for Lebanon."
-      },
-      {
-        "severity": "low",
-        "type": "lollar_exposure",
-        "message": "$12,000 trapped in Lebanese banks. Real value is $1,800 (85% haircut). Do not count this as working capital."
       }
     ]
   },

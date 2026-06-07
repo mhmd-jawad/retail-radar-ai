@@ -1,85 +1,132 @@
 """
-IE2 — Decision Intelligence Service.
-FastAPI application. Port 8002.
+Local Decision Intelligence API for Postman testing.
 
-Decision pipeline per SKU:
-  1. Hard Rules Engine  →  may short-circuit with absolute/strong override
-  2. Feature assembly   →  build SKUFeatures from request + IE1 signals
-  3. Model inference    →  CatBoost (v2) or enhanced rules engine (v1)
-  4. Rule reconciliation →  filter blocked actions from model output
-  5. Confidence check   →  < 0.45 → return HOLD fallback
-  6. SHAP computation   →  top 5 features per prediction
-  7. Plain English       →  translate SHAP to owner-readable reasons
-  8. Return RecommendationResult
+This service is intentionally separate from MLflow's own serving mechanism.
+It loads the CatBoost model that was exported from the winning MLflow run and
+hosts a normal FastAPI application locally.
 
-Current model version: rules_v1 (CatBoost to be added in v2)
+Run from the repo root:
+    py -m uvicorn services.decision_intelligence.main:app --port 8002
 
-Run:
-    uvicorn services.decision_intelligence.main:app --port 8002 --reload
+Default local API key:
+    ie2-local-postman-key
 """
 
+from __future__ import annotations
+
+import hmac
+import json
+import logging
 import os
-import secrets
 import time
 from datetime import date as _date, datetime
 from pathlib import Path
 
+import mlflow
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
+from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
+from .calendar import get_event_proximity_score
+from .explainability.shap_engine import SHAPEngine
+from .features.engineer import (
+    BRAND_TIER,
+    DEFAULT_INVENTORY_AT_COST,
+    DEFAULT_TOTAL_ASSETS,
+    _estimate_daily_demand,
+    _get_seasonal_multiplier,
+)
+from .features.runtime_features import add_decision_derived_features, align_feature_defaults
+from .rules.engine import run_rules
 from .schemas import (
+    BatchDecisionFeatureRequest,
     BatchRecommendationRequest,
+    DecisionFeatureInstance,
     RecommendationRequest,
     RecommendationResult,
     RuleOverride,
     SHAPFeature,
 )
-from .rules.engine import run_rules
-from .features.engineer import (
-    _estimate_daily_demand,
-    _get_seasonal_multiplier,
-    CATEGORY_VELOCITY,
-    EVENT_WINDOWS,
-)
 
-# ── App setup ─────────────────────────────────────────────────────────────────
+
+ROOT = Path(__file__).resolve().parents[2]
+MODEL_META_PATH = ROOT / "services" / "decision_intelligence" / "models" / "catboost_decision" / "meta.json"
+LOCAL_PINNED_MODEL_EXPORT_DIR = (
+    ROOT
+    / "services"
+    / "decision_intelligence"
+    / "models"
+    / "mlflow_export"
+    / "retail_radar_decision_model_rds_candidate_v1"
+)
+LOCAL_MODEL_EXPORT_DIR = (
+    ROOT
+    / "services"
+    / "decision_intelligence"
+    / "models"
+    / "mlflow_export"
+    / "retail_radar_decision_model_from_trial_017"
+)
+DEFAULT_REGISTERED_MODEL_NAME = "retail_radar_decision_model"
+DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+
+DEFAULT_LOCAL_API_KEY = "ie2-local-postman-key"
+CONFIDENCE_THRESHOLD = 0.45
+LABEL_INV = {0: "HOLD", 1: "MARKDOWN", 2: "PROMOTE", 3: "CLEAR"}
+LABEL_MAP = {label: idx for idx, label in LABEL_INV.items()}
+DEFAULT_CASH_RUNWAY_MONTHS = 3.0
+DEFAULT_INVENTORY_INTENSITY = round(DEFAULT_INVENTORY_AT_COST / DEFAULT_TOTAL_ASSETS, 4)
+INVENTORY_MEDIAN_PROXY = {
+    "footwear": 42.0,
+    "football_boots": 30.0,
+    "apparel": 55.0,
+    "sportswear": 45.0,
+    "swimwear": 24.0,
+    "accessories": 35.0,
+    "kids": 36.0,
+    "lifestyle": 40.0,
+    "other": 40.0,
+}
+
+_API_KEY = os.environ.get("IE2_API_KEY", DEFAULT_LOCAL_API_KEY)
+_logger = logging.getLogger(__name__)
+if os.environ.get("IE2_API_KEY"):
+    _logger.info("IE2: API key loaded from environment (IE2_API_KEY).")
+else:
+    _logger.warning("IE2: IE2_API_KEY not set — using default local key. Do not deploy without setting this.")
 
 app = FastAPI(
-    title="StylePulse AI — IE2 Decision Intelligence",
-    description="Retail recommendation engine: HOLD / MARKDOWN / PROMOTE / CLEAR",
-    version="1.0.0",
+    title="Retail Radar AI - Decision Intelligence API",
+    description="Local API for testing the MLflow-exported CatBoost decision model.",
+    version="2.0.0",
 )
-
-ALLOWED_ORIGINS = [
-    "http://localhost:8000",   # EEP dashboard (local dev)
-    "http://localhost:3000",   # frontend dev server
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
 )
-
-# ── API key authentication ─────────────────────────────────────────────────────
-# Set IE2_API_KEY env var in production.  Falls back to a random key (dev mode).
-_API_KEY = os.environ.get("IE2_API_KEY", "")
-if not _API_KEY:
-    _API_KEY = secrets.token_urlsafe(32)
-    print(f"WARNING: IE2_API_KEY not set — using ephemeral dev key: {_API_KEY}")
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def _verify_api_key(key: str | None = Security(_api_key_header)):
-    if not key or not secrets.compare_digest(key, _API_KEY):
+    if not key or not hmac.compare_digest(key, _API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
 
-# Prometheus metrics
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
@@ -107,20 +154,413 @@ AVG_CONFIDENCE = Gauge(
     "Rolling average model confidence",
 )
 
-MODEL_VERSION = "rules_v1"
-CONFIDENCE_THRESHOLD = 0.45
 
-# ── Decision engine (v1 — rules-based) ───────────────────────────────────────
+def _load_model_meta() -> dict:
+    if not MODEL_META_PATH.exists():
+        return {}
+    return json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+
+
+def _resolve_tracking_uri(model_meta: dict) -> str:
+    return (
+        os.environ.get("MLFLOW_TRACKING_URI")
+        or str(model_meta.get("mlflow_tracking_uri") or "").strip()
+        or DEFAULT_MLFLOW_TRACKING_URI
+    )
+
+
+def _resolve_registered_model_name() -> str:
+    return os.environ.get("IE2_REGISTERED_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME).strip()
+
+
+def _resolve_preferred_local_model_dir() -> Path:
+    configured_path = os.environ.get("IE2_LOCAL_MODEL_DIR", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return LOCAL_PINNED_MODEL_EXPORT_DIR
+
+
+def _artifact_uri_to_local_path(artifact_uri: str) -> Path | None:
+    prefix = "mlflow-artifacts:/"
+    if artifact_uri.startswith(prefix):
+        relative = artifact_uri[len(prefix):].replace("/", os.sep)
+        return ROOT / "mlartifacts" / relative
+    return None
+
+
+def _registered_model_local_path(client: MlflowClient, run_id: str, source_uri: str) -> str | None:
+    if not source_uri.startswith("runs:/"):
+        return None
+
+    run = client.get_run(run_id)
+    artifact_root = _artifact_uri_to_local_path(run.info.artifact_uri)
+    if artifact_root is None:
+        return None
+
+    source_parts = source_uri.split("/", 2)
+    artifact_subpath = source_parts[2] if len(source_parts) > 2 else ""
+    local_path = artifact_root / artifact_subpath if artifact_subpath else artifact_root
+    return str(local_path)
+
+
+def _load_latest_registered_model(model_name: str, tracking_uri: str) -> tuple[object, str, str]:
+    client = MlflowClient(tracking_uri=tracking_uri)
+    versions = client.search_model_versions(f"name = '{model_name}'")
+    if not versions:
+        raise ValueError(f"No registered MLflow model versions found for model '{model_name}'.")
+
+    latest = max(versions, key=lambda version: int(version.version))
+    candidates = [f"models:/{model_name}/{latest.version}"]
+
+    source_uri = str(getattr(latest, "source", "") or "")
+    local_source_path = _registered_model_local_path(client, latest.run_id, source_uri)
+    if local_source_path:
+        candidates.append(local_source_path)
+    if source_uri:
+        candidates.append(source_uri)
+
+    load_errors: list[str] = []
+    for candidate in candidates:
+        try:
+            loaded_model = mlflow.catboost.load_model(candidate)
+            return loaded_model, str(latest.version), candidate
+        except Exception as exc:
+            load_errors.append(f"{candidate}: {exc}")
+
+    raise RuntimeError(" | ".join(load_errors))
+
+
+MODEL_META = _load_model_meta()
+MODEL_FEATURE_COLUMNS = MODEL_META.get("feature_cols", [])
+MODEL_CATEGORICAL_FEATURES = MODEL_META.get("cat_features", [])
+MODEL_TRACKING_URI = _resolve_tracking_uri(MODEL_META)
+MODEL_NAME = _resolve_registered_model_name()
+PREFERRED_LOCAL_MODEL_DIR = _resolve_preferred_local_model_dir()
+MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}"
+MODEL_SOURCE = ""
+MODEL_LOADER_ERROR = None
+REGISTERED_MODEL = None
+SHAP_ENGINE: SHAPEngine | None = None
+
+try:
+    REGISTERED_MODEL = mlflow.catboost.load_model(str(PREFERRED_LOCAL_MODEL_DIR))
+    MODEL_VERSION = f"mlflow_export:{PREFERRED_LOCAL_MODEL_DIR.name}"
+    MODEL_SOURCE = str(PREFERRED_LOCAL_MODEL_DIR)
+except Exception as exc:  # pragma: no cover
+    MODEL_LOADER_ERROR = f"Preferred local export load failed: {exc}"
+    try:
+        mlflow.set_tracking_uri(MODEL_TRACKING_URI)
+        REGISTERED_MODEL, latest_version, latest_model_uri = _load_latest_registered_model(MODEL_NAME, MODEL_TRACKING_URI)
+        MODEL_VERSION = f"mlflow_registry:{MODEL_NAME}:v{latest_version}"
+        MODEL_SOURCE = latest_model_uri
+    except Exception as registry_exc:  # pragma: no cover
+        MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; registry load failed: {registry_exc}"
+        try:
+            REGISTERED_MODEL = mlflow.catboost.load_model(str(LOCAL_MODEL_EXPORT_DIR))
+            MODEL_VERSION = f"mlflow_export:{LOCAL_MODEL_EXPORT_DIR.name}"
+            MODEL_SOURCE = str(LOCAL_MODEL_EXPORT_DIR)
+        except Exception as fallback_exc:  # pragma: no cover
+            MODEL_LOADER_ERROR = f"{MODEL_LOADER_ERROR}; legacy local export fallback failed: {fallback_exc}"
+            MODEL_VERSION = "rules_fallback"
+
+
+def _normalize_category(category: str | None) -> str:
+    return str(category or "other").strip().lower().replace(" ", "_")
+
+
+def _market_position_from_gap(price_gap: float) -> str:
+    if price_gap > 0.15:
+        return "premium"
+    if price_gap > 0.05:
+        return "above_market"
+    if price_gap > -0.05:
+        return "at_market"
+    if price_gap > -0.15:
+        return "below_market"
+    return "deep_value"
+
+
+def _augment_model_features(features: dict) -> dict:
+    return add_decision_derived_features(features)
+
+
+def _build_model_features(req: RecommendationRequest) -> dict:
+    comp = req.competitor_signals
+    category = _normalize_category(req.category)
+    brand = str(req.brand or "Unknown").strip()
+
+    comp_gap = comp.price_gap_pct if comp else 0.0
+    comp_on_sale = comp.competitors_on_sale_count if comp else 0
+    comp_oos = comp.competitors_out_of_stock_count if comp else 0
+    comp_count = comp.num_competitors_tracked if comp else 0
+    comp_min_price = comp.competitor_min_price if comp else 0.0
+    comp_avg_price = comp.competitor_avg_price if comp else 0.0
+    comp_confidence = comp.confidence_score if comp else 0.0
+    fallback_used = bool(comp.fallback_used) if comp else False
+    match_type = "no_match" if comp_count <= 0 else "similar_product" if fallback_used else "same_model_family"
+
+    margin_pct = (
+        (req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd * 100
+        if req.retail_price_usd > 0 else 0.0
+    )
+    season_sell_through = 1 - (req.current_stock / req.initial_stock) if req.initial_stock > 0 else 0.0
+    avg_daily = _estimate_daily_demand(req.current_stock, category, comp_count, req.retail_price_usd)
+    days_of_supply = round(req.current_stock / avg_daily, 1) if avg_daily > 0 else 9999.0
+    month = _date.today().month
+    next_month = (month % 12) + 1
+    seasonality_score = _get_seasonal_multiplier(month, category)
+    base_seasonality = _get_seasonal_multiplier(month)
+    stock_median = INVENTORY_MEDIAN_PROXY.get(category, INVENTORY_MEDIAN_PROXY["other"])
+
+    features = {
+        "brand": brand,
+        "category": category,
+        "days_of_supply": days_of_supply,
+        "stock_coverage_ratio": round(days_of_supply / 30.0, 2),
+        "stockout_risk": 1 if days_of_supply < 14 else 0,
+        "total_qty": req.current_stock,
+        "inventory_vs_median": round(req.current_stock / max(stock_median, 1.0), 3),
+        "current_margin_pct": round(margin_pct, 2),
+        "discount_depth_last_30d": 0.0,
+        "days_since_last_discount": req.days_since_last_discount,
+        "days_at_current_price": req.days_at_current_price,
+        "retail_price_usd": req.retail_price_usd,
+        "price_gap_pct": comp_gap,
+        "competitors_on_sale": comp_on_sale,
+        "competitors_out_of_stock": comp_oos,
+        "num_competitors": comp_count,
+        "market_position": _market_position_from_gap(comp_gap),
+        "days_since_launch": req.days_since_launch,
+        "season_sell_through_pct": round(min(max(season_sell_through, 0.0), 1.0), 4),
+        "brand_tier": BRAND_TIER.get(brand, "tier2"),
+        "cost_price_usd": req.cost_price_usd,
+        "seasonality_score": round(seasonality_score, 3),
+        "category_seasonal_boost": round(seasonality_score - base_seasonality, 3),
+        "event_proximity_score": round(get_event_proximity_score(_date.today()), 3),
+        "next_month_seasonality": round(_get_seasonal_multiplier(next_month, category), 3),
+        "cash_runway_months": DEFAULT_CASH_RUNWAY_MONTHS,
+        "cash_tight": 0,
+        "inventory_intensity": DEFAULT_INVENTORY_INTENSITY,
+        "match_type": match_type,
+        "match_score": round(comp_confidence, 4),
+        "inventory_history_quality": "online_estimated",
+        "has_competitor_data": 1 if comp_count > 0 else 0,
+        "competitor_min_price_usd": comp_min_price,
+        "competitor_avg_price_usd": comp_avg_price,
+        "competitor_max_price_usd": max(comp_min_price, comp_avg_price),
+        "sales_units_last_28d": round(avg_daily * 28.0, 2),
+        "avg_daily_sales_28d": round(avg_daily, 4),
+        "competitor_price_trend_4w": 0.0,
+        "competitor_sale_frequency_4w": round(comp_on_sale / comp_count, 4) if comp_count > 0 else 0.0,
+        "competitor_oos_frequency_4w": round(comp_oos / comp_count, 4) if comp_count > 0 else 0.0,
+        "price_gap_volatility_4w": round(abs(comp_gap) * 0.25, 4),
+        "stock_velocity_4w": round(avg_daily * 28.0 / max(req.initial_stock, 1), 4),
+        "sell_through_velocity_4w": round(season_sell_through / 4.0, 4),
+        "days_since_competitor_change": 30,
+    }
+    return _augment_model_features(features)
+
+
+def _predict_with_registered_model(features: dict) -> tuple[str, float]:
+    if REGISTERED_MODEL is None:
+        raise RuntimeError(MODEL_LOADER_ERROR or "Registered model is not loaded.")
+    if not MODEL_FEATURE_COLUMNS:
+        raise RuntimeError("Model feature columns are unavailable in meta.json.")
+
+    frame = pd.DataFrame(
+        [{column: features.get(column) for column in MODEL_FEATURE_COLUMNS}],
+        columns=MODEL_FEATURE_COLUMNS,
+    )
+    probabilities = REGISTERED_MODEL.predict_proba(frame)[0]
+    best_idx = max(range(len(probabilities)), key=lambda idx: probabilities[idx])
+    return LABEL_INV.get(best_idx, "HOLD"), float(probabilities[best_idx])
+
+
+def _get_shap_engine() -> SHAPEngine | None:
+    global SHAP_ENGINE
+    if SHAP_ENGINE is None and REGISTERED_MODEL is not None:
+        SHAP_ENGINE = SHAPEngine(REGISTERED_MODEL, MODEL_CATEGORICAL_FEATURES)
+    return SHAP_ENGINE
+
+
+def _build_model_shap_explanations(features: dict, decision: str) -> list[SHAPFeature]:
+    if not MODEL_FEATURE_COLUMNS:
+        return _build_rule_explanations(features, decision)
+
+    predicted_class_idx = LABEL_MAP.get(decision)
+    if predicted_class_idx is None:
+        return _build_rule_explanations(features, decision)
+
+    try:
+        frame = pd.DataFrame(
+            [{column: features.get(column) for column in MODEL_FEATURE_COLUMNS}],
+            columns=MODEL_FEATURE_COLUMNS,
+        )
+        engine = _get_shap_engine()
+        if engine is None:
+            return _build_rule_explanations(features, decision)
+        return [SHAPFeature(**item) for item in engine.explain(frame, predicted_class_idx)]
+    except Exception:
+        return _build_rule_explanations(features, decision)
+
+
+def _build_rule_explanations(features: dict, decision: str) -> list[SHAPFeature]:
+    explanations: list[SHAPFeature] = []
+    dos = float(features.get("days_of_supply", 9999))
+    margin = float(features.get("current_margin_pct", 0))
+    price_gap = float(features.get("price_gap_pct", 0))
+    seasonality = float(features.get("seasonality_score", 1.0))
+    on_sale_comps = int(features.get("competitors_on_sale", 0))
+
+    if dos < 14:
+        explanations.append(
+            SHAPFeature(
+                feature_name="days_of_supply",
+                feature_value=dos,
+                shap_value=0.35,
+                direction="decreases_probability",
+                explanation=f"Only {dos:.0f} days of stock remaining - reorder risk.",
+            )
+        )
+    elif dos > 120:
+        explanations.append(
+            SHAPFeature(
+                feature_name="days_of_supply",
+                feature_value=dos,
+                shap_value=0.30,
+                direction="increases_probability",
+                explanation=f"{dos:.0f} days of supply - well above healthy range.",
+            )
+        )
+
+    if price_gap > 0.05:
+        explanations.append(
+            SHAPFeature(
+                feature_name="price_gap_pct",
+                feature_value=price_gap,
+                shap_value=0.25,
+                direction="increases_probability",
+                explanation=f"You are {price_gap:.0%} more expensive than the cheapest competitor.",
+            )
+        )
+    elif price_gap < -0.05:
+        explanations.append(
+            SHAPFeature(
+                feature_name="price_gap_pct",
+                feature_value=price_gap,
+                shap_value=0.20,
+                direction="decreases_probability",
+                explanation=f"You are {abs(price_gap):.0%} cheaper than the market.",
+            )
+        )
+
+    if margin < 25:
+        explanations.append(
+            SHAPFeature(
+                feature_name="current_margin_pct",
+                feature_value=margin,
+                shap_value=0.25,
+                direction="increases_probability",
+                explanation=f"Margin is {margin:.0f}% - below the critical threshold.",
+            )
+        )
+    elif margin > 45:
+        explanations.append(
+            SHAPFeature(
+                feature_name="current_margin_pct",
+                feature_value=margin,
+                shap_value=0.20,
+                direction="decreases_probability",
+                explanation=f"Strong margin at {margin:.0f}% - no urgent discount pressure.",
+            )
+        )
+
+    if seasonality >= 1.15:
+        explanations.append(
+            SHAPFeature(
+                feature_name="seasonality_score",
+                feature_value=seasonality,
+                shap_value=0.18,
+                direction="increases_probability",
+                explanation=f"Peak demand season at roughly {seasonality:.0%} of baseline demand.",
+            )
+        )
+
+    if on_sale_comps >= 3:
+        explanations.append(
+            SHAPFeature(
+                feature_name="competitors_on_sale",
+                feature_value=on_sale_comps,
+                shap_value=0.15,
+                direction="increases_probability",
+                explanation=f"{on_sale_comps} competitors are currently discounting this product.",
+            )
+        )
+
+    while len(explanations) < 5:
+        explanations.append(
+            SHAPFeature(
+                feature_name="model_baseline",
+                feature_value=decision,
+                shap_value=0.05,
+                direction="increases_probability",
+                explanation="Base decision signal from inventory and market context.",
+            )
+        )
+
+    return explanations[:5]
+
+
+def _apply_soft_rule_nudges(
+    decision: str,
+    confidence: float,
+    rule_result: dict,
+    features: dict,
+) -> tuple[str, float]:
+    nudges = set(rule_result.get("nudges", []))
+    blocked = set(rule_result.get("blocked_actions", []))
+
+    if (
+        "MARKDOWN" in nudges
+        and "MARKDOWN" not in blocked
+        and decision != "MARKDOWN"
+    ):
+        markdown_strength = 0
+        if float(features.get("price_gap_pct", 0.0)) >= 0.12:
+            markdown_strength += 1
+        if float(features.get("days_of_supply", 0.0)) >= 45:
+            markdown_strength += 1
+        if int(features.get("competitors_on_sale", 0)) >= 2:
+            markdown_strength += 1
+        if float(features.get("current_margin_pct", 0.0)) >= 38.0:
+            markdown_strength += 1
+        if float(features.get("season_sell_through_pct", 1.0)) <= 0.45:
+            markdown_strength += 1
+
+        if markdown_strength >= 4 and confidence <= 0.62:
+            return "MARKDOWN", max(confidence, 0.58)
+
+    if (
+        "PROMOTE" in nudges
+        and decision == "HOLD"
+        and "PROMOTE" not in blocked
+        and confidence <= 0.55
+    ):
+        return "PROMOTE", max(confidence, 0.56)
+
+    return decision, confidence
+
+
+def _effective_confidence_threshold(decision: str, rule_result: dict) -> float:
+    nudges = set(rule_result.get("nudges", []))
+    blocked = set(rule_result.get("blocked_actions", []))
+
+    if decision == "MARKDOWN" and "MARKDOWN" in nudges and "MARKDOWN" not in blocked:
+        return 0.40
+    return CONFIDENCE_THRESHOLD
+
 
 def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float, list[SHAPFeature]]:
-    """
-    v1 decision engine: enhanced rules with confidence scoring.
-
-    Returns (decision, confidence, shap_top5).
-
-    When CatBoost is integrated (v2), this function is replaced by
-    CatBoost inference + real SHAP values. The interface stays identical.
-    """
     blocked = set(rule_result.get("blocked_actions", []))
     nudges = set(rule_result.get("nudges", []))
 
@@ -133,7 +573,6 @@ def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float,
     on_sale_comps = int(features.get("competitors_on_sale", 0))
     event_proximity = float(features.get("event_proximity_score", 0))
 
-    # Scored candidates: build confidence for each eligible decision
     candidates: dict[str, float] = {}
 
     if "CLEAR" not in blocked:
@@ -171,7 +610,7 @@ def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float,
             candidates["PROMOTE"] = min(0.85, 0.50 + promo_signals * 0.08)
 
     if "HOLD" not in blocked:
-        hold_score = 0.55  # default
+        hold_score = 0.55
         if total_qty < 30:
             hold_score += 0.10
         if features.get("market_position") in ("at_market", "below_market"):
@@ -180,194 +619,33 @@ def _rules_only_decision(features: dict, rule_result: dict) -> tuple[str, float,
             hold_score += 0.10
         candidates["HOLD"] = min(0.80, hold_score)
 
-    # Pick highest-confidence eligible decision
     if not candidates:
         decision = "HOLD"
         confidence = 0.40
     else:
-        decision = max(candidates, key=lambda d: candidates[d])
+        decision = max(candidates, key=lambda item: candidates[item])
         confidence = candidates[decision]
 
-    # Build synthetic SHAP-style top-5 explanations from rules model
-    # v2: replace with real SHAP values from CatBoost TreeSHAP
-    shap_top5 = _build_rule_explanations(features, decision, candidates)
-
-    return decision, round(confidence, 3), shap_top5
+    return decision, round(confidence, 3), _build_rule_explanations(features, decision)
 
 
-def _build_rule_explanations(features: dict, decision: str,
-                              candidates: dict) -> list[SHAPFeature]:
-    """
-    Build plain-English explanations for the rules-based decision.
-    v2: replace with real SHAP values from TreeSHAP.
-    """
-    explanations = []
-    dos = float(features.get("days_of_supply", 9999))
-    margin = float(features.get("current_margin_pct", 0))
-    price_gap = float(features.get("price_gap_pct", 0))
-    seasonality = float(features.get("seasonality_score", 1.0))
-    on_sale_comps = int(features.get("competitors_on_sale", 0))
-
-    if dos < 14:
-        explanations.append(SHAPFeature(
-            feature_name="days_of_supply",
-            feature_value=dos,
-            shap_value=0.35,
-            direction="decreases_probability",
-            explanation=f"Only {dos:.0f} days of stock remaining — reorder risk.",
-        ))
-    elif dos > 120:
-        explanations.append(SHAPFeature(
-            feature_name="days_of_supply",
-            feature_value=dos,
-            shap_value=0.30,
-            direction="increases_probability",
-            explanation=f"{dos:.0f} days of supply — well above healthy range (45-90).",
-        ))
-
-    if price_gap > 0.05:
-        explanations.append(SHAPFeature(
-            feature_name="price_gap_pct",
-            feature_value=price_gap,
-            shap_value=0.25,
-            direction="increases_probability",
-            explanation=f"You are {price_gap:.0%} more expensive than the cheapest competitor.",
-        ))
-    elif price_gap < -0.05:
-        explanations.append(SHAPFeature(
-            feature_name="price_gap_pct",
-            feature_value=price_gap,
-            shap_value=0.20,
-            direction="decreases_probability",
-            explanation=f"You are {abs(price_gap):.0%} cheaper than the market — room to raise price.",
-        ))
-
-    if margin > 45:
-        explanations.append(SHAPFeature(
-            feature_name="current_margin_pct",
-            feature_value=margin,
-            shap_value=0.20,
-            direction="decreases_probability",
-            explanation=f"Strong margin at {margin:.0f}% — no pressure to discount.",
-        ))
-    elif margin < 25:
-        explanations.append(SHAPFeature(
-            feature_name="current_margin_pct",
-            feature_value=margin,
-            shap_value=0.25,
-            direction="increases_probability",
-            explanation=f"Margin is {margin:.0f}% — below critical threshold of 25%.",
-        ))
-
-    if seasonality >= 1.15:
-        explanations.append(SHAPFeature(
-            feature_name="seasonality_score",
-            feature_value=seasonality,
-            shap_value=0.18,
-            direction="increases_probability",
-            explanation=f"Peak demand season — {seasonality:.0%} of baseline demand expected.",
-        ))
-    elif seasonality <= 0.80:
-        explanations.append(SHAPFeature(
-            feature_name="seasonality_score",
-            feature_value=seasonality,
-            shap_value=0.15,
-            direction="decreases_probability",
-            explanation=f"Slow season — only {seasonality:.0%} of baseline demand expected.",
-        ))
-
-    if on_sale_comps >= 3:
-        explanations.append(SHAPFeature(
-            feature_name="competitors_on_sale",
-            feature_value=on_sale_comps,
-            shap_value=0.15,
-            direction="increases_probability",
-            explanation=f"{on_sale_comps} competitors are currently discounting this product.",
-        ))
-
-    # Pad to 5 if needed
-    while len(explanations) < 5:
-        explanations.append(SHAPFeature(
-            feature_name="model_baseline",
-            feature_value=0.0,
-            shap_value=0.05,
-            direction="increases_probability",
-            explanation="Base prediction from inventory and market signals.",
-        ))
-
-    return explanations[:5]
-
-
-# ── Core recommendation logic ─────────────────────────────────────────────────
-
-def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
-    """Run the full decision pipeline for a single SKU."""
-    t_start = time.time()
-
-    # Assemble features dict for the rules engine
-    comp_gap = (
-        req.competitor_signals.price_gap_pct
-        if req.competitor_signals else 0.0
-    )
-    comp_on_sale = (
-        req.competitor_signals.competitors_on_sale_count
-        if req.competitor_signals else 0
-    )
-    comp_oos = (
-        req.competitor_signals.competitors_out_of_stock_count
-        if req.competitor_signals else 0
-    )
-    comp_conf = (
-        req.competitor_signals.confidence_score
-        if req.competitor_signals else 0.2
-    )
-
+def _recommend_with_features(
+    req: RecommendationRequest,
+    features: dict,
+    t_start: float | None = None,
+) -> RecommendationResult:
+    t_start = t_start or time.time()
     margin_pct = (
         (req.retail_price_usd - req.cost_price_usd) / req.retail_price_usd * 100
         if req.retail_price_usd > 0 else 0.0
     )
-    season_sell_through = 1 - (req.current_stock / req.initial_stock) if req.initial_stock > 0 else 0.0
-
-    features = {
-        "sku_id": req.sku_id,
-        "category": req.category,
-        "brand": req.brand,
-        "total_qty": req.current_stock,
-        "retail_price_usd": req.retail_price_usd,
-        "cost_price_usd": req.cost_price_usd,
-        "current_margin_pct": margin_pct,
-        "days_since_launch": req.days_since_launch,
-        "days_since_last_discount": req.days_since_last_discount,
-        "days_at_current_price": req.days_at_current_price,
-        "season_sell_through_pct": max(0.0, min(1.0, season_sell_through)),
-        "price_gap_pct": comp_gap,
-        "competitors_on_sale": comp_on_sale,
-        "competitors_out_of_stock": comp_oos,
-        "competitor_confidence": comp_conf,
-        "market_position": "at_market",  # will be updated by feature engineer in v2
-        "suggested_discount_pct": 0,     # no pending suggestion at this step
-    }
-
-    # Seasonality for this SKU
-    today_month = _date.today().month
-    features["seasonality_score"] = _get_seasonal_multiplier(today_month, req.category)
-    features["event_proximity_score"] = EVENT_WINDOWS.get(today_month, ("none", 0.0))[1]
-
-    # DOS estimate
-    num_comp = comp_oos  # crude proxy
-    avg_daily = _estimate_daily_demand(
-        req.current_stock, req.category, num_comp, req.retail_price_usd
-    )
-    features["days_of_supply"] = (
-        round(req.current_stock / avg_daily, 1) if avg_daily > 0 else 9999.0
-    )
-
-    # Step 1: Hard rules
     rule_result = run_rules(features)
 
     rule_override = None
-    _fallback_used = False
+    fallback_used = False
+
     if rule_result["hard_override"]:
+        fired = rule_result["rules_fired"][0]
         decision = rule_result["forced_action"]
         confidence = 1.0 if rule_result["rule_override"] == "DEAD_STOCK_CLEAR" else 0.90
         shap_top5 = [
@@ -376,11 +654,10 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
                 feature_value=rule_result["rule_override"],
                 shap_value=1.0,
                 direction="increases_probability",
-                explanation=rule_result["rules_fired"][0]["reason"],
+                explanation=fired["reason"],
             )
             for _ in range(5)
         ]
-        fired = rule_result["rules_fired"][0]
         rule_override = RuleOverride(
             rule_id=fired["rule_id"],
             override_strength=fired["override_strength"],
@@ -389,41 +666,40 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         )
         RULE_OVERRIDE_COUNTER.labels(rule_id=fired["rule_id"]).inc()
     else:
-        # Step 2-6: ML/rules-based inference
-        decision, confidence, shap_top5 = _rules_only_decision(features, rule_result)
+        if REGISTERED_MODEL is not None:
+            decision, confidence = _predict_with_registered_model(features)
+            decision, confidence = _apply_soft_rule_nudges(decision, confidence, rule_result, features)
+            shap_top5 = _build_model_shap_explanations(features, decision)
+        else:
+            decision, confidence, shap_top5 = _rules_only_decision(features, rule_result)
 
-        # Step 5: Confidence fallback
-        if confidence < CONFIDENCE_THRESHOLD:
+        threshold = _effective_confidence_threshold(decision, rule_result)
+        if confidence < threshold:
             decision = "HOLD"
             confidence = 0.40
-            _fallback_used = True
+            fallback_used = True
             FALLBACK_COUNTER.inc()
 
-    # Markdown price calculation
     suggested_price = None
     suggested_discount = None
     margin_after = None
     if decision == "MARKDOWN":
         from stylepulse.analyzers.thresholds import get_markdown_recommendation
-        md = get_markdown_recommendation(features["days_of_supply"])
-        disc_pct = md["discount_pct"] if md else 15
-        suggested_discount = disc_pct
-        suggested_price = round(req.retail_price_usd * (1 - disc_pct / 100), 2)
-        margin_after = round(
-            (suggested_price - req.cost_price_usd) / suggested_price * 100, 1
-        ) if suggested_price > 0 else None
+
+        markdown = get_markdown_recommendation(features["days_of_supply"])
+        suggested_discount = markdown["discount_pct"] if markdown else 15
+        suggested_price = round(req.retail_price_usd * (1 - suggested_discount / 100), 2)
+        margin_after = (
+            round((suggested_price - req.cost_price_usd) / suggested_price * 100, 1)
+            if suggested_price > 0 else None
+        )
     elif decision in ("HOLD", "PROMOTE"):
         margin_after = round(margin_pct, 1)
 
-    # Build explanation summary
-    explanation = shap_top5[0].explanation if shap_top5 else "No signals available."
-    if rule_override:
-        explanation = rule_override.reason
+    explanation = rule_override.reason if rule_override else shap_top5[0].explanation
 
     DECISION_COUNTER.labels(decision=decision).inc()
     AVG_CONFIDENCE.set(confidence)
-
-    ms = int((time.time() - t_start) * 1000)
 
     return RecommendationResult(
         sku_id=req.sku_id,
@@ -433,32 +709,84 @@ def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
         explanation=explanation,
         shap_top5=shap_top5,
         rule_override=rule_override,
-        fallback_used=_fallback_used,
+        fallback_used=fallback_used,
         suggested_discount_pct=suggested_discount,
         suggested_price_usd=suggested_price,
         margin_after_action_pct=margin_after,
         model_version=MODEL_VERSION,
-        processing_time_ms=ms,
+        processing_time_ms=int((time.time() - t_start) * 1000),
     )
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+def _recommend_single(req: RecommendationRequest) -> RecommendationResult:
+    t_start = time.time()
+    features = _build_model_features(req)
+    return _recommend_with_features(req, features, t_start=t_start)
+
+
+def _request_from_feature_instance(instance: DecisionFeatureInstance) -> RecommendationRequest:
+    features = instance.features
+    sell_through = float(features.get("season_sell_through_pct", 0.0) or 0.0)
+    current_stock = int(features.get("total_qty", instance.current_stock) or instance.current_stock)
+    if 0.0 <= sell_through < 1.0:
+        initial_stock = max(int(round(current_stock / max(1.0 - sell_through, 0.01))), current_stock, 1)
+    else:
+        initial_stock = max(current_stock, 1)
+    return RecommendationRequest(
+        sku_id=instance.sku_id,
+        product_name=instance.product_name,
+        brand=instance.brand,
+        category=instance.category,
+        retail_price_usd=float(features.get("retail_price_usd", instance.retail_price_usd) or instance.retail_price_usd),
+        cost_price_usd=float(features.get("cost_price_usd", instance.cost_price_usd) or instance.cost_price_usd),
+        current_stock=current_stock,
+        days_since_launch=int(features.get("days_since_launch", 180) or 180),
+        initial_stock=initial_stock,
+        days_since_last_discount=int(features.get("days_since_last_discount", 999) or 999),
+        days_at_current_price=int(features.get("days_at_current_price", 30) or 30),
+        competitor_signals=instance.competitor_signals,
+    )
+
+
+def _recommend_prepared_feature_instance(instance: DecisionFeatureInstance) -> RecommendationResult:
+    t_start = time.time()
+    req = _request_from_feature_instance(instance)
+    features = align_feature_defaults(dict(instance.features), MODEL_FEATURE_COLUMNS)
+    return _recommend_with_features(req, features, t_start=t_start)
+
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "ie2_decision_intelligence",
-            "model_version": MODEL_VERSION, "timestamp": datetime.now().isoformat()}
+    return {
+        "status": "healthy",
+        "service": "ie2_decision_intelligence",
+        "model_version": MODEL_VERSION,
+        "model_source": MODEL_SOURCE,
+        "registered_model_loaded": REGISTERED_MODEL is not None,
+        "model_loader_error": MODEL_LOADER_ERROR,
+        "timestamp": datetime.now().isoformat(),
+    }
 
 
 @app.post("/recommend", response_model=RecommendationResult, dependencies=[Depends(_verify_api_key)])
 def recommend(req: RecommendationRequest):
-    """Single SKU recommendation."""
     with REQUEST_LATENCY.labels(endpoint="/recommend").time():
         return _recommend_single(req)
 
 
 @app.post("/recommend/batch", response_model=list[RecommendationResult], dependencies=[Depends(_verify_api_key)])
 def recommend_batch(req: BatchRecommendationRequest):
-    """Batch recommendation for up to 50 SKUs."""
     with REQUEST_LATENCY.labels(endpoint="/recommend/batch").time():
         return [_recommend_single(item) for item in req.items]
+
+
+@app.post("/recommend/features", response_model=RecommendationResult, dependencies=[Depends(_verify_api_key)])
+def recommend_features(req: DecisionFeatureInstance):
+    with REQUEST_LATENCY.labels(endpoint="/recommend/features").time():
+        return _recommend_prepared_feature_instance(req)
+
+
+@app.post("/recommend/features/batch", response_model=list[RecommendationResult], dependencies=[Depends(_verify_api_key)])
+def recommend_features_batch(req: BatchDecisionFeatureRequest):
+    with REQUEST_LATENCY.labels(endpoint="/recommend/features/batch").time():
+        return [_recommend_prepared_feature_instance(item) for item in req.items]

@@ -1,0 +1,401 @@
+sku_id,product_name,brand,category,retail_price_usd,cost_price_usd,current_stock,initial_stock,total_qty,days_since_launch,days_since_last_discount,days_at_current_price,days_of_supply,current_margin_pct,season_sell_through_pct,price_gap_pct,competitors_on_sale,competitors_out_of_stock,num_competitors,market_position,match_type,match_score
+SP-6A627AE57E,Adidas Galaxy 7 Women Running Shoes Black,Adidas,footwear,81.96,38.4,12,12,12.0,0.0,999,30,83.2,53.15,0.0,0.0239,0,0,2,at_market,exact_style,1.0
+SP-EA1A90B4B8,Adidas Stan Smith Millencon Lifestyle Women,Adidas,footwear,82.8,35.76,10,10,10.0,0.0,999,30,98.9,56.81,0.0,-0.0628,1,0,1,below_market,exact_style,1.0
+SP-C7EF6CC8AF,Adidas Ultraboost 5 Women Running Shoes White/Grey/Pink,Adidas,footwear,139.73,70.56,9,9,9.0,0.0,999,30,116.1,49.5,0.0,-0.0306,2,1,2,at_market,exact_style,1.0
+SP-26E1DF3914,"Advantage 2.0 Shoes, White",Adidas,footwear,120.55,60.48,14,14,14.0,0.0,999,30,136.6,49.83,0.0,-0.0452,0,0,1,at_market,exact_style,1.0
+SP-265659CA96,"Advantage 2.0 Shoes, White",Adidas,footwear,118.62,60.48,13,13,13.0,0.0,999,30,136.6,49.01,0.0,-0.0622,0,0,1,below_market,exact_style,1.0
+SP-C328DB5C58,"Advantage Base 2.0 Shoes, Black",Adidas,footwear,103.9,45.84,10,10,10.0,0.0,999,30,105.5,55.88,0.0,0.0857,0,0,2,above_market,exact_style,1.0
+SP-1A5E48962B,"Barreda Decode Shoes, Black",Adidas,footwear,121.06,60.48,10,10,10.0,0.0,999,30,116.1,50.04,0.0,-0.0408,0,0,2,at_market,exact_style,1.0
+SP-C1FA92617F,"Barreda Decode Shoes, Green",Adidas,footwear,123.0,60.48,13,13,13.0,0.0,999,30,136.6,50.83,0.0,-0.0244,0,0,1,at_market,exact_style,1.0
+SP-A2D46F25B1,"Barreda Decode Shoes, White",Adidas,footwear,136.18,60.48,13,13,13.0,0.0,999,30,116.1,55.59,0.0,0.0748,0,0,1,above_market,exact_style,1.0
+SP-C5A9CE6C8D,"Barreda Shoes, White",Adidas,footwear,92.69,45.84,14,14,14.0,0.0,999,30,94.1,50.54,0.0,-0.0249,0,0,2,at_market,exact_style,1.0
+SP-8C2C7BFBA1,"Grand Court 3.0 Shoes, White",Adidas,footwear,121.49,60.48,14,14,14.0,0.0,999,30,116.1,50.22,0.0,-0.0371,0,0,1,at_market,exact_style,1.0
+SP-CF5BCC0FE2,"Response Super Shoes, White",Adidas,footwear,89.05,33.12,12,12,12.0,0.0,999,30,106.4,62.81,0.0,0.2252,1,0,1,premium,exact_style,1.0
+SP-20E084F9D9,New Balance Bb550 Men Lifestyle Shoes Sea Salt/Blue/Angora,New Balance,footwear,107.38,56.35,14,14,14.0,0.0,999,30,109.1,47.52,0.0,-0.071,1,0,1,below_market,exact_style,1.0
+SP-48A96BB634,"4DFWD 3 Running Shoes, Black",Adidas,footwear,178.84,99.36,9,9,9.0,0.0,999,30,136.6,44.44,0.0,-0.1575,1,0,1,deep_value,exact_style,1.0
+SP-3B493D0895,"4DFWD 4 Running Shoes, White",Adidas,footwear,185.33,76.32,9,9,9.0,0.0,999,30,116.1,58.82,0.0,0.1421,1,0,1,above_market,exact_style,1.0
+SP-28A4947B98,"4Dfwd 3 Running Shoes, Beige",Adidas,footwear,185.67,99.36,9,9,9.0,0.0,999,30,136.6,46.49,0.0,-0.1149,2,1,2,below_market,same_model_family,0.8778
+SP-6C4030E8BF,"4Dfwd 3 Running Shoes, Beige",Adidas,footwear,217.2,99.36,10,10,10.0,0.0,999,30,136.6,54.25,0.0,0.047,1,0,1,at_market,exact_style,1.0
+SP-73E4C8CC61,"4Dfwd 3 Running Shoes, Black",Adidas,footwear,157.46,76.32,9,9,9.0,0.0,999,30,136.6,51.53,0.0,-0.0098,2,1,2,at_market,same_model_family,0.9565
+SP-DEECA186E7,"4Dfwd 3 Running Shoes, Black",Adidas,footwear,139.54,60.96,9,9,9.0,0.0,999,30,136.6,56.31,0.0,-0.1395,2,1,2,below_market,same_model_family,0.9372
+SP-745B1972AB,"4Dfwd 3 Running Shoes, Black",Adidas,footwear,255.18,99.36,11,11,11.0,0.0,999,30,136.6,61.06,0.0,0.1888,1,0,1,premium,exact_style,1.0
+SP-485BDE7E2C,"4Dfwd 3 Running Shoes, Black",Adidas,footwear,224.87,99.36,9,9,9.0,0.0,999,30,116.1,55.81,0.0,0.0795,1,0,1,above_market,exact_style,1.0
+SP-545229B88B,"4Dfwd 3 Running Shoes, Grey",Adidas,footwear,171.5,76.32,11,11,11.0,0.0,999,30,116.1,55.5,0.0,0.0729,2,0,2,above_market,exact_style,1.0
+SP-BEDB9977CB,"4Dfwd 4 Running Shoes, Black",Adidas,footwear,154.0,76.32,12,12,12.0,0.0,999,30,116.1,50.44,0.0,-0.0325,1,0,1,at_market,exact_style,1.0
+SP-0D8F9A9ADA,"4Dfwd 4 Running Shoes, White",Adidas,footwear,182.95,99.36,10,10,10.0,0.0,999,30,136.6,45.69,0.0,-0.1315,1,0,1,below_market,exact_style,1.0
+SP-9DB6B598F6,"4Dfwd 4 Running Shoes, White",Adidas,footwear,145.33,60.96,12,12,12.0,0.0,999,30,116.1,58.05,0.0,0.1261,1,0,1,above_market,exact_style,1.0
+SP-F272E0B3EC,Crocs All Day Men Lifestyle Slippers Black,Crocs,footwear,39.39,18.72,12,12,12.0,0.0,999,30,73.5,52.48,0.0,0.0861,0,0,1,above_market,same_model_family,0.9759
+SP-26CA5937C8,Crocs All Day Men Lifestyle Slippers Navy,Crocs,footwear,44.51,18.72,12,12,12.0,0.0,999,30,73.5,57.94,0.0,0.1912,0,0,1,premium,same_model_family,0.9465
+SP-CA4D78ABDF,Crocs All Day Women Lifestyle Slippers Black,Crocs,footwear,36.75,18.72,10,10,10.0,0.0,999,30,73.5,49.06,0.0,0.0204,0,1,1,at_market,same_model_family,0.98
+SP-0A0C5718B8,Crocs All Day Women Lifestyle Slippers Powder Pink,Crocs,footwear,44.63,18.72,9,9,9.0,0.0,999,30,73.5,58.06,0.0,0.1934,0,1,1,premium,same_model_family,0.9459
+SP-1DE83EF0B0,Crocs All Day Women Lifestyle Slippers White,Crocs,footwear,31.42,18.72,10,10,10.0,0.0,999,30,73.5,40.42,0.0,-0.1458,0,1,1,below_market,same_model_family,0.9644
+SP-22ED3EE46C,Crocs All Terrain Kids Lifestyle Sandals Storm,Crocs,footwear,32.41,15.08,9,9,9.0,0.0,999,30,73.5,53.47,0.0,0.1052,1,1,1,above_market,same_model_family,0.9705
+SP-1EFF62AD3C,Crocs Bae Clog Women Lifestyle Black,Crocs,footwear,83.16,43.68,10,10,10.0,0.0,999,30,99.4,47.47,0.0,-0.0101,0,0,1,at_market,same_model_family,0.98
+SP-B3F68BA4E6,Crocs Bae Clog Women Lifestyle Dragon Fruit,Crocs,footwear,84.2,43.68,10,10,10.0,0.0,999,30,100.6,48.12,0.0,0.0024,0,0,1,at_market,same_model_family,0.98
+SP-579FCCF26F,Crocs Bae Clog Women Lifestyle Kiwi,Crocs,footwear,81.46,43.68,10,10,10.0,0.0,999,30,97.3,46.38,0.0,-0.0312,0,0,1,at_market,same_model_family,0.98
+SP-9EF0AF0731,Crocs Bae Clog Women Lifestyle Orangesicle,Crocs,footwear,77.12,43.68,10,10,10.0,0.0,999,30,92.1,43.36,0.0,-0.0892,0,0,1,below_market,same_model_family,0.9771
+SP-4922B84AAD,Crocs Bae Clog Women Lifestyle White,Crocs,footwear,103.95,43.68,9,9,9.0,0.0,999,30,124.2,57.98,0.0,0.1919,0,0,1,premium,same_model_family,0.9463
+SP-1B705F3CD9,Crocs Bae Glitter Clog Women Lifestyle Clog Pink Milk,Crocs,footwear,78.2,46.8,9,9,9.0,0.0,999,30,93.4,40.15,0.0,0.1944,1,0,1,premium,same_model_family,0.9456
+SP-0AA1FDD34E,Crocs Bae Glitter Women Lifestyle Clog Black,Crocs,footwear,105.2,46.8,9,9,9.0,0.0,999,30,125.7,55.51,0.0,0.4011,1,1,1,premium,same_model_family,0.8877
+SP-6F212837EF,Crocs Bae Lined Women Lifestyle Clog Black,Crocs,footwear,70.06,34.84,9,9,9.0,0.0,999,30,83.7,50.27,0.0,0.0437,1,0,1,at_market,same_model_family,0.98
+SP-63D1F944FA,Crocs Bae Pinnacle Embellished Women Lifestyle Clog Frappe,Crocs,footwear,192.49,87.36,9,9,9.0,0.0,999,30,136.6,54.62,0.0,0.1272,0,1,1,above_market,same_model_family,0.9644
+SP-7C595F60D7,Crocs Bae Women Lifestyle Clog Mauve Mist,Crocs,footwear,105.71,43.68,10,10,10.0,0.0,999,30,126.3,58.68,0.0,0.2054,0,0,1,premium,same_model_family,0.9425
+SP-5FCBB664AF,Crocs Bae Women Lifestyle Clog Milk Chocolate,Crocs,footwear,83.53,43.68,9,9,9.0,0.0,999,30,99.8,47.71,0.0,0.2937,1,0,1,premium,same_model_family,0.9178
+SP-57E4E0DDE1,Crocs Bae Women Lifestyle Clog Quartz,Crocs,footwear,78.52,43.68,10,10,10.0,0.0,999,30,93.8,44.37,0.0,-0.0698,0,0,1,below_market,same_model_family,0.98
+SP-CE1996B0E0,Crocs Bae Women Lifestyle Clog Starfish,Crocs,footwear,91.09,43.68,9,9,9.0,0.0,999,30,108.8,52.05,0.0,0.0778,0,0,1,above_market,same_model_family,0.9222
+SP-12E813D427,Crocs Bae Women Lifestyle Clog Taupe,Crocs,footwear,88.7,43.68,10,10,10.0,0.0,999,30,106.0,50.76,0.0,0.053,0,0,1,above_market,same_model_family,0.9292
+SP-D62159F18D,Crocs Barbie Classic Infant Lifestyle Clog Multi,Crocs,footwear,67.25,31.2,10,10,10.0,0.0,999,30,80.4,53.61,0.0,0.1078,0,1,1,above_market,same_model_family,0.9698
+SP-ABDA020E90,Crocs Barbie Classic Kids Lifestyle Clog Multi,Crocs,footwear,82.57,34.32,10,10,10.0,0.0,999,30,98.7,58.44,0.0,0.2007,0,1,1,premium,same_model_family,0.9438
+SP-CC5CDA3953,Crocs Bistro Slip Resistant Work Clog Unisex lifestyle Slippers Black,Crocs,footwear,43.74,21.84,9,9,9.0,0.0,999,30,73.5,50.07,0.0,0.0398,1,0,1,at_market,same_model_family,0.98
+SP-8909E63A20,Crocs Bistro Slip Resistant Work Clog Unisex lifestyle Slippers Navy,Crocs,footwear,47.71,21.84,10,10,10.0,0.0,999,30,73.5,54.22,0.0,0.1197,1,0,1,above_market,same_model_family,0.9665
+SP-B6194DA390,Joe Freshgoods x New Balance NB9060,New Balance,footwear,87.68,39.2,14,14,14.0,0.0,999,30,104.8,55.29,0.0,0.0876,1,0,1,above_market,exact_style,1.0
+SP-AA3A19B5B7,New Balance 1000 Women Lifestyle Shoes Silver Metallic,New Balance,footwear,246.43,112.21,10,10,10.0,0.0,999,30,136.6,54.47,0.0,0.0707,0,0,1,above_market,same_model_family,0.98
+SP-1119C7A992,New Balance 1080 Men Running Shoes Black/Magnet/Linen,New Balance,footwear,248.52,98.98,10,10,10.0,0.0,999,30,136.6,60.17,0.0,0.1872,1,0,1,premium,same_model_family,0.9476
+SP-24B46A527F,New Balance 1080 Women Running Shoes Black/Phantom,New Balance,footwear,235.95,98.98,9,9,9.0,0.0,999,30,136.6,58.05,0.0,0.1439,1,0,1,above_market,same_model_family,0.9597
+SP-D066E902D0,New Balance 1080V15 Men Running Shoes Afterglow,New Balance,footwear,273.3,134.75,12,12,12.0,0.0,999,30,136.6,50.7,0.0,-0.0062,0,0,1,at_market,same_model_family,0.98
+SP-DB450DEC3B,New Balance 1080V15 Men Running Shoes Black,New Balance,footwear,316.67,134.75,12,12,12.0,0.0,999,30,136.6,57.45,0.0,0.1316,0,0,1,above_market,same_model_family,0.9632
+SP-928176DAC9,New Balance 1440 Men Running Shoes Black,New Balance,footwear,133.65,53.41,10,10,10.0,0.0,999,30,136.6,60.04,0.0,0.1844,1,0,1,premium,same_model_family,0.9484
+SP-A5571E2645,New Balance 1906 Men Lifestyle Shoes Silver/Black,New Balance,footwear,343.62,134.75,12,12,12.0,0.0,999,30,136.6,60.79,0.0,0.1997,0,0,1,premium,same_model_family,0.9441
+SP-B2BF00C26E,New Balance 1906R Unisex Lifestyle Shoes Harbor Grey,New Balance,footwear,303.52,134.75,12,12,12.0,0.0,999,30,136.6,55.6,0.0,0.094,0,0,1,above_market,same_model_family,0.9737
+SP-9E192AAE8B,New Balance 1906R Women Lifestyle Shoes Silver Metalic,New Balance,footwear,176.78,98.98,12,12,12.0,0.0,999,30,136.6,44.01,0.0,-0.1427,1,0,1,below_market,same_model_family,0.965
+SP-16070A4590,New Balance 2002R Unisex Lifestyle Shoes Bone/ Light Aluminum,New Balance,footwear,137.52,62.72,9,9,9.0,0.0,999,30,136.6,54.39,0.0,0.1129,1,1,1,above_market,similar_product,0.7133
+SP-5142DAE261,New Balance 204L Women Lifestyle Shoes Grey,New Balance,footwear,171.06,82.81,12,12,12.0,0.0,999,30,136.6,51.59,0.0,0.012,0,0,1,at_market,same_model_family,0.98
+SP-FB406DA2F5,New Balance 237 Women Lifestyle Shoes Sea Salt,New Balance,footwear,93.08,49.98,9,9,9.0,0.0,999,30,111.2,46.3,0.0,-0.0958,1,1,1,below_market,same_model_family,0.9755
+SP-A0C279D81B,New Balance 327 Men Lifestyle Shoes Black/White,New Balance,footwear,179.43,82.81,13,13,13.0,0.0,999,30,136.6,53.85,0.0,0.0581,0,0,1,above_market,same_model_family,0.98
+SP-3B47C73D99,New Balance 327 Men Lifestyle Shoes Brown,New Balance,footwear,180.76,82.81,14,14,14.0,0.0,999,30,136.6,54.19,0.0,0.0651,0,0,1,above_market,same_model_family,0.98
+SP-C48AE249D6,New Balance 327 Men Lifestyle Shoes Grey/ White,New Balance,footwear,139.02,57.82,10,10,10.0,0.0,999,30,136.6,58.41,0.0,0.1512,1,0,1,premium,same_model_family,0.9577
+SP-B2EA9F6428,New Balance 327 Men Lifestyle Shoes Tornado,New Balance,footwear,184.98,82.81,14,14,14.0,0.0,999,30,136.6,55.23,0.0,0.0864,0,0,1,above_market,same_model_family,0.9758
+SP-5F9B088137,New Balance 327 Ps-Boys Lifestyle Shoes Black/White,New Balance,footwear,82.24,37.24,10,10,10.0,0.0,999,30,98.3,54.72,0.0,0.0759,1,0,1,above_market,same_model_family,0.9787
+SP-3346E77C8D,New Balance 327 Ps-Boys Lifestyle Shoes Silver Birch,New Balance,footwear,79.93,37.24,10,10,10.0,0.0,999,30,95.5,53.41,0.0,0.0492,1,0,1,at_market,same_model_family,0.98
+SP-112F8642D1,New Balance 327 Women Lifestyle Shoes Black,New Balance,footwear,200.68,90.65,14,14,14.0,0.0,999,30,136.6,54.83,0.0,0.0781,0,0,1,above_market,same_model_family,0.9781
+SP-7B8C3CDB88,New Balance 327 Women Lifestyle Shoes Black/Sea Salt,New Balance,footwear,183.9,82.81,9,9,9.0,0.0,999,30,136.6,54.97,0.0,0.081,0,0,1,above_market,same_model_family,0.9773
+SP-4BFC3223D5,New Balance 327 Women Lifestyle Shoes Moonbeam,New Balance,footwear,205.09,82.81,10,10,10.0,0.0,999,30,136.6,59.62,0.0,0.176,0,0,1,premium,same_model_family,0.9507
+SP-EED5158BD6,New Balance 327 Women Lifestyle Shoes Moonbeam/Stone Pink,New Balance,footwear,177.62,82.81,13,13,13.0,0.0,999,30,136.6,53.38,0.0,0.0485,0,0,1,at_market,same_model_family,0.98
+SP-A09457D613,Nike Air Force 1 '07 Next Nature Women Lifestyle Shoes White/Linen,Nike,footwear,205.13,97.29,12,12,12.0,0.0,999,30,136.6,52.57,0.0,-0.0091,0,0,1,at_market,same_model_family,0.98
+SP-74302C346B,Nike Air Force 1 '07 Women Lifestyle Shoes Burgundy Crush,Nike,footwear,184.18,79.43,9,9,9.0,0.0,999,30,136.6,56.87,0.0,0.1964,1,1,1,premium,same_model_family,0.945
+SP-23392C79BE,Nike Air Force 1 '07 Women Lifestyle Shoes Midnight Navy/Black,Nike,footwear,246.76,105.75,9,9,9.0,0.0,999,30,136.6,57.14,0.0,0.0882,0,1,1,above_market,same_model_family,0.9753
+SP-DC2D1E2F28,Nike Air Force 1 07 Gtx Men Lifestyle Shoes Fauna Brown/Black,Nike,footwear,189.35,91.18,10,10,10.0,0.0,999,30,136.6,51.85,0.0,0.1022,1,1,1,above_market,same_model_family,0.9714
+SP-7DAC8BE0F9,Nike Air Force 1 07 Lv8 Men Lifestyle Shoes Anthracite/Grey,Nike,footwear,273.82,105.75,10,10,10.0,0.0,999,30,136.6,61.38,0.0,0.1783,0,0,1,premium,same_model_family,0.9501
+SP-A4B321429E,Nike Air Force 1 07 Lv8 Men Lifestyle Shoes Black/Wolf Grey,Nike,footwear,160.86,72.85,13,13,13.0,0.0,999,30,136.6,54.71,0.0,0.1545,1,1,1,premium,same_model_family,0.9567
+SP-DCBF4E8148,Nike Air Force 1 07 Men Lifestyle Shoes White/Black,Nike,footwear,213.98,97.29,13,13,13.0,0.0,999,30,136.6,54.53,0.0,0.0326,0,0,1,at_market,same_model_family,0.98
+SP-672C269E79,Nike Air Force 1 07 Next Nature Women Lifestyle Shoes White/Silver,Nike,footwear,137.11,72.85,10,10,10.0,0.0,999,30,136.6,46.87,0.0,0.0081,1,1,1,at_market,same_model_family,0.98
+SP-5B19015206,Nike Air Force 1 07 Premium Flowers Women Lifestyle Shoes Black/White/Gold,Nike,footwear,217.81,105.75,10,10,10.0,0.0,999,30,136.6,51.45,0.0,-0.033,0,0,1,at_market,same_model_family,0.98
+SP-F32E6859B7,Nike Air Force 1 07 Vintage Women Lifestyle Shoes Burgundy/Silvr/White,Nike,footwear,189.44,79.43,12,12,12.0,0.0,999,30,136.6,58.07,0.0,0.2188,1,1,1,premium,same_model_family,0.9387
+SP-DB0AA24C01,Nike Air Force 1 07 Wb Men Lifestyle Shoes Flax/Gum/Black,Nike,footwear,169.9,72.85,12,12,12.0,0.0,999,30,136.6,57.12,0.0,0.1995,1,1,1,premium,same_model_family,0.9441
+SP-754C50418D,Nike Air Force 1 07 Wb Men Lifestyle Shoes Wolf Grey/Black,Nike,footwear,179.91,72.85,9,9,9.0,0.0,999,30,136.6,59.51,0.0,0.2441,1,1,1,premium,same_model_family,0.9317
+SP-882C75963E,Nike Air Force 1 07 Women Lifestyle Shoes Summit White,Nike,footwear,135.55,69.56,9,9,9.0,0.0,999,30,136.6,48.68,0.0,-0.0918,1,1,1,below_market,same_model_family,0.9765
+SP-B677F147CF,Nike Air Force 1 07 Women Lifestyle Shoes White,Nike,footwear,187.87,97.29,13,13,13.0,0.0,999,30,136.6,48.21,0.0,-0.1018,0,0,1,below_market,same_model_family,0.9741
+SP-A766A3D4CB,Nike Air Force 1 Gs-Girls Lifestyle Shoes White/Pink,Nike,footwear,118.21,53.58,9,9,9.0,0.0,999,30,136.6,54.67,0.0,0.0356,1,1,1,at_market,same_model_family,0.98
+SP-EF3A3CE8FD,Nike Air Force 1 Le Gs-Boys Lifestyle Shoes Black,Nike,footwear,204.55,81.78,12,12,12.0,0.0,999,30,136.6,60.02,0.0,0.1494,0,0,1,above_market,same_model_family,0.9582
+SP-75279CED6C,Nike Air Force Men Lifestyle Shoes Summit White,Nike,footwear,183.95,69.56,9,9,9.0,0.0,999,30,136.6,62.19,0.0,0.1954,1,1,1,premium,same_model_family,0.9453
+SP-20E0FF4DDC,Nike Air Jordan 1 Low Gs-Girls Lifestyle Shoes Black/White/Pink,Nike,footwear,191.59,77.08,9,9,9.0,0.0,999,30,136.6,59.77,0.0,0.144,0,0,1,above_market,same_model_family,0.9597
+SP-76A23C6634,Nike Air Jordan 1 Low Men Lifestyle Shoes Black/White,Nike,footwear,162.74,79.43,10,10,10.0,0.0,999,30,136.6,51.19,0.0,0.0906,1,1,1,above_market,same_model_family,0.9746
+SP-7286ED76D8,Nike Air Jordan 1 Low Men Lifestyle Shoes Gym Red/White/Black,Nike,footwear,216.35,105.75,9,9,9.0,0.0,999,30,136.6,51.12,0.0,-0.04,0,0,1,at_market,same_model_family,0.98
+SP-B49F9A44F0,Nike Air Jordan 1 Low Se Women Lifestyle Shoes Anthracite,Nike,footwear,157.87,74.73,9,9,9.0,0.0,999,30,136.6,52.66,0.0,-0.0072,1,0,1,at_market,same_model_family,0.98
+SP-8F8A2E507A,Nike Air Jordan 1 Low Women Lifestyle Shoes Mystic Hibiscus,Nike,footwear,193.14,79.43,11,11,11.0,0.0,999,30,136.6,58.87,0.0,-0.165,0,0,1,deep_value,same_model_family,0.9604
+SP-8DEF4856DC,Nike Air Jordan 1 Men Lifestyle Shoes Sail/Blue/Lava/White,Nike,footwear,188.91,79.43,10,10,10.0,0.0,999,30,136.6,57.95,0.0,0.2166,1,1,1,premium,same_model_family,0.9394
+SP-5D4B96E09C,Nike Air Jordan 1 Men Lifestyle Sneakers Black/White/Red,Nike,footwear,160.62,74.73,9,9,9.0,0.0,999,30,136.6,53.47,0.0,0.0101,1,0,1,at_market,same_model_family,0.98
+SP-B461EE0286,On Cloudboom Max 1 Men Running Shoes White/Black,ON,footwear,359.24,128.34,13,13,13.0,0.0,999,30,136.6,64.27,0.0,0.2234,0,0,1,premium,same_model_family,0.9375
+SP-64DAAC38A4,On Cloudboom Max 1 Women Running Shoes Honeydrew/Lilac,ON,footwear,273.77,102.58,9,9,9.0,0.0,999,30,136.6,62.53,0.0,0.1854,1,0,1,premium,same_model_family,0.9481
+SP-749D462018,"Studio Lounge Rib Jumpsuit, Green",Adidas,football_boots,23.57,10.08,6,6,6.0,0.0,999,30,84.0,57.23,0.0,0.109,1,0,1,above_market,exact_style,1.0
+SP-B508115FF9,On Studio 7/8 Training High Waist Plain Mineral,ON,football_boots,164.2,66.7,7,7,7.0,0.0,999,30,156.1,59.38,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-CA2B45C970,On Studio 7/8 Women Training 7/8 Tight Navy,ON,football_boots,164.9,66.7,6,6,6.0,0.0,999,30,156.1,59.55,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-238EEC1D13,On Studio Crop Top Women Training Long Sleeve Heron,ON,football_boots,80.74,34.5,7,7,7.0,0.0,999,30,110.3,57.27,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-966ED5B129,On Studio High Waist Women Training 7/8 Tight Black,ON,football_boots,143.48,66.7,7,7,7.0,0.0,999,30,156.1,53.51,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-09E55BAC3E,2024 Copa Gloro2,Adidas,football_boots,65.57,33.6,8,8,8.0,0.0,999,30,89.5,48.76,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-79E8A2816E,2024 Copa Gloro2 FG 39-45,Adidas,football_boots,82.09,36.0,8,8,8.0,0.0,999,30,112.1,56.15,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-3350E7D69E,ADIDAS COPA PURE II+ FG BOOTS39+45,Adidas,football_boots,83.85,36.0,8,8,8.0,0.0,999,30,114.5,57.07,0.0,0.0578,1,0,1,above_market,similar_product,0.7799
+SP-404E26F96A,35-45 Nike Air Zoom Mercurial Superfly IX Elite FG,Nike,football_boots,67.88,31.02,10,10,10.0,0.0,999,30,92.7,54.3,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-7BE0A2526A,35-45 Nike Air Zoom Mercurial Superfly IX Elite FG6,Nike,football_boots,76.67,32.9,10,10,10.0,0.0,999,30,104.7,57.09,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-4129A11BDA,35-45 Nike Air Zoom Mercurial Vapor XV Elite TF,Nike,football_boots,61.48,31.02,10,10,10.0,0.0,999,30,84.0,49.54,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-AF96283080,35-45） Nike Air Zoom Mercurial Superfly IX Elite FG,Nike,football_boots,69.23,31.49,10,10,10.0,0.0,999,30,94.5,54.51,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-435247DC0F,2024 new Puma Mg studs football shoes PUMA FUTURE 2024 39-45,Puma,football_boots,60.37,35.0,8,8,8.0,0.0,999,30,84.0,42.02,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-A2F2F1E782,FUTURE 7 ULTIMATE FG36-45,Puma,football_boots,77.68,37.5,10,10,10.0,0.0,999,30,106.1,51.73,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-5ECECDA788,FUTURE 7 ULTIMATE MG,Puma,football_boots,67.91,35.0,8,8,8.0,0.0,999,30,92.7,48.46,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-BCCE453E4E,PUMA FUTURE 2024,Puma,football_boots,66.83,33.0,8,8,8.0,0.0,999,30,91.3,50.62,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-46BE11CF40,Topten Accessories The Ultimate Soccer Backpack Unisex Back To School Bag Blue/White,Topten Accessories,football_boots,14.56,7.28,6,6,6.0,0.0,999,30,84.0,50.0,0.0,0.0385,1,0,1,at_market,same_model_family,0.98
+SP-8DA54A884E,Adidas All Szn Men Sportswear Hoody Black,Adidas,apparel,107.34,45.84,14,14,14.0,0.0,999,30,75.8,57.29,0.0,0.115,0,1,2,above_market,exact_style,1.0
+SP-236F78ABB2,Adidas Camo Graphic Kids-Boys Sportswear T-Shirt Black,Adidas,apparel,27.49,13.68,14,14,14.0,0.0,999,30,43.5,50.24,0.0,-0.0186,0,1,2,at_market,exact_style,1.0
+SP-511FC63A1A,Adidas D4T 3 Stripes Men Training Short Black,Adidas,apparel,68.3,36.72,14,14,14.0,0.0,999,30,48.3,46.24,0.0,-0.1127,0,1,2,below_market,exact_style,1.0
+SP-275CC88728,Adidas Essentials Big Logo Men Sportswear T-Shirt White/Black,Adidas,apparel,42.19,21.36,14,14,14.0,0.0,999,30,43.5,49.37,0.0,-0.0429,0,0,2,at_market,exact_style,1.0
+SP-DB6E685B51,Adidas Fc Bayern 25/26 Home Jersey Men Football T-Shirt Red,Adidas,apparel,140.76,76.32,14,14,14.0,0.0,999,30,80.7,45.78,0.0,-0.1296,0,0,2,below_market,exact_style,1.0
+SP-CC132CEF52,Adidas Food Grilled Cheese Graphic Men Sportswear T-Shirt Off White,Adidas,apparel,43.76,21.36,14,14,14.0,0.0,999,30,43.5,51.19,0.0,-0.0055,0,0,2,at_market,exact_style,1.0
+SP-42DCF92EB8,Adidas Juventus 25/26 Home Jersey Kids-Unisex Football T-Shirt White/Black,Adidas,apparel,129.37,56.16,14,14,14.0,0.0,999,30,80.7,56.59,0.0,0.0956,0,0,2,above_market,exact_style,1.0
+SP-DE8799B8CD,Adidas Juventus 25/26 Home Jersey Men Football T-Shirt White/Black,Adidas,apparel,198.12,73.2,14,14,14.0,0.0,999,30,80.7,63.05,0.0,0.2328,0,0,2,premium,exact_style,1.0
+SP-DB14195D44,Adidas Real Madrid 25/26 Away Jersey Men Football T-Shirt Legend Ink,Adidas,apparel,160.45,73.2,14,14,14.0,0.0,999,30,80.7,54.38,0.0,0.0527,0,0,2,above_market,exact_style,1.0
+SP-DA8CC184C9,Adidas Real Madrid 25/26 Home Jersey Kids-Unisex Football T-Shirt White,Adidas,apparel,112.3,56.16,14,14,14.0,0.0,999,30,79.3,49.99,0.0,-0.0419,0,0,2,at_market,exact_style,1.0
+SP-56FCC8F98B,Adidas Real Madrid 25/26 Home Jersey Men Football T-Shirt White,Adidas,apparel,175.67,73.2,14,14,14.0,0.0,999,30,80.7,58.33,0.0,0.1347,0,0,2,above_market,exact_style,1.0
+SP-709D55A450,Adidas Real Madrid 25/26 Home Kids-Unisex Football Short White,Adidas,apparel,56.3,29.28,14,14,14.0,0.0,999,30,43.5,47.99,0.0,-0.0835,0,1,2,below_market,exact_style,1.0
+SP-351A270268,Adidas Real Madrid 25/26 Home Men Football Short White,Adidas,apparel,72.85,32.16,14,14,14.0,0.0,999,30,51.5,55.85,0.0,0.0803,0,0,2,above_market,exact_style,1.0
+SP-0246864EFD,Adidas Workout Essentials Woven Women Training Pant Black,Adidas,apparel,75.36,36.72,14,14,14.0,0.0,999,30,53.2,51.27,0.0,-0.0085,0,0,2,at_market,exact_style,1.0
+SP-DA4EFC860B,"3 Stripes Bralett, Black",Adidas,apparel,47.59,25.92,14,14,14.0,0.0,999,30,51.2,45.53,0.0,-0.1347,0,0,1,below_market,exact_style,1.0
+SP-154D0C8A2D,"3 Stripes Leggings, Black",Adidas,apparel,37.8,16.8,14,14,14.0,0.0,999,30,51.2,55.56,0.0,0.0741,1,0,1,above_market,exact_style,1.0
+SP-33F5CF243E,"3 Stripes Leggings, Turquoise",Adidas,apparel,12.2,6.72,14,14,14.0,0.0,999,30,51.2,44.92,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-FF9B4B4F9C,"3 Stripes Slim T-Shirt, Black",Adidas,apparel,53.63,25.92,14,14,14.0,0.0,999,30,43.5,51.67,0.0,-0.0069,0,0,1,at_market,exact_style,1.0
+SP-7F6612273E,"3 Stripes Slim T-Shirt, White",Adidas,apparel,48.34,25.92,14,14,14.0,0.0,999,30,43.5,46.38,0.0,-0.1171,0,0,1,below_market,exact_style,1.0
+SP-625A952A40,"3-Stripes Bra Long-Sleeve Top, Multicolour",Adidas,apparel,22.04,10.56,14,14,14.0,0.0,999,30,43.5,52.09,0.0,0.0018,2,1,2,at_market,exact_style,1.0
+SP-753874965B,"3-Stripes Clx Very-Short-Length Swim Shorts, Blue",Adidas,apparel,35.68,14.88,14,14,14.0,0.0,999,30,43.5,58.3,0.0,-0.065,2,1,2,below_market,same_model_family,0.7802
+SP-80442AC9A2,"3-Stripes French Terry Shorts, Purple",Adidas,apparel,27.92,11.52,14,14,14.0,0.0,999,30,51.2,58.74,0.0,-0.0387,1,0,1,at_market,similar_product,0.7526
+SP-154D3E9BB1,"3-Stripes Leggings, Black",Adidas,apparel,38.91,16.32,14,14,14.0,0.0,999,30,51.2,58.06,0.0,0.1262,1,0,1,above_market,exact_style,1.0
+SP-E7F43FB6BA,"3-Stripes Leggings, Brown",Adidas,apparel,43.71,20.64,14,14,14.0,0.0,999,30,51.2,52.78,0.0,0.0162,1,0,1,at_market,exact_style,1.0
+SP-E0B825C9D5,"3-Stripes Leggings, Green",Adidas,apparel,24.15,10.56,14,14,14.0,0.0,999,30,51.2,56.27,0.0,0.089,1,0,1,above_market,exact_style,1.0
+SP-AA14E90547,"3-Stripes Leggings, Multicolour",Adidas,apparel,28.73,12.96,14,14,14.0,0.0,999,30,51.2,54.89,0.0,0.0602,1,0,1,above_market,exact_style,1.0
+SP-E20D71253B,New Balance 25 Inches Essential High-Rise Women Performance 7/8 Tight Black,New Balance,apparel,72.99,28.91,14,14,14.0,0.0,999,30,60.7,60.39,0.0,0.1917,0,0,1,premium,same_model_family,0.9463
+SP-7CDB28E0F3,New Balance Accelerate 7 Inch Men Performanc Short Ice Blue,New Balance,apparel,25.92,13.23,14,14,14.0,0.0,999,30,51.2,48.96,0.0,-0.0417,1,0,1,at_market,same_model_family,0.98
+SP-8B54A344D5,New Balance Archive Men Lifestyle Sweatshirt Athletic Grey,New Balance,apparel,66.93,35.28,14,14,14.0,0.0,999,30,55.6,47.29,0.0,-0.0309,1,1,1,at_market,similar_product,0.7944
+SP-264C0F6E4D,New Balance Athletic Jersey Women Lifestyle T-Shirt Black,New Balance,apparel,50.21,24.01,14,14,14.0,0.0,999,30,51.2,52.18,0.0,0.0241,0,1,1,at_market,same_model_family,0.8813
+SP-016FA5F172,New Balance Athletic Premium Logo Relaxed Women Lifestyle Sweatshirt Big Teal,New Balance,apparel,77.65,36.75,14,14,14.0,0.0,999,30,64.5,52.67,0.0,0.0341,0,0,1,at_market,same_model_family,0.98
+SP-4C55644A29,New Balance Athletics Flower Women Lifestyle T-Shirt Clay Ash,New Balance,apparel,38.91,18.62,14,14,14.0,0.0,999,30,51.2,52.15,0.0,0.0234,1,0,1,at_market,same_model_family,0.98
+SP-8EDF34B77B,New Balance Athletics French Terry Logo Men Lifestyle Hoody Black,New Balance,apparel,96.07,43.12,14,14,14.0,0.0,999,30,79.9,55.12,0.0,0.084,1,0,1,above_market,same_model_family,0.9765
+SP-F557DDEAE8,New Balance Athletics French Terry Men Lifestyle Hoody Dusk Shower,New Balance,apparel,88.45,39.2,14,14,14.0,0.0,999,30,73.5,55.68,0.0,0.0955,1,0,1,above_market,same_model_family,0.9732
+SP-6477693F65,New Balance Athletics French Terry Men Lifestyle Pant Black,New Balance,apparel,92.21,48.51,14,14,14.0,0.0,999,30,76.6,47.39,0.0,-0.0736,0,0,1,below_market,same_model_family,0.98
+SP-C2A32D9C08,New Balance Athletics French Terry Men Lifestyle Pant Pumpernickel,New Balance,apparel,115.28,51.45,14,14,14.0,0.0,999,30,95.0,55.37,0.0,0.0892,0,0,1,above_market,same_model_family,0.975
+SP-E859AD8963,New Balance Athletics French Terry Women Lifestyle Pant Linen,New Balance,apparel,73.86,36.26,14,14,14.0,0.0,999,30,61.4,50.91,0.0,-0.0019,1,0,1,at_market,same_model_family,0.98
+SP-E8BBCA75D7,New Balance Athletics French Terry Women Lifestyle Short Linen,New Balance,apparel,66.43,26.95,14,14,14.0,0.0,999,30,55.2,59.43,0.0,0.1721,1,0,1,premium,same_model_family,0.9518
+SP-ABD0B6080A,New Balance Athletics Gradient Shoes Women Lifestyle T-Shirt Linen,New Balance,apparel,36.38,16.66,14,14,14.0,0.0,999,30,51.2,54.21,0.0,0.0654,1,1,1,above_market,same_model_family,0.98
+SP-02EF4F091B,New Balance Athletics Graffiti Graphic Kids-Girls Lifestyle T-Shirt Caviar/Pink,New Balance,apparel,33.41,17.15,14,14,14.0,0.0,999,30,51.2,48.67,0.0,-0.0476,0,1,1,at_market,same_model_family,0.98
+SP-9DE0BC17BB,New Balance Athletics Graphic Men Performanc T-Shirt Black,New Balance,apparel,48.16,19.11,14,14,14.0,0.0,999,30,51.2,60.32,0.0,0.1902,1,1,1,premium,same_model_family,0.9467
+SP-BA949A0923,New Balance Athletics Graphic Men Performance T-Shirt Lab Green,New Balance,apparel,25.64,13.72,14,14,14.0,0.0,999,30,51.2,46.49,0.0,-0.092,1,0,1,below_market,same_model_family,0.9764
+SP-B87306A6F9,New Balance Athletics Jersey Women Lifestyle T-Shirt Daybreak,New Balance,apparel,58.59,24.01,14,14,14.0,0.0,999,30,51.2,59.02,0.0,0.1637,0,1,1,premium,same_model_family,0.9542
+SP-BB4CF55CF1,New Balance Athletics Kids-Boys Performanc Short Caviar,New Balance,apparel,39.96,19.11,14,14,14.0,0.0,999,30,51.2,52.18,0.0,0.024,0,0,1,at_market,same_model_family,0.98
+SP-AA4107C9BC,New Balance Athletics Logo Men Lifestyle T-Shirt Dream State,New Balance,apparel,39.55,16.66,14,14,14.0,0.0,999,30,51.2,57.88,0.0,0.1403,1,1,1,above_market,same_model_family,0.9607
+SP-8CE19B7B41,New Balance Athletics Men Lifestyle Pant Ash Heather,New Balance,apparel,84.54,36.26,14,14,14.0,0.0,999,30,70.3,57.11,0.0,0.1247,1,0,1,above_market,same_model_family,0.9651
+SP-F37123B899,New Balance Athletics Men Lifestyle Pant Black,New Balance,apparel,112.98,51.45,14,14,14.0,0.0,999,30,93.9,54.46,0.0,0.0706,0,0,1,above_market,same_model_family,0.98
+SP-5A822EBD49,New Balance Athletics Men Lifestyle Short Black,New Balance,apparel,60.85,26.95,14,14,14.0,0.0,999,30,51.2,55.71,0.0,-0.1339,0,0,1,below_market,same_model_family,0.8549
+SP-9E98D31333,New Balance Athletics Men Lifestyle T-Shirt Ash Heather,New Balance,apparel,59.28,24.01,14,14,14.0,0.0,999,30,51.2,59.5,0.0,0.1565,1,1,1,premium,same_model_family,0.9002
+SP-7C71C82AFB,New Balance Athletics Men Lifestyle T-Shirt Navy,New Balance,apparel,60.03,24.01,14,14,14.0,0.0,999,30,51.2,60.0,0.0,0.1837,0,0,1,premium,same_model_family,0.9486
+SP-BC8BFD0C2A,New Balance Athletics Men Performanc T-Shirt Blue Gemstone,New Balance,apparel,33.4,16.66,14,14,14.0,0.0,999,30,51.2,50.12,0.0,-0.018,1,0,1,at_market,same_model_family,0.98
+SP-0D038F16ED,New Balance Athletics Men Performanc T-Shirt Navy Heather,New Balance,apparel,43.21,16.66,14,14,14.0,0.0,999,30,51.2,61.44,0.0,0.2131,1,1,1,premium,same_model_family,0.9403
+SP-FD095E04D0,Nike Air Boys Lifestyle Pant Seaweed/Black/White,Nike,apparel,79.43,33.84,14,14,14.0,0.0,999,30,66.0,57.4,0.0,0.2068,1,1,1,premium,same_model_family,0.9421
+SP-4D19290060,Nike Air Fleece Boys Lifestyle Hoody Black/White,Nike,apparel,80.61,33.84,14,14,14.0,0.0,999,30,67.0,58.02,0.0,0.2185,1,1,1,premium,same_model_family,0.9388
+SP-71B70A7334,Nike Air Fleece Boys Lifestyle Pant Black/White,Nike,apparel,78.44,33.84,14,14,14.0,0.0,999,30,65.2,56.86,0.0,0.1968,1,1,1,premium,same_model_family,0.9449
+SP-3E61C2F87F,Nike Air Max Pk Full-Zip Men Lifestyle Hoody Blue/Black,Nike,apparel,101.84,47.0,14,14,14.0,0.0,999,30,84.6,53.85,0.0,0.0181,1,0,1,at_market,same_model_family,0.98
+SP-C3739F5327,Nike Air Men Lifestyle Pant Black/White,Nike,apparel,143.44,67.21,14,14,14.0,0.0,999,30,95.0,53.14,0.0,0.1286,1,1,1,above_market,same_model_family,0.964
+SP-AC11618B60,Nike Challenger Men Running Pant Black,Nike,apparel,121.78,52.64,14,14,14.0,0.0,999,30,95.0,56.77,0.0,0.0803,0,0,1,above_market,same_model_family,0.9775
+SP-16107603B2,Nike Challenger Men Running Pant Smoke Grey/Black,Nike,apparel,126.92,52.64,14,14,14.0,0.0,999,30,95.0,58.53,0.0,0.1176,0,0,1,above_market,same_model_family,0.8971
+SP-5C52EEBFCD,Nike Challenger Winterized 12.5Cm Men Running Short Blue,Nike,apparel,71.84,37.6,14,14,14.0,0.0,999,30,59.7,47.66,0.0,-0.1136,0,0,1,below_market,same_model_family,0.9714
+SP-6F021B8DA6,Nike Challenger Winterized 12.5Cm Men Running Short Pure Platinum,Nike,apparel,81.01,37.6,14,14,14.0,0.0,999,30,67.3,53.59,0.0,0.0125,0,0,1,at_market,same_model_family,0.98
+SP-58C9C3FB4F,Nike Chill Knit Women Lifestyle T-Shirt Black/Sail,Nike,apparel,78.63,37.6,14,14,14.0,0.0,999,30,65.4,52.18,0.0,-0.0174,0,0,1,at_market,same_model_family,0.98
+SP-B656BCF67E,Nike Club Alumni French Terry Men Lifestyle Short Blue/White,Nike,apparel,63.16,33.84,14,14,14.0,0.0,999,30,52.5,46.42,0.0,-0.0608,0,0,1,below_market,same_model_family,0.98
+SP-5BABA5198D,Nike Club Alumni Men Lifestyle Short Black/White,Nike,apparel,74.57,31.49,14,14,14.0,0.0,999,30,62.0,57.77,0.0,0.0345,0,0,1,at_market,same_model_family,0.98
+SP-88DFC2BCBD,Nike Club Boys Lifestyle Short Black/White,Nike,apparel,57.2,26.32,14,14,14.0,0.0,999,30,51.2,53.99,0.0,0.021,0,0,1,at_market,same_model_family,0.98
+SP-0EC65E75A7,Nike Club Flow Men Lifestyle Short Black/White,Nike,apparel,44.87,20.21,14,14,14.0,0.0,999,30,51.2,54.96,0.0,0.0417,1,0,1,at_market,same_model_family,0.98
+SP-75B1A246DD,Nike Club French Terry Alumni Men Lifestyle Short Grey/White,Nike,apparel,75.99,31.49,14,14,14.0,0.0,999,30,63.2,58.56,0.0,0.0525,0,0,1,above_market,same_model_family,0.98
+SP-A4A12CC268,Nike Club French Terry Men Lifestyle Hoody Black/White,Nike,apparel,113.01,52.64,14,14,14.0,0.0,999,30,93.9,53.42,0.0,0.0089,0,0,1,at_market,same_model_family,0.98
+SP-678BBA12C3,Nike Club French Terry Men Lifestyle Hoody Blue/White,Nike,apparel,64.8,32.43,14,14,14.0,0.0,999,30,53.9,49.95,0.0,-0.0648,1,0,1,below_market,same_model_family,0.98
+SP-EC9AF8E301,Nike Club French Terry Men Lifestyle Pant Grey/White,Nike,apparel,87.68,41.83,14,14,14.0,0.0,999,30,72.9,52.29,0.0,-0.0151,0,0,1,at_market,same_model_family,0.98
+SP-14615F55C9,Nike Club French Terry Open Hem Men Lifestyle Pant Grey/White,Nike,apparel,90.93,41.83,14,14,14.0,0.0,999,30,75.6,54.0,0.0,0.0212,0,0,1,at_market,same_model_family,0.98
+SP-4068E7483B,Nike Club French Terry Pullover Men Lifestyle Hoody Ghost/White,Nike,apparel,74.31,32.43,14,14,14.0,0.0,999,30,61.8,56.36,0.0,0.0715,1,0,1,above_market,same_model_family,0.98
+SP-A39D32F242,Nike Club Men Lifestyle Hoody Black,Nike,apparel,66.7,32.43,14,14,14.0,0.0,999,30,55.4,51.38,0.0,-0.0345,1,1,1,at_market,same_model_family,0.98
+SP-F7FAFB8DB4,Nike Club Men Lifestyle Hoody Black/White,Nike,apparel,79.57,34.78,14,14,14.0,0.0,999,30,66.1,56.29,0.0,0.07,1,0,1,above_market,same_model_family,0.98
+SP-6BB19DF665,Nike Club Men Lifestyle Long Sleeve Black/White,Nike,apparel,66.75,29.61,14,14,14.0,0.0,999,30,55.5,55.64,0.0,-0.0337,1,1,1,at_market,similar_product,0.793
+SP-C11BA696DF,Nike Club Men Lifestyle Pant Black/White,Nike,apparel,63.57,31.02,14,14,14.0,0.0,999,30,52.8,51.2,0.0,0.0876,1,1,1,above_market,same_model_family,0.9755
+SP-6186950F73,Nike Club Men Lifestyle Pant Black/White,Nike,apparel,98.0,41.83,14,14,14.0,0.0,999,30,81.5,57.32,0.0,0.0918,0,0,1,above_market,same_model_family,0.9743
+SP-853172544A,Nike Club Men Lifestyle Pant Black/White,Nike,apparel,86.91,41.83,14,14,14.0,0.0,999,30,72.2,51.87,0.0,0.0335,1,1,1,at_market,same_model_family,0.98
+SP-2732E00DB0,1Me10031756 Club Hoodie Crater,ON,apparel,147.23,73.14,14,14,14.0,0.0,999,30,95.0,50.32,0.0,-0.0799,0,0,1,below_market,exact_style,1.0
+SP-805D3F1EDC,ON Men Trail-T Running Tee Reef,ON,apparel,76.84,34.5,14,14,14.0,0.0,999,30,63.9,55.1,0.0,0.0239,0,0,1,at_market,same_model_family,0.98
+SP-EA820C1A13,ON Trail-T Men Trail Running Shirt Desert,ON,apparel,73.91,34.5,14,14,14.0,0.0,999,30,61.4,53.32,0.0,-0.0147,0,0,1,at_market,same_model_family,0.98
+SP-5643A090B0,On 3 Inch Core Women Running Short Black,ON,apparel,78.78,34.5,14,14,14.0,0.0,999,30,65.5,56.21,0.0,0.048,0,0,2,at_market,same_model_family,0.857
+SP-D0A64208B9,On 3 Inch Core Women Running Short Heron,ON,apparel,78.49,34.5,14,14,14.0,0.0,999,30,65.2,56.05,0.0,0.0445,0,0,1,at_market,same_model_family,0.98
+SP-946B9D03B0,On 3 Inch Court 2 In 1 Women Tennis Short White,ON,apparel,91.49,45.54,14,14,14.0,0.0,999,30,76.0,50.22,0.0,-0.0821,0,0,1,below_market,same_model_family,0.9788
+SP-20A699F44B,On 3 Inch Performance Women Running Short Black,ON,apparel,92.74,39.1,14,14,14.0,0.0,999,30,77.1,57.84,0.0,0.0835,0,0,2,above_market,same_model_family,0.8526
+SP-A5BA957315,On 3 Inch Performance Women Running Short Sailor,ON,apparel,97.0,39.1,14,14,14.0,0.0,999,30,80.6,59.69,0.0,0.1237,0,0,1,above_market,same_model_family,0.9654
+SP-63A3151A45,On 30 Inch Studio Flared Women Training Tight Black,ON,apparel,170.04,66.7,14,14,14.0,0.0,999,30,95.0,60.77,0.0,0.1473,0,0,1,above_market,same_model_family,0.9588
+SP-9109C66E8F,On 5 Inch Core Men Running Short Midnight,ON,apparel,74.98,34.5,14,14,14.0,0.0,999,30,62.3,53.99,0.0,-0.0003,0,0,1,at_market,same_model_family,0.98
+SP-33D4752389,"On 5"" Performance Men Running Short Black",ON,apparel,96.65,45.54,14,14,14.0,0.0,999,30,80.3,52.88,0.0,-0.0243,0,0,1,at_market,same_model_family,0.98
+SP-D38DD30CF0,"On 5"" Performance Women Running Short Black",ON,apparel,91.76,45.54,14,14,14.0,0.0,999,30,76.3,50.37,0.0,0.0737,0,0,2,above_market,same_model_family,0.8566
+SP-BF5626A1D8,"On 5""Core Men Running Short Black",ON,apparel,66.21,34.5,14,14,14.0,0.0,999,30,55.0,47.89,0.0,-0.1328,0,0,1,below_market,same_model_family,0.9672
+SP-B7A8557FF6,On 7 Inch Core Men Running Short Desert,ON,apparel,73.29,34.5,14,14,14.0,0.0,999,30,60.9,52.93,0.0,-0.0233,0,0,1,at_market,same_model_family,0.98
+SP-DF88997BEE,On 7 Inch Court Tennis 7 Inch Tide,ON,apparel,103.04,45.54,14,14,14.0,0.0,999,30,85.6,55.8,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-B7529301C1,On 7 Inch Court Tennis 7 Inch White,ON,apparel,109.72,45.54,14,14,14.0,0.0,999,30,91.2,58.49,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-98266B6693,On All-Day Joggers Men Lifestyle Pant Black,ON,apparel,187.81,82.34,14,14,14.0,0.0,999,30,95.0,56.16,0.0,0.0469,0,1,1,at_market,same_model_family,0.98
+SP-09354499DD,On Boxy Club Women Lifestyle T-Shirt White,ON,apparel,73.65,29.9,14,14,14.0,0.0,999,30,61.2,59.4,0.0,0.1174,0,0,1,above_market,same_model_family,0.9671
+SP-57AE88CE7F,On Climate Full Zip Women Running Hoody White,ON,apparel,164.93,73.14,14,14,14.0,0.0,999,30,95.0,55.65,0.0,0.036,0,0,1,at_market,same_model_family,0.98
+SP-402F2C3335,On Climate Men Running Hoody Black,ON,apparel,174.03,73.14,14,14,14.0,0.0,999,30,95.0,57.97,0.0,0.0864,0,0,1,above_market,same_model_family,0.9758
+SP-06A4E41C88,On Climate Men Running Hoody Denim,ON,apparel,142.95,51.06,14,14,14.0,0.0,999,30,95.0,64.28,0.0,0.2235,1,0,1,premium,same_model_family,0.9374
+SP-48868D2AA6,On Climate Women Running Hoody Black,ON,apparel,141.86,73.14,14,14,14.0,0.0,999,30,95.0,48.44,0.0,-0.1208,0,0,1,below_market,same_model_family,0.9698
+SP-FAEA6F848F,On Club Boxy Women Lifestyle T-Shirt Black,ON,apparel,73.83,29.9,14,14,14.0,0.0,999,30,61.4,59.5,0.0,0.1196,0,0,1,above_market,same_model_family,0.9665
+SP-834156AAD3,On Club Collective Men Lifestyle Pant Black,ON,apparel,155.32,66.7,14,14,14.0,0.0,999,30,95.0,57.06,0.0,0.0664,0,0,1,above_market,same_model_family,0.98
+SP-90BB09D2CD,On Club Collective Men Lifestyle T-Shirt Black,ON,apparel,70.68,36.34,14,14,14.0,0.0,999,30,58.7,48.59,0.0,-0.0611,0,1,1,below_market,same_model_family,0.98
+SP-4F416D339A,On Club Collective Men Lifestyle T-Shirt White,ON,apparel,85.57,36.34,14,14,14.0,0.0,999,30,71.1,57.53,0.0,0.0768,0,1,1,above_market,same_model_family,0.9785
+SP-229CAF275F,DARE TO Leggings Sportstyle/Prime Women,Puma,apparel,14.1,6.25,14,14,14.0,0.0,999,30,51.2,55.67,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-14F06CB1CC,"3-Stripes Bodysuit, Black",Adidas,sportswear,31.75,14.4,12,12,12.0,0.0,999,30,58.8,54.65,0.0,0.0551,1,0,1,above_market,exact_style,1.0
+SP-F067DCDACE,"AEROREADY Essentials Regular-Fit 3-Stripes Track Suit, Black",Adidas,sportswear,85.64,40.32,12,12,12.0,0.0,999,30,81.9,52.92,0.0,0.0191,1,0,1,at_market,exact_style,1.0
+SP-F4341B2295,"AEROREADY Essentials Regular-Fit 3-Stripes Track Suit, Blue",Adidas,sportswear,93.87,40.32,12,12,12.0,0.0,999,30,89.7,57.05,0.0,0.1051,1,0,1,above_market,exact_style,1.0
+SP-EEC5C6A0BE,"AEROREADY Sereno Cut 3-Stripes Track Suit, Blue",Adidas,sportswear,129.32,53.28,12,12,12.0,0.0,999,30,92.9,58.8,0.0,0.1417,0,0,2,above_market,exact_style,1.0
+SP-D7ADEC42DC,"Adi365 Running Pocket Graphic Medium Support Bra, Black",Adidas,sportswear,89.24,42.24,12,12,12.0,0.0,999,30,85.3,52.67,0.0,0.0139,0,0,1,at_market,exact_style,1.0
+SP-EB900BB3C2,"Adi365 Running Pocket Medium Support Bra, Green",Adidas,sportswear,77.07,38.4,12,12,12.0,0.0,999,30,73.7,50.18,0.0,-0.038,0,0,1,at_market,exact_style,1.0
+SP-E961A24573,"Adibreak Tracksuit Bottoms, Green",Adidas,sportswear,111.33,58.08,12,12,12.0,0.0,999,30,106.4,47.83,0.0,-0.0869,0,0,1,below_market,exact_style,1.0
+SP-C80777C682,New Balance Essential Train Women Performance Bra Black,New Balance,sportswear,76.39,31.85,12,12,12.0,0.0,999,30,73.0,58.31,0.0,0.1491,0,0,1,above_market,same_model_family,0.9583
+SP-FEA7F5C6A1,New Balance Essential Women Performance Bra Olivine,New Balance,sportswear,46.19,23.52,12,12,12.0,0.0,999,30,58.8,49.08,0.0,-0.0392,1,0,1,at_market,same_model_family,0.98
+SP-FCD511BE4F,New Balance Essential Yoga Women Performance Bra Black,New Balance,sportswear,75.81,28.91,12,12,12.0,0.0,999,30,72.5,61.87,0.0,0.2217,0,0,1,premium,same_model_family,0.9379
+SP-61E130E733,New Balance Essential Yoga Women Performance Bra Daybreak,New Balance,sportswear,68.1,28.91,12,12,12.0,0.0,999,30,65.1,57.55,0.0,0.1336,0,0,1,above_market,same_model_family,0.9626
+SP-3D39AF9FF6,New Balance Essential Yoga Women Performance Bra Medusa Green,New Balance,sportswear,63.99,28.91,12,12,12.0,0.0,999,30,61.2,54.82,0.0,0.078,0,0,1,above_market,same_model_family,0.9782
+SP-7542B894A6,New Balance Fuel Women Performance Bra Black,New Balance,sportswear,28.85,15.19,12,12,12.0,0.0,999,30,58.8,47.35,0.0,-0.0745,1,0,1,below_market,same_model_family,0.98
+SP-AEB17209EC,New Balance Harmony Women Performanc Bra Black,New Balance,sportswear,41.75,18.62,12,12,12.0,0.0,999,30,58.8,55.4,0.0,0.0898,1,1,1,above_market,same_model_family,0.9749
+SP-5B7283A238,Nike Alate Curve Aop Women Training Bra Black,Nike,sportswear,44.33,17.86,12,12,12.0,0.0,999,30,58.8,59.71,0.0,0.1428,1,0,1,above_market,same_model_family,0.96
+SP-87CD96F6B8,Nike Brand Energy Infant-Boys Lifestyle Set Black,Nike,sportswear,44.2,19.27,12,12,12.0,0.0,999,30,58.8,56.4,0.0,0.0724,0,0,1,above_market,same_model_family,0.9797
+SP-F3734633B0,Nike Indy Light-Support Women Training Bra Black/White,Nike,sportswear,67.99,26.32,12,12,12.0,0.0,999,30,65.0,61.29,0.0,0.1763,0,0,1,premium,same_model_family,0.9506
+SP-6A8CBD0A6C,Nike One Girls Training Bra Black/White,Nike,sportswear,35.96,17.39,12,12,12.0,0.0,999,30,58.8,51.64,0.0,-0.0289,0,0,1,at_market,same_model_family,0.98
+SP-A544BF76A8,Nike One Keyhole Women Training Bra Black,Nike,sportswear,47.12,22.09,12,12,12.0,0.0,999,30,58.8,53.12,0.0,0.0025,1,0,1,at_market,same_model_family,0.98
+SP-B7486CDFB2,Nike One Light-Support Padded Women Training Bra Pink/Canyon Rust,Nike,sportswear,51.47,22.09,12,12,12.0,0.0,999,30,58.8,57.08,0.0,0.0868,1,1,1,above_market,same_model_family,0.9757
+SP-DBF6B755DC,Nike One Women Training Bra Black/White,Nike,sportswear,58.66,25.38,12,12,12.0,0.0,999,30,58.8,56.73,0.0,0.1988,1,1,1,premium,same_model_family,0.9444
+SP-F0B4D9EAF5,ON Sports Performance Women Running Bra Women Gourami,ON,sportswear,97.32,40.94,12,12,12.0,0.0,999,30,93.0,57.93,0.0,0.0855,0,0,1,above_market,same_model_family,0.9761
+SP-06A343CFF5,On Endurance Women Running Bra Heron,ON,sportswear,124.97,48.3,12,12,12.0,0.0,999,30,109.2,61.35,0.0,0.1598,0,0,1,premium,same_model_family,0.9553
+SP-FC59B5B023,On Endurance Women Running Bra Iceberg,ON,sportswear,109.02,48.3,12,12,12.0,0.0,999,30,104.2,55.7,0.0,0.2203,0,0,2,premium,same_model_family,0.8187
+SP-1AB356CEBD,On Performance Women Running Bra Black,ON,sportswear,86.19,40.94,12,12,12.0,0.0,999,30,82.4,52.5,0.0,0.0138,0,0,2,at_market,same_model_family,0.8724
+SP-6B6DD9AB71,On Performance Women Running Bra White,ON,sportswear,97.9,40.94,12,12,12.0,0.0,999,30,93.6,58.18,0.0,0.1318,0,0,2,above_market,same_model_family,0.839
+SP-5EEE00AE58,On Studio Women Training Bra Black,ON,sportswear,94.01,34.5,12,12,12.0,0.0,999,30,89.9,63.3,0.0,0.2022,0,0,1,premium,same_model_family,0.9434
+SP-2D1656C34E,On Studio Women Training Bra Heron,ON,sportswear,78.84,34.5,12,12,12.0,0.0,999,30,75.4,56.24,0.0,0.0487,0,1,1,at_market,same_model_family,0.98
+SP-C031FC9456,Adidas All Court 3.0 Unisex Basketball Ball Wood/Black,Adidas,accessories,43.08,19.68,18,18,18.0,0.0,999,30,45.2,54.32,0.0,0.0483,0,0,1,at_market,exact_style,1.0
+SP-2AE7A078CB,Adidas Classic 3 Bar Logo Training Backpack Men Dark Blue/White,Adidas,accessories,41.52,18.0,18,18,18.0,0.0,999,30,38.5,56.65,0.0,0.1089,0,0,2,above_market,exact_style,1.0
+SP-EFA218BDF9,Adidas Classic Training Backpack With Pencil Case Unisex Black/White,Adidas,accessories,53.85,22.8,18,18,18.0,0.0,999,30,38.5,57.66,0.0,0.1272,0,0,2,above_market,exact_style,1.0
+SP-8F64E1FCBD,Adidas INTER MIAMI IMCF JSY HOME Football Men,Adidas,accessories,74.49,29.28,18,18,18.0,0.0,999,30,46.6,60.69,0.0,0.1811,1,0,1,premium,exact_style,1.0
+SP-648D792B8F,Adidas Lightweight Baseball Unisex Training Cap White,Adidas,accessories,28.93,12.48,18,18,18.0,0.0,999,30,38.5,56.86,0.0,0.1013,0,0,2,above_market,exact_style,1.0
+SP-04B3889425,Adidas Performance 0.75 Unisex Training Water Bottle Black,Adidas,accessories,14.43,6.24,18,18,18.0,0.0,999,30,38.5,56.76,0.0,0.1684,0,0,2,premium,exact_style,1.0
+SP-100050E78D,Adidas Power Vii Unisex Training Bag Alumina/Black,Adidas,accessories,49.2,20.64,18,18,18.0,0.0,999,30,38.5,58.05,0.0,0.1667,2,0,2,premium,exact_style,1.0
+SP-2F2652299B,Adidas Unisex Training Dz9435 Light Ank 3Pp White/White/White,Adidas,accessories,19.62,7.44,18,18,18.0,0.0,999,30,45.2,62.08,0.0,0.0826,0,0,1,above_market,exact_style,1.0
+SP-984922E582,Crocs 3D Beach Umbrella Unisex Lifestyle Jibbitz Charm,Crocs,accessories,6.7,3.12,18,18,18.0,0.0,999,30,45.2,53.43,0.0,0.1045,0,0,1,above_market,same_model_family,0.9707
+SP-45B7989AB6,Crocs 3D Candy Cane Unisex Lifestyle Jibbitz Charm,Crocs,accessories,6.03,3.12,18,18,18.0,0.0,999,30,45.2,48.26,0.0,0.005,0,0,1,at_market,same_model_family,0.98
+SP-ECB50BF5E1,Crocs 3D Chilling Frog Unisex Lifestyle Jibbitz Charm,Crocs,accessories,7.39,3.12,18,18,18.0,0.0,999,30,45.2,57.78,0.0,0.1881,0,0,1,premium,same_model_family,0.9473
+SP-E5AA98F640,Crocs 3D Christmas Tree Unisex Lifestyle Jibbitz Charm,Crocs,accessories,5.75,3.12,18,18,18.0,0.0,999,30,45.2,45.74,0.0,-0.0435,0,0,1,at_market,same_model_family,0.98
+SP-331574EF21,Crocs 3D Coffee Cup Unisex Lifestyle Jibbitz Charm,Crocs,accessories,6.08,3.12,18,18,18.0,0.0,999,30,45.2,48.68,0.0,0.0132,0,0,1,at_market,same_model_family,0.98
+SP-2FEAF9AB06,Crocs 3D Dino Unisex Lifestyle Jibbitz Charm,Crocs,accessories,6.1,3.12,18,18,18.0,0.0,999,30,45.2,48.85,0.0,0.0164,0,0,1,at_market,same_model_family,0.98
+SP-C3B564E9B6,Crocs 3D Holiday Beach Umbrella Unisex Lifestyle Jibbitz Charm,Crocs,accessories,7.06,3.12,18,18,18.0,0.0,999,30,45.2,55.81,0.0,0.1501,0,0,1,premium,same_model_family,0.958
+SP-C12CBB627C,Crocs 3D Kitty Unisex Lifestyle Jibbitz Charm,Crocs,accessories,6.42,3.12,18,18,18.0,0.0,999,30,45.2,51.4,0.0,0.0654,0,0,1,above_market,same_model_family,0.98
+SP-823EFC5B57,New Balance 47 Brrr Trucker Unisex Performance Cap Black,New Balance,accessories,48.16,19.11,18,18,18.0,0.0,999,30,45.2,60.32,0.0,0.1902,0,0,1,premium,same_model_family,0.9467
+SP-B79D3FAE0C,New Balance 47 Clean Up Canvas 2 Men Lifestyle Cap Linen/Medusa Green,New Balance,accessories,44.55,19.11,18,18,18.0,0.0,999,30,45.2,57.1,0.0,0.1246,0,0,1,above_market,same_model_family,0.9651
+SP-9AA8578AF3,New Balance 47 Clean Up Unisex Lifestyle Cap Black,New Balance,accessories,32.23,17.15,18,18,18.0,0.0,999,30,45.2,46.79,0.0,-0.0859,0,0,1,below_market,same_model_family,0.9778
+SP-46B0A2E099,New Balance 47 Clean Up Women Lifestyle Cap Grey Matter,New Balance,accessories,41.57,17.15,18,18,18.0,0.0,999,30,45.2,58.74,0.0,0.158,0,0,1,premium,same_model_family,0.9557
+SP-5EC0254D0A,New Balance 47 Clean Up Women Lifestyle Cap Linen,New Balance,accessories,35.68,17.15,18,18,18.0,0.0,999,30,45.2,51.93,0.0,0.0191,0,0,1,at_market,same_model_family,0.98
+SP-A756F33BA2,New Balance 47 Clean Up Women Lifestyle Cap Pink Granite,New Balance,accessories,46.46,17.15,18,18,18.0,0.0,999,30,45.2,63.09,0.0,0.2467,0,0,1,premium,same_model_family,0.9309
+SP-292F8CAAAC,New Balance 47 Hitch Men Lifestyle Cap Nb Navy,New Balance,accessories,45.45,19.11,18,18,18.0,0.0,999,30,45.2,57.95,0.0,0.1419,0,0,1,above_market,same_model_family,0.9603
+SP-A8890E7A65,New Balance 47 Hitch Men Lifestyle Cap Team Away Grey,New Balance,accessories,39.64,19.11,18,18,18.0,0.0,999,30,45.2,51.79,0.0,0.0161,0,0,1,at_market,same_model_family,0.98
+SP-E70F8AC18A,Nike (20L) Boys Lifestyle Backpack Black/Orange/White,Nike,accessories,74.2,28.67,18,18,18.0,0.0,999,30,54.6,61.36,0.0,-0.0782,0,0,1,below_market,similar_product,0.7343
+SP-2F91D09AA8,Nike (20L) Girls Lifestyle Backpack Light Magenta,Nike,accessories,68.28,28.67,18,18,18.0,0.0,999,30,50.2,58.01,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-F94AB5A280,Nike 22 Oz Big Mouth 2.0 Unisex Training Bottle Clear/Black,Nike,accessories,8.83,3.76,18,18,18.0,0.0,999,30,45.2,57.42,0.0,0.094,1,1,1,above_market,same_model_family,0.9737
+SP-2BEE5B126F,Nike Academy Team L Unisex Training Bags Cases And Luggage Black/White,Nike,accessories,91.21,36.19,18,18,18.0,0.0,999,30,67.1,60.32,0.0,0.1558,0,0,1,premium,similar_product,0.7018
+SP-9D3EC934A6,Nike Academy Team M Unisex Training Bag Black/White,Nike,accessories,77.29,31.49,18,18,18.0,0.0,999,30,56.8,59.26,0.0,0.0038,0,0,1,at_market,same_model_family,0.9056
+SP-77A5EF0131,Nike Academy Team M Unisex Training Bag Navy/Black/White,Nike,accessories,73.68,31.49,18,18,18.0,0.0,999,30,54.2,57.26,0.0,0.3078,1,1,1,premium,same_model_family,0.9138
+SP-95F89E6174,Nike Academy Team S Unisex Training Bags Cases And Luggage Black/White,Nike,accessories,68.03,27.73,18,18,18.0,0.0,999,30,50.0,59.24,0.0,-0.1319,0,0,1,below_market,similar_product,0.7223
+SP-E923EE9DF9,Nike Academy Team Unisex Football Bag Navy/Black/White,Nike,accessories,54.73,27.73,18,18,18.0,0.0,999,30,45.2,49.33,0.0,-0.078,0,0,1,below_market,same_model_family,0.9797
+SP-7743651252,On All Day Unisex Lifestyle Cap Black,ON,accessories,65.87,27.14,18,18,18.0,0.0,999,30,48.4,58.8,0.0,0.165,0,0,1,premium,same_model_family,0.9538
+SP-F1BA32F84D,On All Day Unisex Lifestyle Cap Ivory,ON,accessories,61.83,27.14,18,18,18.0,0.0,999,30,45.5,56.11,0.0,0.1105,0,0,1,above_market,same_model_family,0.9691
+SP-A2AD690C12,On All Day Unisex Lifestyle Cap Navy,ON,accessories,67.94,27.14,18,18,18.0,0.0,999,30,50.0,60.05,0.0,0.1905,0,0,1,premium,same_model_family,0.9467
+SP-C3695075E8,"3 Bar Logo Swimsuit, Black",Adidas,swimwear,17.0,7.68,9,9,9.0,0.0,999,30,98.0,54.82,0.0,0.0588,1,1,1,above_market,exact_style,1.0
+SP-24D24979D7,"3-Stripes Swimsuit, Black",Adidas,swimwear,22.97,11.04,9,9,9.0,0.0,999,30,98.0,51.94,0.0,-0.0013,1,0,1,at_market,exact_style,1.0
+SP-D582D99C4D,Adidas Classic Solid Men Swim Swim Short Glow Blue,Adidas,swimwear,22.09,10.08,9,9,9.0,0.0,999,30,83.3,54.37,0.0,0.0493,2,1,2,at_market,same_model_family,0.894
+SP-7418F06482,ALN Accessories Aqua Dumbbell Swimming Gear Blue/Pink,All In,swimwear,6.24,3.12,9,9,9.0,0.0,999,30,98.0,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-171E383B23,ALN Accessories Floating Kickboard Swim Swimming Gear Blue,All In,swimwear,5.17,2.6,9,9,9.0,0.0,999,30,98.0,49.71,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-3C84F40051,ALN Accessories Floating Kickboard Swim Swimming Gear Pink,All In,swimwear,5.21,2.6,9,9,9.0,0.0,999,30,98.0,50.1,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-A2C7D98A61,Billabong All Day Layback Boys Beach Swim Short Lemon,Billabong,swimwear,24.04,12.0,9,9,9.0,0.0,999,30,98.0,50.08,0.0,0.0017,1,0,1,at_market,same_model_family,0.98
+SP-BB4694C6BC,Billabong All Day Layback Boys Beach Swim Short Sea Green,Billabong,swimwear,24.37,12.0,9,9,9.0,0.0,999,30,98.0,50.76,0.0,0.0152,1,0,1,at_market,same_model_family,0.98
+SP-428F9FE7D9,Billabong Gone Tropic Women Lifestyle Swim Short Pistachio,Billabong,swimwear,39.82,20.0,9,9,9.0,0.0,999,30,98.0,49.77,0.0,-0.0045,1,0,1,at_market,same_model_family,0.98
+SP-53DDAF3223,Blue Point Men Beach Swim Short White,Blue Point,swimwear,43.82,22.36,9,9,9.0,0.0,999,30,98.0,48.97,0.0,-0.0269,0,0,1,at_market,same_model_family,0.98
+SP-30038913CA,Body Glove Women Beach Monokini Whisper Crissy 1 Piece Storm,Body Glove,swimwear,64.17,34.84,9,9,9.0,0.0,999,30,102.2,45.71,0.0,-0.0441,1,0,1,at_market,same_model_family,0.98
+SP-950A524EDF,Bogner Nelson 2 Men Beach Swim Short Black,Bogner,swimwear,107.42,51.48,9,9,9.0,0.0,999,30,171.1,52.08,0.0,0.0784,0,0,1,above_market,same_model_family,0.978
+SP-E45BDB93ED,Bogner Paul Men Swim Short Black,Bogner,swimwear,225.91,95.16,9,9,9.0,0.0,999,30,182.1,57.88,0.0,0.1899,0,0,1,premium,same_model_family,0.9468
+SP-A83D634897,Bogner Paul Men Swim Short Navy Blue,Bogner,swimwear,170.4,95.16,9,9,9.0,0.0,999,30,182.1,44.15,0.0,-0.0739,0,0,1,below_market,same_model_family,0.98
+SP-03C17880F4,3 STRIPES TEE,Adidas,kids,39.17,16.8,9,9,9.0,0.0,999,30,65.4,57.11,0.0,0.1065,1,0,1,above_market,exact_style,1.0
+SP-E44D80B7EB,Adidas Club Pleat Kids-Girls Tennis Skort White,Adidas,kids,74.65,29.28,9,9,9.0,0.0,999,30,79.3,60.78,0.0,0.1829,0,0,1,premium,same_model_family,0.9488
+SP-DDAA79AADE,Adidas Disney Mickey Mouse Summer Baby-Boys Sportswear Suit White/Black,Adidas,kids,33.23,14.88,9,9,9.0,0.0,999,30,65.4,55.22,0.0,0.0671,1,0,1,above_market,same_model_family,0.98
+SP-DCD0168711,Adidas Disney Toy Story Little-Boys Training Suit Royal Blue/Lime,Adidas,kids,34.77,19.2,9,9,9.0,0.0,999,30,65.4,44.78,0.0,-0.1504,1,1,1,deep_value,same_model_family,0.9634
+SP-9775ACFE6C,Crocs Classic Neo Puff Kids Lifestyle After Ski Navy/Gum,Crocs,kids,57.8,26.0,9,9,9.0,0.0,999,30,65.4,55.02,0.0,0.1349,1,0,1,above_market,same_model_family,0.9622
+SP-A670A1698B,The North Face Baby 1996 Retro Nuptse One Piece Boys Hiking Suit Tnf Black,The North Face,kids,196.39,75.6,9,9,9.0,0.0,999,30,121.4,61.51,0.0,0.1446,1,0,1,above_market,same_model_family,0.9595
+SP-8DB0F3B215,The North Face Easy Kids Lifestyle Long Sleeve White,The North Face,kids,24.79,11.25,9,9,9.0,0.0,999,30,65.4,54.62,0.0,-0.0891,1,1,1,below_market,same_model_family,0.8837
+SP-24A89F1A48,ACTIVE SPORTS Graphic Tee II Boys,Puma,kids,12.75,5.0,9,9,9.0,0.0,999,30,65.4,60.78,0.0,-0.1765,1,0,1,deep_value,similar_product,0.732
+SP-7EBCBD2E4F,CATS CLUB Tee PS Boys,Puma,kids,10.96,5.0,9,9,9.0,0.0,999,30,65.4,54.38,0.0,0.0876,1,0,1,above_market,same_model_family,0.9755
+SP-176380B593,FEED YOUR PUMA Backpack PRIME Girls,Puma,kids,69.44,30.0,9,9,9.0,0.0,999,30,73.8,56.8,0.0,0.1359,0,0,1,above_market,same_model_family,0.9619
+SP-9358D6C153,FEED YOUR PUMA Backpack PRIME Kids,Puma,kids,60.45,30.0,9,9,9.0,0.0,999,30,65.4,50.37,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-1BEA1A72D1,Aquatail Mermaid Tail Kids Beach Fins Blue,Aquatail,kids,38.34,21.84,9,9,9.0,0.0,999,30,65.4,43.04,0.0,-0.0955,1,0,1,below_market,same_model_family,0.9756
+SP-4B36B44C2F,Aquatail Mermaid Tail Kids Beach Fins Green,Aquatail,kids,45.26,21.84,9,9,9.0,0.0,999,30,65.4,51.75,0.0,0.072,1,0,1,above_market,same_model_family,0.9798
+SP-7DC760B623,Babolat Nadal Junior 19 Kids Tennis Racquet Black/Yellow,Babolat,kids,57.91,29.12,9,9,9.0,0.0,999,30,65.4,49.72,0.0,0.033,0,0,1,at_market,same_model_family,0.98
+SP-C3AF8C8D07,Babolat Nadal Junior 23 Strung Grip Kids Tennis Racquet Multi,Babolat,kids,86.04,34.84,9,9,9.0,0.0,999,30,91.4,59.51,0.0,0.2213,0,0,1,premium,same_model_family,0.938
+SP-474329A365,Babolat Pure Drive Junior 25 Gen11 Kids Tennis Racquet Blue,Babolat,kids,189.47,92.56,9,9,9.0,0.0,999,30,121.4,51.15,0.0,0.0605,0,0,1,above_market,same_model_family,0.98
+SP-42A81C708A,Babolat Pure Drive Junior 25 Gen11 Kids Tennis Racquet Light Blue,Babolat,kids,175.45,89.96,9,9,9.0,0.0,999,30,121.4,48.73,0.0,0.014,0,0,1,at_market,same_model_family,0.98
+SP-4665CFBB2F,"Gazelle Shoes, Black",Adidas,lifestyle,172.26,76.32,12,12,12.0,0.0,999,30,128.5,55.69,0.0,0.077,0,0,1,above_market,exact_style,1.0
+SP-0590004E40,"Handball Spezial Shoes, Black",Adidas,lifestyle,152.94,76.32,12,12,12.0,0.0,999,30,109.2,50.1,0.0,-0.0396,0,1,2,at_market,exact_style,1.0
+SP-82664C3C8D,"Handball Spezial Shoes, White",Adidas,lifestyle,167.99,76.32,12,12,12.0,0.0,999,30,109.2,54.57,0.0,0.0535,0,0,1,above_market,exact_style,1.0
+SP-3FB5CF5912,"Samba OG Shoes, Beige",Adidas,lifestyle,140.14,76.32,12,12,12.0,0.0,999,30,109.2,45.54,0.0,-0.1346,0,0,2,below_market,exact_style,1.0
+SP-B39CD90660,NIKE Vomero Plus IM5019,Nike,lifestyle,92.49,39.01,12,12,12.0,0.0,999,30,104.0,57.82,0.0,0.1026,0,0,1,above_market,exact_style,1.0
+SP-7B6BD14F3B,NB 9060 full black,New Balance,lifestyle,88.27,36.75,12,12,12.0,0.0,999,30,99.3,58.37,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-48CB982454,New Balance 9060 Triple Black,New Balance,lifestyle,89.1,41.65,12,12,12.0,0.0,999,30,100.2,53.25,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-7DFB8328BE,New Balance Fresh Foam X Trail More v3 Black/Pink/Yellow Women's Trail Shoes,New Balance,lifestyle,79.67,41.65,12,12,12.0,0.0,999,30,89.6,47.72,0.0,-0.0669,1,0,1,below_market,same_model_family,0.98
+SP-86604D5CF7,New balance trail fresh foam gray/pink,New Balance,lifestyle,87.39,39.2,12,12,12.0,0.0,999,30,98.3,55.14,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-04A2348ABD,Air Zoom Superfly Elite - FG Cleats,Nike,lifestyle,87.79,37.6,12,12,12.0,0.0,999,30,98.7,57.17,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-D73EAC318C,Air Zoom Vapor Elite - FG Cleats,Nike,lifestyle,86.1,37.6,12,12,12.0,0.0,999,30,96.8,56.33,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-3577D415E8,Kylian Mbappe X Air Zoom Superfly Elite - FG Cleats,Nike,lifestyle,86.85,37.6,12,12,12.0,0.0,999,30,97.7,56.71,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-2A3C5C0C82,The North Face Glenclyffe Urban Boots in a white dune/tnf black colorway,The North Face,lifestyle,82.74,38.25,12,12,12.0,0.0,999,30,93.0,53.77,0.0,0.0331,1,1,1,at_market,same_model_family,0.8787
+SP-D866E2F245,ASICS PADEL METARISE™ 2,ASICS,lifestyle,99.22,44.1,12,12,12.0,0.0,999,30,111.6,55.55,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-4EAF56E4BE,ASICS PADEL SKY ELITE FF 3,ASICS,lifestyle,136.47,68.6,12,12,12.0,0.0,999,30,128.5,49.73,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-27D2D54156,Asics Metarise 2 Paris volleyball shoes in a safety yellow and black,ASICS,lifestyle,108.11,41.65,12,12,12.0,0.0,999,30,121.6,61.47,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-2F6F3036F1,Handball Shoes Asics Sky Elite FF MT 3,ASICS,lifestyle,97.07,44.1,12,12,12.0,0.0,999,30,109.2,54.57,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-0F8FD95EB4,"3-Stripes Skirt, Black",Adidas,other,27.39,12.96,9,9,9.0,0.0,999,30,73.5,52.68,0.0,0.0142,1,0,1,at_market,exact_style,1.0
+SP-02050B0FD1,"Adicolor 70S V-Neck Dress, Beige",Adidas,other,42.63,18.24,9,9,9.0,0.0,999,30,73.5,57.21,0.0,0.1086,1,1,1,above_market,exact_style,1.0
+SP-21EC9D6B2F,"Adicolor Classics Poplin Skirt, Blue",Adidas,other,31.58,15.36,9,9,9.0,0.0,999,30,73.5,51.36,0.0,-0.0133,1,0,1,at_market,exact_style,1.0
+SP-EE94F7E634,"Adicolor Classics Tricot Skirt, Black",Adidas,other,12.36,6.24,9,9,9.0,0.0,999,30,73.5,49.51,0.0,-0.0518,1,0,1,below_market,exact_style,1.0
+SP-FA311BCAB5,New Balance Sport Quarter Zip Women Performanc Long Sleeve Black,New Balance,other,55.86,26.95,9,9,9.0,0.0,999,30,73.5,51.75,0.0,0.0154,0,0,1,at_market,same_model_family,0.98
+SP-8786A633D5,New Balance Sport Women Performance Long Sleeve Black,New Balance,other,29.34,13.23,9,9,9.0,0.0,999,30,73.5,54.91,0.0,0.0798,1,0,1,above_market,same_model_family,0.9777
+SP-92437D4CE3,Nike Df Pacer Men Running Long Sleeve Black,Nike,other,86.53,37.6,9,9,9.0,0.0,999,30,103.4,56.55,0.0,0.0755,0,0,1,above_market,same_model_family,0.9789
+SP-6294EFF394,Nike Element Men Running Long Sleeve Armor Navy/Grey,Nike,other,90.54,35.72,9,9,9.0,0.0,999,30,108.2,60.55,0.0,0.1606,1,1,1,premium,same_model_family,0.955
+SP-7637E3C2FF,Nike Fitted Women Training Long Sleeve Black,Nike,other,65.65,33.84,9,9,9.0,0.0,999,30,78.4,48.45,0.0,-0.0967,0,0,1,below_market,same_model_family,0.9753
+SP-AADCC2E724,Nike Flex Classic 6 Packs Unisex Training Band Multicolor,Nike,other,12.14,6.58,9,9,9.0,0.0,999,30,73.5,45.8,0.0,0.0115,0,0,1,at_market,same_model_family,0.98
+SP-C7D5ADC445,On Climate 2 Men Running Long Sleeve Black,ON,other,154.12,66.7,9,9,9.0,0.0,999,30,136.6,56.72,0.0,0.0592,0,0,1,above_market,same_model_family,0.98
+SP-5368149B74,On Climate 2 Women Running Long Sleeve Black,ON,other,140.53,66.7,9,9,9.0,0.0,999,30,136.6,52.54,0.0,-0.0318,0,0,1,at_market,same_model_family,0.98
+SP-8EE0491D9F,On Climate Women Running Long Sleeve Iceberg,ON,other,155.45,66.7,9,9,9.0,0.0,999,30,136.6,57.09,0.0,0.0672,0,0,1,above_market,same_model_family,0.98
+SP-6094574FE4,On Club Collective 1/4 Zip Men Lifestyle Long Sleeve Ore,ON,other,152.03,73.14,9,9,9.0,0.0,999,30,136.6,51.89,0.0,-0.0458,0,0,1,at_market,same_model_family,0.98
+SP-71A50D913C,The North Face Base Camp Travel Canister L Unisex Hiking Case Summit Gold/Black,The North Face,other,26.25,11.25,9,9,9.0,0.0,999,30,73.5,57.14,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-C394BB70B8,The North Face Base Unisex Lifestyle Band Black,The North Face,other,18.81,9.0,9,9,9.0,0.0,999,30,73.5,52.15,0.0,-0.0633,1,0,1,below_market,same_model_family,0.98
+SP-E668E236D6,The North Face Box Nse Men Lifestyle Long Sleeve Black/White,The North Face,other,39.86,17.1,9,9,9.0,0.0,999,30,73.5,57.1,0.0,0.0467,1,1,1,at_market,same_model_family,0.98
+SP-E1745BC3E3,"Samba OG Shoes, Black",Adidas,lifestyle,160.83,76.32,12,12,12.0,0.0,999,30,128.5,52.55,0.0,0.0114,0,0,1,at_market,exact_style,1.0
+SP-D2CBD27227,"Samba OG Shoes, White",Adidas,lifestyle,155.52,76.32,12,12,12.0,0.0,999,30,128.5,50.93,0.0,-0.0224,0,0,1,at_market,exact_style,1.0
+SP-86F9AD96E6,Mizuno Wave Lightning Z8,Mizuno,footwear,133.2,66.6,64,64,64.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-BB3E20F861,Mizuno Wave Lightning Z8 W,Mizuno,footwear,133.2,66.6,56,56,56.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-25BF4C3BC1,Mizuno Wave Momentum 3,Mizuno,footwear,122.1,61.05,48,48,48.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-8BD0B8EFA5,K-Swiss Hypercourt Express 2 W,K-Swiss,footwear,111.0,57.72,42,42,42.0,0.0,999,30,132.6,48.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-D936C9E9C6,Mizuno Wave Rider 28,Mizuno,footwear,155.4,77.7,48,48,48.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-FC6ABE238F,Mizuno Wave Inspire 21,Mizuno,footwear,155.4,77.7,42,42,42.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-82B46A2F76,La Sportiva Kaptiva 2,La Sportiva,footwear,155.4,71.48,35,35,35.0,0.0,999,30,136.6,54.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-CFC4A2736E,La Sportiva Jackal II,La Sportiva,footwear,172.05,79.14,28,28,28.0,0.0,999,30,136.6,54.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-4AF5F1EE2D,Columbia Facet 75 Outdry,Columbia,footwear,166.5,83.25,40,40,40.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-97D88E812C,Mizuno Wave Rider 28 W,Mizuno,footwear,155.4,77.7,42,42,42.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-33272498BE,Mizuno Wave Sky 8,Mizuno,footwear,166.5,83.25,35,35,35.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-E5E8062C5F,La Sportiva Wildcat 3.0 W,La Sportiva,footwear,149.85,68.93,28,28,28.0,0.0,999,30,136.6,54.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-87178E76A0,Columbia Peakfreak II OutDry W,Columbia,footwear,122.1,61.05,35,35,35.0,0.0,999,30,136.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-E73794CCEB,La Sportiva Bushido III,La Sportiva,footwear,166.5,76.59,28,28,28.0,0.0,999,30,136.6,54.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-A66350455D,Keen Targhee IV Mid WP,Keen,footwear,183.15,87.91,40,40,40.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-36AFC5305C,Keen Venture Mid WP,Keen,footwear,155.4,74.59,40,40,40.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-D21AF978EC,Keen Jasper Vent,Keen,footwear,111.0,53.28,48,48,48.0,0.0,999,30,132.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-139E4E0F8D,Columbia Newton Ridge Plus 2 WP,Columbia,footwear,111.0,55.5,48,48,48.0,0.0,999,30,132.6,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-F74A6F2CD7,Keen Targhee IV WP Low W,Keen,footwear,149.85,71.93,35,35,35.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-BD7AEE01A2,Keen Terradora Flex WP W,Keen,footwear,149.85,71.93,35,35,35.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-5314E7EA83,Columbia Newton Ridge Plus W,Columbia,footwear,99.9,49.95,42,42,42.0,0.0,999,30,119.4,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-CED36CC988,La Sportiva Bushido III W,La Sportiva,footwear,160.95,74.04,28,28,28.0,0.0,999,30,136.6,54.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-7C0B3A5ECD,Keen Newport H2 Kids,Keen,kids,77.7,37.3,55,55,55.0,0.0,999,30,82.5,51.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-3EEFEBBB72,Columbia Trailstorm Mid WP Kids,Columbia,kids,77.7,38.85,55,55,55.0,0.0,999,30,82.5,50.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-B5ED3DA9C3,Keen Targhee Sport Kids,Keen,kids,83.25,39.96,35,35,35.0,0.0,999,30,88.4,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-2F43E7EF07,Teva Original Universal M,Teva,footwear,66.6,36.63,64,64,64.0,0.0,999,30,79.6,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-2644ED0974,Teva Original Universal W,Teva,footwear,66.6,36.63,56,56,56.0,0.0,999,30,79.6,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-D3B81EBF5D,Teva Hurricane XLT2 M,Teva,footwear,77.7,42.74,48,48,48.0,0.0,999,30,92.8,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-89F398D858,Teva Tirra W,Teva,footwear,77.7,42.74,42,42,42.0,0.0,999,30,92.8,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-24AE4646D5,Keen Newport H2 Sandal M,Keen,footwear,122.1,58.61,40,40,40.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-200BA4F84D,Keen Howser III Slide,Keen,footwear,88.8,42.62,50,50,50.0,0.0,999,30,106.1,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-5827249A55,Birkenstock Arizona Birko-Flor W,Birkenstock,footwear,111.0,53.28,40,40,40.0,0.0,999,30,132.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-A31AD355C0,Birkenstock Boston Clog M,Birkenstock,footwear,166.5,79.92,28,28,28.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-61AECD5A95,Birkenstock Gizeh Toe Post W,Birkenstock,footwear,116.55,55.94,35,35,35.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-73227ABBB9,Hey Dude Wally Slip-On M,Hey Dude,footwear,77.7,42.74,48,48,48.0,0.0,999,30,92.8,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-6D5425D438,Hey Dude Wendy Slip-On W,Hey Dude,footwear,77.7,42.74,42,42,42.0,0.0,999,30,92.8,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-0669577D6B,Birkenstock Arizona Kids,Birkenstock,kids,83.25,39.96,40,40,40.0,0.0,999,30,88.4,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-BD396CFE27,Vans Old Skool Black/White,Vans,lifestyle,77.7,42.74,88,88,88.0,0.0,999,30,87.4,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-043F544E70,Vans Old Skool White,Vans,lifestyle,77.7,42.74,88,88,88.0,0.0,999,30,87.4,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-EE92A1AEEC,Vans SK8-Hi Black,Vans,lifestyle,94.35,51.89,66,66,66.0,0.0,999,30,106.1,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-B894407578,Vans Authentic White,Vans,lifestyle,72.15,39.68,96,96,96.0,0.0,999,30,81.1,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-55CA67AAFC,Vans Old Skool Kids,Vans,kids,55.5,30.53,48,48,48.0,0.0,999,30,65.4,44.99,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-E1390D4948,Ellesse Raptor Lo M,Ellesse,lifestyle,83.25,45.79,35,35,35.0,0.0,999,30,93.6,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-11CD7588B5,Ellesse Massimo Club W,Ellesse,lifestyle,83.25,45.79,35,35,35.0,0.0,999,30,93.6,45.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-561C870956,K-Swiss Classic 66 M,K-Swiss,lifestyle,77.7,40.4,35,35,35.0,0.0,999,30,87.4,48.01,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-26A670ED8E,Dr. Martens 1460 Boot Black M,Dr. Martens,footwear,188.7,90.58,28,28,28.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-EDACD0C8B2,Dr. Martens 1460 Boot Black W,Dr. Martens,footwear,188.7,90.58,28,28,28.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-8865F6A858,Dr. Martens 1460 Cherry Red W,Dr. Martens,footwear,205.35,98.57,28,28,28.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-8CE7A884DF,Dr. Martens 1461 Oxford Black M,Dr. Martens,footwear,149.85,71.93,28,28,28.0,0.0,999,30,136.6,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0
+SP-BBA2621C3D,Dr. Martens 1460 Kids,Dr. Martens,kids,111.0,53.28,40,40,40.0,0.0,999,30,117.9,52.0,0.0,0.0,0,0,0,at_market,no_match,0.0

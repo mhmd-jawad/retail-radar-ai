@@ -9,14 +9,20 @@ All output is written for a Lebanese retail store owner to read.
 
 from __future__ import annotations
 
+from typing import Any
 
-def explain_feature(name: str, value: float, shap_value: float, decision: str) -> str:
+
+def explain_feature(name: str, value: Any, shap_value: float, decision: str) -> str:
     """Return a plain-English explanation for a single SHAP feature contribution."""
     positive = shap_value > 0
     fn = _TEMPLATES.get(name)
     if fn:
         return fn(value, positive, decision)
-    return f"{name} = {value:.2f} {'supports' if positive else 'reduces'} {decision}."
+    if isinstance(value, (int, float)):
+        rendered_value = f"{float(value):.2f}"
+    else:
+        rendered_value = str(value)
+    return f"{name} = {rendered_value} {'supports' if positive else 'reduces'} {decision}."
 
 
 # ── Template registry ─────────────────────────────────────────────────────────
@@ -165,8 +171,38 @@ def _cash_tight(v, pos, dec):
 def _inventory_intensity(v, pos, dec):
     pct = v * 100
     if pct > 60:
-        return f"{pct:.0f}% of working capital tied up in inventory — very high."
+        return f"{pct:.0f}% of working capital tied up in inventory - very high."
     return f"Inventory uses {pct:.0f}% of working capital."
+
+def _sale_pressure_ratio(v, pos, dec):
+    return f"{v:.0%} of tracked competitors are on sale - strong market pressure." if v >= 0.4 else f"Only {v:.0%} of tracked competitors are on sale."
+
+def _competitor_oos_ratio(v, pos, dec):
+    return f"{v:.0%} of tracked competitors are out of stock - you have a supply advantage." if v >= 0.3 else f"Competitor out-of-stock ratio is {v:.0%}."
+
+def _markdown_margin_buffer(v, pos, dec):
+    return f"Margin sits {v:.1f} points above the markdown floor." if v >= 0 else f"Margin sits {abs(v):.1f} points below the markdown floor."
+
+def _promote_margin_buffer(v, pos, dec):
+    return f"Margin sits {v:.1f} points above the promotion floor." if v >= 0 else f"Margin sits {abs(v):.1f} points below the promotion floor."
+
+def _recent_discount_cooldown(v, pos, dec):
+    return f"Discount cooldown pressure is high ({v:.0%}) - another markdown may be too soon." if v >= 0.4 else f"Discount cooldown pressure is low ({v:.0%})."
+
+def _stock_staleness_index(v, pos, dec):
+    return f"Stock staleness index is {v:.2f} - inventory is aging in place." if v >= 0.6 else f"Stock staleness index is only {v:.2f}."
+
+def _inventory_age_pressure(v, pos, dec):
+    return f"Inventory age pressure is elevated ({v:.2f}) from older stock and long cover." if v >= 0.35 else f"Inventory age pressure is modest ({v:.2f})."
+
+def _overpricing_sale_pressure(v, pos, dec):
+    return f"Overpricing and competitor sale pressure combine to {v:.2f} - market correction pressure is strong." if v >= 0.08 else f"Combined overpricing/sale pressure is limited ({v:.2f})."
+
+def _clearance_pressure_index(v, pos, dec):
+    return f"Clearance pressure index is {v:.2f} - the item looks like trapped dead stock." if v >= 0.45 else f"Clearance pressure index is only {v:.2f}."
+
+def _hold_guardrail_index(v, pos, dec):
+    return f"Hold guardrail index is {v:.2f} - profitability or cooldown signals argue against intervention." if v >= 0.20 else f"Hold guardrail index is light ({v:.2f})."
 
 
 _TEMPLATES = {
@@ -196,4 +232,14 @@ _TEMPLATES = {
     "cash_runway_months":      _cash_runway_months,
     "cash_tight":              _cash_tight,
     "inventory_intensity":     _inventory_intensity,
+    "sale_pressure_ratio":     _sale_pressure_ratio,
+    "competitor_oos_ratio":    _competitor_oos_ratio,
+    "markdown_margin_buffer":  _markdown_margin_buffer,
+    "promote_margin_buffer":   _promote_margin_buffer,
+    "recent_discount_cooldown":_recent_discount_cooldown,
+    "stock_staleness_index":   _stock_staleness_index,
+    "inventory_age_pressure":  _inventory_age_pressure,
+    "overpricing_sale_pressure": _overpricing_sale_pressure,
+    "clearance_pressure_index":  _clearance_pressure_index,
+    "hold_guardrail_index":      _hold_guardrail_index,
 }

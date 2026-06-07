@@ -9,7 +9,7 @@ Uses products.csv (from build_inventory.py) to derive:
 
 Lebanon financial context (2026):
   - Currency: fresh USD (cash outside banking system)
-  - Lollar: bank-trapped USD at ~15¢ on the dollar
+  - USD-only working capital and liability tracking
   - Grid electricity: ~12h/day → generator costs mandatory
   - Import lead times: 3–8 weeks via Beirut port
   - Payment: cash-dominant economy, minimal card processing
@@ -119,8 +119,6 @@ SETUP_COSTS = {
 }
 
 # Lebanon-specific balance sheet items
-LOLLAR_BALANCE = 12000   # USD trapped in Lebanese bank (pre-crisis deposit)
-LOLLAR_HAIRCUT = 0.15    # real value = 15¢ per dollar
 FRESH_DOLLAR_BUFFER_MONTHS = 3  # working capital = 3 months OpEx in cash
 
 
@@ -154,12 +152,9 @@ def build_balance_sheet(inventory_at_cost, inventory_at_retail):
     monthly_fixed = compute_monthly_fixed_opex()
     fresh_buffer = round(monthly_fixed * FRESH_DOLLAR_BUFFER_MONTHS, 2)
     setup_total = sum(SETUP_COSTS.values())
-    lollar_real_value = round(LOLLAR_BALANCE * LOLLAR_HAIRCUT, 2)
-
     # ASSETS
     assets = [
         ("ASSETS", "Cash — Fresh Dollars (operating)", fresh_buffer),
-        ("ASSETS", "Cash — Lollar (bank-trapped, real value)", lollar_real_value),
         ("ASSETS", "Inventory — Active Stock (at cost)", inventory_at_cost),
         ("ASSETS", "Security Deposits", SETUP_COSTS["security_deposit"]),
         ("ASSETS", "Store Fit-Out & Equipment (net of depreciation)", round(setup_total * 0.9, 2)),
@@ -343,17 +338,13 @@ def build_financial_profile(products, balance_sheet_rows, cashflow_rows,
             "cash_runway_months": round(fresh_buffer / monthly_fixed, 1),
             "breakeven_monthly_revenue_usd": round(monthly_fixed / avg_margin, 2),
         },
-        "lebanon_context": {
-            "lollar_balance_usd": LOLLAR_BALANCE,
-            "lollar_haircut": LOLLAR_HAIRCUT,
-            "lollar_real_value_usd": round(LOLLAR_BALANCE * LOLLAR_HAIRCUT, 2),
+        "usd_context": {
             "generator_monthly_usd": MONTHLY_OPEX["generator_fuel"]["amount_usd"],
             "grid_hours_per_day": 12,
             "payment_mostly_cash": True,
             "import_lead_time_weeks": "3-8",
             "notes": [
-                "All amounts in fresh USD (cash outside banking system).",
-                "Lollar is bank-trapped pre-crisis USD, valued at 15¢/$1 for balance sheet purposes.",
+                "All financial amounts are tracked in USD.",
                 "Generator fuel is a fixed cost because grid electricity covers only ~12h/day.",
                 "Payment processing rate is low (1.5%) because ~85% of sales are cash.",
                 "Import lead times are 3-8 weeks due to port delays and customs.",
@@ -425,8 +416,7 @@ def main():
     print("=" * 60)
     print(f"Total Assets:            ${total_assets:>12,.2f}")
     print(f"  Inventory (at cost):   ${inventory_at_cost:>12,.2f}")
-    print(f"  Fresh Dollar Buffer:   ${fresh_buffer:>12,.2f}")
-    print(f"  Lollar (real value):   ${LOLLAR_BALANCE * LOLLAR_HAIRCUT:>12,.2f}")
+    print(f"  USD Cash Buffer:       ${fresh_buffer:>12,.2f}")
     print(f"Total Liabilities:       ${supplier_payable:>12,.2f}")
     print(f"Owner's Equity:          ${owner_equity:>12,.2f}")
     check = round(total_assets - supplier_payable - owner_equity, 2)

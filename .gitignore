@@ -1,4 +1,17 @@
 data/outputs/
+data/reports/inspection_tmp/
+scraping/
+scraping/data/test_identifier_fix_outputs/
 scraping_new/
 __pycache__/
 *.pyc
+.venv*/
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+# Local Kubernetes secret env files — never commit
+k8s.env
+pgbouncer.env
+uvicorn.log
+*.log

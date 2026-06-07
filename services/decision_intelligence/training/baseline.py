@@ -1,8 +1,8 @@
 """
 Rules-engine baseline labeler for IE2 training.
 
-Reads features.csv, applies hard thresholds to generate training labels,
-and writes labels.csv. This is the v1 label source until real merchant
+Reads product-week features.csv, applies hard thresholds to generate training
+labels, and writes labels.csv. This is the v1 label source until real merchant
 outcome data is available.
 
 Baseline logic (priority order):
@@ -70,11 +70,12 @@ def generate_labels(
     df["rules_label"] = df.apply(_assign_label, axis=1)
 
     labels_path.parent.mkdir(parents=True, exist_ok=True)
-    df[["sku_id", "rules_label"]].to_csv(labels_path, index=False)
+    label_columns = [col for col in ["state_id", "sku_id", "week_of", "rules_label"] if col in df.columns]
+    df[label_columns].to_csv(labels_path, index=False)
 
     dist = df["rules_label"].value_counts().to_dict()
     log.info("Label distribution: %s", dist)
-    log.info("Labels saved → %s", labels_path)
+    log.info("Labels saved -> %s", labels_path)
     return df
 
 

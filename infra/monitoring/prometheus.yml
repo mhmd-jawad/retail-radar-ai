@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: eep
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - eep:8000
+
+  - job_name: live_rds_evaluation
+    metrics_path: /evaluation/live-rds/metrics
+    static_configs:
+      - targets:
+          - eep:8000

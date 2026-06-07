@@ -121,7 +121,7 @@ stylepulse-ai/
 │   │   ├── routes/
 │   │   │   ├── __init__.py
 │   │   │   ├── recommend.py          # POST /recommend/{sku_id}, /recommend/batch
-│   │   │   ├── upload.py             # POST /upload/csv
+│   │   │   ├── inventory.py          # POST /inventory/import, inventory CRUD
 │   │   │   ├── review.py             # PATCH /review/{sku_id}, GET /recommendations
 │   │   │   ├── status.py             # GET /status/{sku_id}
 │   │   │   └── health.py             # GET /health, /metrics
@@ -617,7 +617,7 @@ Team splits up. Each person works on their assigned services **in parallel**.
 - [ ] Implement routes:
   - `POST /recommend/{sku_id}` — single SKU
   - `POST /recommend/batch` — up to 50 SKUs
-  - `POST /upload/csv` — CSV upload for batch
+  - `POST /inventory/import` — save validated inventory rows to DB
   - `GET /recommendations` — list pending
   - `GET /status/{sku_id}` — with decay applied
   - `PATCH /review/{sku_id}` — approve/edit/reject/snooze

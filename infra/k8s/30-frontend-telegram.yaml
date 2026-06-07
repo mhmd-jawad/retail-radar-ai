@@ -1,0 +1,62 @@
+# Frontend SPA (×2) and the Telegram assistant (single replica, OFF by default).
+# ─────────────────────────────────────────── Frontend (nginx :80)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: retail-radar }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: frontend } } }
+      containers:
+        - name: frontend
+          image: ghcr.io/mhmd-jawad/retail-radar-frontend:latest
+          ports: [{ containerPort: 80 }]
+          readinessProbe: { httpGet: { path: /container-health, port: 80 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          resources:
+            requests: { cpu: "10m", memory: "24Mi" }
+            limits:   { cpu: "200m", memory: "96Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: retail-radar }
+spec: { selector: { app: frontend }, ports: [{ port: 80, targetPort: 80 }] }
+---
+# ─────────────────────────────────────────── Telegram assistant (8004)
+# SINGLE replica by design — it runs background poll loops; two copies would
+# double-send alerts. Starts at replicas: 0 so a missing bot token can't
+# CrashLoop on first deploy. To enable: put TELEGRAM_BOT_TOKEN / RETAILER_CHAT_ID /
+# TELEGRAM_WEBHOOK_SECRET in retail-secrets, then:
+#   kubectl -n retail-radar scale deploy/telegram --replicas=1
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: telegram, namespace: retail-radar }
+spec:
+  replicas: 0
+  strategy: { type: Recreate }      # never run two at once during a rollout
+  selector: { matchLabels: { app: telegram } }
+  template:
+    metadata: { labels: { app: telegram } }
+    spec:
+      imagePullSecrets: [{ name: ghcr-creds }]
+      containers:
+        - name: telegram
+          image: ghcr.io/mhmd-jawad/retail-radar-telegram:latest
+          ports: [{ containerPort: 8004 }]
+          envFrom:
+            - configMapRef: { name: retail-config }
+            - secretRef:    { name: retail-secrets }
+          readinessProbe: { httpGet: { path: /health, port: 8004 }, initialDelaySeconds: 15, periodSeconds: 15 }
+          livenessProbe:  { httpGet: { path: /health, port: 8004 }, initialDelaySeconds: 45, periodSeconds: 30 }
+          resources:
+            requests: { cpu: "75m", memory: "192Mi" }
+            limits:   { cpu: "500m", memory: "448Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: telegram, namespace: retail-radar }
+spec: { selector: { app: telegram }, ports: [{ port: 8004, targetPort: 8004 }] }

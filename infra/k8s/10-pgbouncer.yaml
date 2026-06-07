@@ -1,0 +1,51 @@
+# Connection pool in front of Amazon RDS. The app's DATABASE_URL (in retail-secrets)
+# points at pgbouncer:6432; PgBouncer holds the real RDS connection.
+# 2 replicas × MAX_DB_CONNECTIONS 30 = 60 server-side conns < RDS max_connections (79).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: retail-radar
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: pgbouncer } }
+  template:
+    metadata: { labels: { app: pgbouncer } }
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: pgbouncer } }
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:1.23.1
+          ports: [{ containerPort: 6432 }]
+          env:
+            - { name: DB_HOST,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_HOST } } }
+            - { name: DB_PORT,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_PORT } } }
+            - { name: DB_NAME,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_NAME } } }
+            - { name: DB_USER,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_PASSWORD } } }
+            - { name: POOL_MODE,          value: "session" }
+            - { name: MAX_CLIENT_CONN,    value: "200" }
+            - { name: DEFAULT_POOL_SIZE,  value: "15" }
+            - { name: MAX_DB_CONNECTIONS, value: "30" }
+            - { name: SERVER_TLS_SSLMODE, value: "require" }   # PgBouncer → RDS uses TLS
+            - { name: AUTH_TYPE,          value: "scram-sha-256" }
+          readinessProbe:
+            tcpSocket: { port: 6432 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "25m", memory: "48Mi" }
+            limits:   { cpu: "150m", memory: "96Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: retail-radar
+spec:
+  selector: { app: pgbouncer }
+  ports: [{ port: 6432, targetPort: 6432 }]

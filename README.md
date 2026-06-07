@@ -80,7 +80,90 @@ StylePulse AI replaces manual guesswork with an automated weekly intelligence sy
 
 ---
 
-## Quick Start
+## Local Development (How to Run)
+
+This section documents the **current local dev setup** — three processes run side-by-side without Docker.
+
+### Prerequisites
+
+- Python 3.11+ with a virtual env at `../.venv` (one level above the repo root)
+- Node.js 18+ **or** Bun — use `npx vite` if Bun is not installed
+- AWS RDS reachable (credentials in `.env` at repo root and `services/campaign_creative/.env`)
+
+### Required environment files
+
+**`retail-radar-ai/.env`** (repo root)
+```env
+DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
+```
+
+**`retail-radar-ai/frontend/.env.local`**
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_DATA_MODE=eep-live
+VITE_IE3_BASE_URL=http://localhost:8003
+```
+
+**`retail-radar-ai/services/campaign_creative/.env`**
+```env
+DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
+OPENROUTER_API_KEY=<your-openrouter-key>
+GEMINI_API_KEY=<your-gemini-key>
+FB_PAGE_ACCESS_TOKEN=<token>
+FB_PAGE_ID=<id>
+IG_USER_ID=<id>
+IG_ACCESS_TOKEN=<token>
+IMGBB_API_KEY=<key>
+```
+
+### Terminal 1 — EEP backend (port 8000)
+
+```powershell
+cd "c:\path\to\Radar Ai"
+.venv\Scripts\Activate.ps1
+cd retail-radar-ai
+uvicorn eep.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Verify: `curl http://localhost:8000/health`
+
+### Terminal 2 — IE3 Campaign Creative service (port 8003)
+
+```powershell
+cd "c:\path\to\Radar Ai"
+.venv\Scripts\Activate.ps1
+cd retail-radar-ai
+uvicorn services.campaign_creative.main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+Verify: `curl http://localhost:8003/health`
+
+### Terminal 3 — React frontend (port 8082)
+
+```powershell
+cd "c:\path\to\Radar Ai\retail-radar-ai\frontend"
+npx vite --port 8082
+```
+
+> If port 8082 is already in use Vite auto-increments to 8083, etc.
+
+Open: http://localhost:8082
+
+### Key endpoints
+
+| URL | What it shows |
+|---|---|
+| `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
+| `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
+| `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Progress |
+| `http://localhost:8000/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
+| `http://localhost:8000/report` | Static report JSON (financial pages) |
+| `http://localhost:8000/docs` | FastAPI Swagger UI |
+| `http://localhost:8003/docs` | IE3 campaign service Swagger UI |
+
+---
+
+## Quick Start (Docker)
 
 ### Prerequisites
 
@@ -98,13 +181,21 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-### 2. Start the Full Stack
+### 2. Start the Docker App Stack
 
 ```bash
-docker compose up --build
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-This starts: EEP (8000) · IE1 (8001) · IE2 (8002) · IE3 (8003) · PostgreSQL (5432) · MLflow (5000) · Prometheus (9090) · Grafana (3000)
+This starts EEP (8000), IE1 (8001), IE2 (8002), IE3 (8003), the dashboard (4173), Prometheus (9090), Grafana (3001), and uses `DATABASE_URL` from the repo root `.env`.
+
+Local PostgreSQL and Adminer are optional now. Start them only when your `.env` points to a local database:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile local-db up -d postgres adminer
+```
+
+For the Lightsail/RDS deployment flow, see `docs/full-stack-docker-deployment.md`.
 
 ### 3. Seed the Database
 
@@ -140,7 +231,7 @@ open http://localhost:8000/docs
 open http://localhost:5000
 
 # Grafana
-open http://localhost:3000
+open http://localhost:3001
 ```
 
 ### 6. Run Tests
@@ -164,7 +255,7 @@ pytest tests/ --cov=services --cov-report=html
 |---|---|---|
 | `POST` | `/recommend/{sku_id}` | Get recommendation for a single SKU |
 | `POST` | `/recommend/batch` | Up to 50 SKUs in one call |
-| `POST` | `/upload/csv` | Upload product CSV for batch processing |
+| `POST` | `/inventory/import` | Save validated inventory rows to PostgreSQL |
 | `GET` | `/recommendations` | List all pending recommendations |
 | `GET` | `/status/{sku_id}` | Get recommendation with confidence decay |
 | `PATCH` | `/review/{sku_id}` | Approve / Edit / Reject / Snooze |
@@ -302,9 +393,11 @@ stylepulse-ai/
 
 ## Monitoring
 
-- **Prometheus:** http://localhost:9090 — metrics from all 4 services
-- **Grafana:** http://localhost:3000 — 10-panel dashboard
+- **Prometheus:** http://localhost:9090 — service metrics
+- **Grafana:** http://localhost:3001 — observability dashboard
 - **MLflow:** http://localhost:5000 — experiment tracking, model registry
+
+See [Prometheus and Grafana Monitoring](./docs/monitoring-prometheus-grafana.md) for the current EEP monitoring setup.
 
 ---
 

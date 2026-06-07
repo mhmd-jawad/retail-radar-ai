@@ -1,0 +1,29 @@
+.git
+.pytest_cache
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+.venv
+venv
+node_modules
+frontend/node_modules
+frontend/dist
+mlartifacts
+catboost_info
+# Unused model experiment artifacts. Keep ONLY the dirs IE2 actually loads at runtime:
+#   models/catboost_decision/meta.json
+#   models/mlflow_export/retail_radar_decision_model_rds_candidate_v1/  (preferred)
+#   models/mlflow_export/retail_radar_decision_model_from_trial_017/     (fallback)
+services/decision_intelligence/models/**/trial_*.cbm
+services/decision_intelligence/models/mlflow_export/trial_*_run_export/
+services/decision_intelligence/models/*backup*/
+mlruns/
+temp_data
+data/outputs
+data/reports/inspection_tmp
+scraping/data/test_identifier_fix_outputs
+*.db
+*.sqlite
+*.sqlite3

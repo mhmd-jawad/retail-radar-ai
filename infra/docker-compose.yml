@@ -1,42 +1,174 @@
+name: retail-radar-local
+
 services:
-  ie2_decision_intelligence:
-    build:
-      context: .
-      dockerfile: services/decision_intelligence/Dockerfile
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./data/real:/app/data/real:ro
-      - ie2_models:/app/services/decision_intelligence/models
-      - ie2_features:/app/services/decision_intelligence/data/features
+  postgres:
+    profiles: ["local-db"]
+    image: postgres:16
     environment:
-      - PYTHONUNBUFFERED=1
+      POSTGRES_DB: retail_radar
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - retail_radar_pgdata:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d retail_radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
-  # IE1 — Market Intelligence (Mohammad Jawad)
-  # ie1_market_intelligence:
-  #   build:
-  #     context: .
-  #     dockerfile: services/market_intelligence/Dockerfile
-  #   ports:
-  #     - "8001:8001"
+  adminer:
+    profiles: ["local-db"]
+    image: adminer:4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
 
-  # IE3 — Campaign Creative (Mohammad Farhat)
-  # ie3_campaign_creative:
-  #   build:
-  #     context: .
-  #     dockerfile: services/campaign_creative/Dockerfile
-  #   ports:
-  #     - "8003:8003"
+  eep:
+    build:
+      context: ..
+      dockerfile: eep/Dockerfile
+      args:
+        INSTALL_IE2: "true"
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
-  # EEP — Executive Platform (Mohammad Farhat)
-  # eep:
-  #   build:
-  #     context: .
-  #     dockerfile: eep/Dockerfile
-  #   ports:
-  #     - "8000:8000"
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_DATA_MODE: eep-live
+        VITE_API_BASE_URL: /api
+        VITE_IE1_BASE_URL: /ie1
+        VITE_IE2_BASE_URL: /ie2
+        VITE_IE3_BASE_URL: /ie3
+        VITE_API_KEY: ${IE2_API_KEY:-ie2-local-postman-key}
+        VITE_GRAFANA_URL: http://localhost:3001
+    depends_on:
+      eep:
+        condition: service_healthy
+    ports:
+      - "4173:80"
+    restart: unless-stopped
+
+  ie1_market_intelligence:
+    build:
+      context: ..
+      dockerfile: services/market_intelligence/Dockerfile
+    env_file:
+      - ../.env
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  ie2_decision_intelligence:
+    build:
+      context: ..
+      dockerfile: services/decision_intelligence/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      IE2_API_KEY: ${IE2_API_KEY:-ie2-local-postman-key}
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  ie3_campaign_creative:
+    build:
+      context: ..
+      dockerfile: services/campaign_creative/Dockerfile
+    env_file:
+      - ../.env
+    ports:
+      - "8003:8003"
+    volumes:
+      - campaign_static:/app/services/campaign_creative/static
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    depends_on:
+      eep:
+        condition: service_healthy
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
+  telegram_assistant:
+    build:
+      context: ..
+      dockerfile: services/telegram_assistant/Dockerfile
+    ports:
+      - "8004:8004"
+    env_file:
+      - path: ../.env
+      - path: ../services/telegram_assistant/.env
+        required: false
+    environment:
+      EEP_BASE_URL: http://eep:8000
+      IE3_BASE_URL: http://ie3_campaign_creative:8003
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - default
+      - infra_default
+    restart: unless-stopped
 
 volumes:
-  ie2_models:
-  ie2_features:
+  retail_radar_pgdata:
+  campaign_static:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  infra_default:
+    external: true

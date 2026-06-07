@@ -1,0 +1,575 @@
+"""
+PostgreSQL-backed Telegram conversation session manager.
+Uses psycopg3 async — mirrors eep/retail_db.py connection pattern.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+logger = logging.getLogger("telegram_assistant.conversation_store")
+
+DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
+DEFAULT_TENANT_SLUG = "default"
+_MAX_HISTORY = 10       # legacy constant kept for backward compatibility
+_MAX_RECENT = 12        # messages kept verbatim in the sliding window
+_SUMMARIZE_AFTER = 20   # trigger summarization when history reaches this size
+
+
+async def ensure_conversation_tables(db_url: str) -> None:
+    """Idempotent migration: add new columns and helper tables to telegram schema."""
+    import psycopg
+
+    conn = await psycopg.AsyncConnection.connect(db_url)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("CREATE SCHEMA IF NOT EXISTS telegram")
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS telegram.registered_chats (
+                    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id    UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+                    chat_id      TEXT NOT NULL UNIQUE,
+                    display_name TEXT,
+                    role         TEXT NOT NULL DEFAULT 'owner'
+                                 CHECK (role IN ('owner', 'manager', 'staff')),
+                    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS telegram.registration_codes (
+                    code             TEXT PRIMARY KEY,
+                    tenant_id        UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+                    created_by       UUID REFERENCES core.app_users(id) ON DELETE SET NULL,
+                    expires_at       TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
+                    used_at          TIMESTAMPTZ,
+                    used_by_chat_id  TEXT
+                )
+                """
+            )
+            # Main conversations table — idempotent
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS telegram.conversations (
+                    tenant_id             UUID        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+                    chat_id               TEXT        NOT NULL,
+                    message_history       JSONB       NOT NULL DEFAULT '[]',
+                    active_flow           TEXT,
+                    flow_context          JSONB,
+                    cached_business_data  JSONB,
+                    cached_at             TIMESTAMPTZ,
+                    last_message_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_inbound_at       TIMESTAMPTZ,
+                    conversation_summary  TEXT,
+                    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (tenant_id, chat_id)
+                )
+                """
+            )
+            # New columns added in later migrations — safe to run on existing tables
+            await cur.execute(
+                "ALTER TABLE telegram.conversations "
+                "ADD COLUMN IF NOT EXISTS conversation_summary TEXT"
+            )
+            await cur.execute(
+                "ALTER TABLE telegram.conversations "
+                "ADD COLUMN IF NOT EXISTS last_inbound_at TIMESTAMPTZ"
+            )
+            # Table: deduplication — prevents processing Telegram webhook retries twice
+            await cur.execute("ALTER TABLE telegram.conversations DROP CONSTRAINT IF EXISTS conversations_pkey")
+            await cur.execute(
+                """
+                DO $$
+                BEGIN
+                    ALTER TABLE telegram.conversations
+                        ADD PRIMARY KEY (tenant_id, chat_id);
+                EXCEPTION WHEN duplicate_table THEN NULL;
+                END $$
+                """
+            )
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS telegram.processed_messages (
+                    message_id   TEXT        PRIMARY KEY,
+                    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            await cur.execute(
+                "ALTER TABLE telegram.processed_messages "
+                "ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES core.tenants(id) ON DELETE CASCADE"
+            )
+            await cur.execute(
+                """
+                UPDATE telegram.processed_messages
+                SET tenant_id = (SELECT id FROM core.tenants WHERE slug = %s LIMIT 1)
+                WHERE tenant_id IS NULL
+                """,
+                (DEFAULT_TENANT_SLUG,),
+            )
+            await cur.execute(
+                "ALTER TABLE telegram.processed_messages ALTER COLUMN tenant_id SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE telegram.processed_messages DROP CONSTRAINT IF EXISTS processed_messages_pkey"
+            )
+            await cur.execute(
+                """
+                DO $$
+                BEGIN
+                    ALTER TABLE telegram.processed_messages
+                        ADD PRIMARY KEY (tenant_id, message_id);
+                EXCEPTION WHEN duplicate_table THEN NULL;
+                END $$
+                """
+            )
+            await cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_processed_messages_cleanup
+                    ON telegram.processed_messages (processed_at)
+                """
+            )
+        await conn.commit()
+    except Exception as exc:
+        logger.warning("ensure_conversation_tables failed (may be a migration ordering issue): %s", exc)
+    finally:
+        await conn.close()
+
+
+async def is_within_24h_window(db_url: str, chat_id: str) -> bool:
+    """Return True if the retailer sent an inbound message within the last 24 hours.
+
+    Used by proactive senders to decide whether a free-form text message can be
+    sent without being rejected by Telegram delivery policy.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT last_inbound_at FROM telegram.conversations WHERE chat_id = %s",
+                (chat_id,),
+            )
+            row = await cur.fetchone()
+        if not row or not row.get("last_inbound_at"):
+            return False
+        last = row["last_inbound_at"]
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return (datetime.now(tz=timezone.utc) - last).total_seconds() < 86400
+    except Exception:
+        return True  # Assume in-window on DB error to avoid blocking sends
+    finally:
+        await conn.close()
+
+
+def _database_url() -> str:
+    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+async def _summarize_messages(messages: list[dict]) -> str:
+    """Summarize a batch of old messages into a compact text using Claude Haiku."""
+    try:
+        import anthropic as _anthropic
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if not api_key or "xxxx" in api_key.lower():
+            return _simple_summary(messages)
+
+        text_block = "\n".join(
+            f"{m['role'].upper()}: {m.get('content', '')[:300]}" for m in messages
+        )
+        client = _anthropic.AsyncAnthropic(api_key=api_key)
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Summarize this Telegram retail assistant conversation in 3-4 bullet points. "
+                        "Preserve key decisions, approved/rejected actions, and any business figures mentioned.\n\n"
+                        + text_block
+                    ),
+                }
+            ],
+        )
+        return response.content[0].text if response.content else _simple_summary(messages)
+    except Exception:
+        return _simple_summary(messages)
+
+
+def _simple_summary(messages: list[dict]) -> str:
+    """Fallback: return a plain-text excerpt when LLM is unavailable."""
+    lines = [f"[{m['role']}] {str(m.get('content', ''))[:120]}" for m in messages[-6:]]
+    return "Earlier conversation excerpt:\n" + "\n".join(lines)
+
+
+class ConversationManager:
+    def __init__(self, database_url: str | None = None) -> None:
+        self._database_url = database_url or _database_url()
+
+    # ── internal helpers ──────────────────────────────────────────────────────
+
+    async def _connect(self):
+        import psycopg
+        from psycopg.rows import dict_row
+
+        return await psycopg.AsyncConnection.connect(
+            self._database_url, row_factory=dict_row
+        )
+
+    async def _default_tenant_id(self, conn) -> UUID:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id FROM core.tenants WHERE slug = %s LIMIT 1",
+                (DEFAULT_TENANT_SLUG,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise RuntimeError(
+                    f"Default tenant '{DEFAULT_TENANT_SLUG}' not found. Run the schema first."
+                )
+            return row["id"]
+
+    # ── public API ────────────────────────────────────────────────────────────
+
+    async def get_or_create_session(
+        self, chat_id: str, tenant_id: UUID
+    ):
+        from services.telegram_assistant.conversation_models import ConversationSession
+
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT chat_id, tenant_id, message_history,
+                           active_flow, flow_context,
+                           cached_business_data, cached_at,
+                           conversation_summary
+                    FROM telegram.conversations
+                    WHERE tenant_id = %s AND chat_id = %s
+                    """,
+                    (str(tenant_id), chat_id),
+                )
+                row = await cur.fetchone()
+
+            if row:
+                return ConversationSession(
+                    chat_id=row["chat_id"],
+                    tenant_id=row["tenant_id"],
+                    message_history=row["message_history"] or [],
+                    active_flow=row["active_flow"],
+                    flow_context=row["flow_context"],
+                    cached_business_data=row["cached_business_data"],
+                    cached_at=row["cached_at"],
+                    conversation_summary=row.get("conversation_summary"),
+                )
+
+            # Not found — insert a fresh session
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO telegram.conversations
+                        (tenant_id, chat_id, message_history)
+                    VALUES (%s, %s, %s::jsonb)
+                    ON CONFLICT (tenant_id, chat_id) DO NOTHING
+                    """,
+                    (str(tenant_id), chat_id, json.dumps([])),
+                )
+            await conn.commit()
+
+            return ConversationSession(
+                chat_id=chat_id,
+                tenant_id=tenant_id,
+                message_history=[],
+            )
+        finally:
+            await conn.close()
+
+    async def append_message(
+        self, chat_id: str, role: str, content: str, tenant_id: UUID | str | None = None
+    ) -> None:
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        "SELECT message_history FROM telegram.conversations WHERE tenant_id = %s AND chat_id = %s",
+                        (str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        "SELECT message_history FROM telegram.conversations WHERE chat_id = %s",
+                        (chat_id,),
+                    )
+                row = await cur.fetchone()
+                history: list[dict] = row["message_history"] if row else []
+
+            history.append(
+                {
+                    "role": role,
+                    "content": content,
+                    "ts": datetime.now(tz=timezone.utc).isoformat(),
+                }
+            )
+
+            # Sliding window with summarization
+            summary_to_store: str | None = None
+            if len(history) >= _SUMMARIZE_AFTER:
+                old_messages = history[:-_MAX_RECENT]
+                history = history[-_MAX_RECENT:]
+                summary_to_store = await _summarize_messages(old_messages)
+
+            async with conn.cursor() as cur:
+                if summary_to_store is not None:
+                    if tenant_id is not None:
+                        await cur.execute(
+                            """
+                            UPDATE telegram.conversations
+                            SET message_history = %s::jsonb,
+                                conversation_summary = %s,
+                                last_message_at = now()
+                            WHERE tenant_id = %s AND chat_id = %s
+                            """,
+                            (json.dumps(history), summary_to_store, str(tenant_id), chat_id),
+                        )
+                    else:
+                        await cur.execute(
+                            """
+                            UPDATE telegram.conversations
+                            SET message_history = %s::jsonb,
+                                conversation_summary = %s,
+                                last_message_at = now()
+                            WHERE chat_id = %s
+                            """,
+                            (json.dumps(history), summary_to_store, chat_id),
+                        )
+                else:
+                    if tenant_id is not None:
+                        await cur.execute(
+                            """
+                            UPDATE telegram.conversations
+                            SET message_history = %s::jsonb,
+                                last_message_at = now()
+                            WHERE tenant_id = %s AND chat_id = %s
+                            """,
+                            (json.dumps(history), str(tenant_id), chat_id),
+                        )
+                    else:
+                        await cur.execute(
+                            """
+                            UPDATE telegram.conversations
+                            SET message_history = %s::jsonb,
+                                last_message_at = now()
+                            WHERE chat_id = %s
+                            """,
+                            (json.dumps(history), chat_id),
+                        )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def set_flow(
+        self, chat_id: str, flow_name: str, context: dict, tenant_id: UUID | str | None = None
+    ) -> None:
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET active_flow = %s,
+                            flow_context = %s::jsonb
+                        WHERE tenant_id = %s AND chat_id = %s
+                        """,
+                        (flow_name, json.dumps(context), str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET active_flow = %s,
+                            flow_context = %s::jsonb
+                        WHERE chat_id = %s
+                        """,
+                        (flow_name, json.dumps(context), chat_id),
+                    )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def clear_flow(self, chat_id: str, tenant_id: UUID | str | None = None) -> None:
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET active_flow = null,
+                            flow_context = null
+                        WHERE tenant_id = %s AND chat_id = %s
+                        """,
+                        (str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET active_flow = null,
+                            flow_context = null
+                        WHERE chat_id = %s
+                        """,
+                        (chat_id,),
+                    )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def get_cached_business_data(
+        self, chat_id: str, tenant_id: UUID | str | None = None
+    ) -> tuple[dict | None, datetime | None]:
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        "SELECT cached_business_data, cached_at FROM telegram.conversations WHERE tenant_id = %s AND chat_id = %s",
+                        (str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        "SELECT cached_business_data, cached_at FROM telegram.conversations WHERE chat_id = %s",
+                        (chat_id,),
+                    )
+                row = await cur.fetchone()
+            if not row:
+                return None, None
+            return row["cached_business_data"], row["cached_at"]
+        finally:
+            await conn.close()
+
+    async def unregister_chat(self, chat_id: str, tenant_id: UUID | str | None = None) -> bool:
+        """Mark a chat as inactive (soft-delete). Returns True if a row was updated."""
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        "UPDATE telegram.registered_chats SET is_active = false WHERE tenant_id = %s AND chat_id = %s",
+                        (str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        "UPDATE telegram.registered_chats SET is_active = false WHERE chat_id = %s",
+                        (chat_id,),
+                    )
+                updated = cur.rowcount > 0
+            await conn.commit()
+            return updated
+        finally:
+            await conn.close()
+
+    async def set_cached_business_data(
+        self, chat_id: str, data: dict, tenant_id: UUID | str | None = None
+    ) -> None:
+        conn = await self._connect()
+        try:
+            async with conn.cursor() as cur:
+                if tenant_id is not None:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET cached_business_data = %s::jsonb,
+                            cached_at = now()
+                        WHERE tenant_id = %s AND chat_id = %s
+                        """,
+                        (json.dumps(data), str(tenant_id), chat_id),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE telegram.conversations
+                        SET cached_business_data = %s::jsonb,
+                            cached_at = now()
+                        WHERE chat_id = %s
+                        """,
+                        (json.dumps(data), chat_id),
+                    )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+
+# ── Self-test ─────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    _env_file = Path(__file__).parent / ".env"
+    if _env_file.exists():
+        from dotenv import load_dotenv
+
+        load_dotenv(_env_file, override=True)
+
+    TEST_PHONE = "+96170000000"
+
+    async def _run_tests() -> None:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        db_url = _database_url()
+        mgr = ConversationManager(db_url)
+
+        # Resolve default tenant_id
+        conn = await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row)
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id FROM core.tenants WHERE slug = %s LIMIT 1",
+                (DEFAULT_TENANT_SLUG,),
+            )
+            row = await cur.fetchone()
+        await conn.close()
+        if not row:
+            raise RuntimeError(f"Tenant '{DEFAULT_TENANT_SLUG}' not found.")
+        default_tenant_id: UUID = row["id"]
+
+        # 1 + 2. get_or_create_session
+        session = await mgr.get_or_create_session(TEST_PHONE, default_tenant_id)
+        print(f"[1] session created/fetched for {session.chat_id}")
+
+        # 3. append_message
+        await mgr.append_message(TEST_PHONE, "user", "hello")
+        print("[2] message appended")
+
+        # 4. re-fetch and print history
+        session2 = await mgr.get_or_create_session(TEST_PHONE, default_tenant_id)
+        print(f"[3] message_history: {session2.message_history}")
+        assert len(session2.message_history) >= 1, "Expected at least 1 message in history"
+
+        # 5. set_flow
+        await mgr.set_flow(TEST_PHONE, "promote", {"sku_id": "TEST-001"})
+        print("[4] flow set to 'promote'")
+
+        # 6. clear_flow
+        await mgr.clear_flow(TEST_PHONE)
+        print("[5] flow cleared")
+
+        print("\nAll tests passed")
+
+    import selectors
+    asyncio.run(_run_tests(), loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()))
