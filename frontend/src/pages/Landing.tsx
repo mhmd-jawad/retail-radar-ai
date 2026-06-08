@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import {
   Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone, Wallet,
   ListChecks, ChevronLeft, ChevronRight, Database,
-  CircleDot, Pause, TrendingUp, Tag, Flame,
+  CircleDot, Pause, TrendingUp, Tag, Flame, Target,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 const MODULES = [
   { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve HOLD / MARKDOWN / PROMOTE / CLEAR per SKU.', status: 'live' },
   { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.', status: 'live' },
-  { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
+  { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'live' },
   { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, liquidity, working capital.', status: 'live' },
 ];
 
@@ -27,8 +27,7 @@ const SERVICES = [
 const SHOP_SERVICES = [
   { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, financial, and promotion signals in one workspace.' },
   { name: 'Decision Recommendations', status: 'live', desc: 'SKU-level hold, markdown, promote, and clearance guidance.' },
-  { name: 'Demand Forecasting', status: 'planned', desc: 'Demand and seasonality forecasts for future planning.' },
-  { name: 'Campaign Creative', status: 'planned', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
+  { name: 'Campaign Creative', status: 'live', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
   { name: 'Tenant Data Sync', status: 'live', desc: 'Live shop data connected to the dashboard and recommendation queue.' },
   { name: 'Competitor Tracking', status: 'live', desc: 'Market snapshots across selected Lebanese sportswear competitors.' },
 ];
@@ -206,8 +205,7 @@ export default function Landing() {
             Real today. <span className="text-gradient-warm">Ready for tomorrow.</span>
           </h2>
           <p className="text-muted-foreground max-w-2xl mb-12">
-            The core retail workspace runs today: inventory, competitor signals, recommendations, and financial context.
-            Forecasting and campaign creative are prepared for controlled rollout.
+            The core retail workspace runs today: inventory, competitor signals, recommendations, financial context, and campaign creative generation.
           </p>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -286,9 +284,11 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
               { to: '/overview', icon: Radar, title: 'Executive Overview', desc: 'KPI snapshot, alerts and seasonal calendar.' },
-              { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze 350 SKU decisions.' },
-              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
+              { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze SKU decisions.' },
+              { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.' },
               { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
+              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
+              { to: '/closed-loop', icon: Target, title: 'Closed Loop', desc: 'Track approved decisions and measure real pricing outcomes.' },
             ].map((m, i) => (
               <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">
