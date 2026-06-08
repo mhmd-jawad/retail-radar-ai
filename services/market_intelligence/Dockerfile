@@ -9,7 +9,6 @@ COPY services/market_intelligence/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r ./requirements.txt
 
 COPY services/ ./services/
-COPY data/ ./data/
 
 EXPOSE 8001
 
