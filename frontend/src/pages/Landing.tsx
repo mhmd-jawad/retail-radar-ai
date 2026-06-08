@@ -152,171 +152,190 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ===== MODULE RAIL (swipeable) ===== */}
-      <section id="modules" className="relative py-24 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-end justify-between mb-8 gap-4 flex-wrap">
-            <div>
-              <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Module overview</div>
-              <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight max-w-2xl">
-                Five command surfaces.<br />
-                <span className="text-gradient-warm">One retail brain.</span>
-              </h2>
-            </div>
-            <div className="hidden md:flex gap-2">
-              <button onClick={() => scrollRail(-1)} className="h-11 w-11 rounded-full glass hover-glow flex items-center justify-center" aria-label="Previous"><ChevronLeft className="h-5 w-5" /></button>
-              <button onClick={() => scrollRail(1)} className="h-11 w-11 rounded-full glass hover-glow flex items-center justify-center" aria-label="Next"><ChevronRight className="h-5 w-5" /></button>
-            </div>
-          </div>
+      {/* ===== ALL SECTIONS BELOW HERO — single continuous warm canvas ===== */}
+      {/*
+        One wrapper, one background. Four large overlapping radial gradients placed at
+        different x/y% positions so warm light bleeds seamlessly across every section
+        boundary. No overflow-hidden on sections = no clipping, no dark seams.
+      */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          background: `
+            radial-gradient(ellipse 90% 42% at 72% 10%, hsl(28 96% 56% / 0.09), transparent),
+            radial-gradient(ellipse 80% 38% at 22% 34%, hsl(28 96% 56% / 0.07), transparent),
+            radial-gradient(ellipse 85% 42% at 68% 60%, hsl(28 96% 56% / 0.08), transparent),
+            radial-gradient(ellipse 78% 38% at 32% 84%, hsl(28 96% 56% / 0.07), transparent),
+            hsl(22 18% 5%)
+          `,
+        }}
+      >
+        {/* Single dot-grid layer spanning the full wrapper */}
+        <div className="pointer-events-none absolute inset-0 dot-grid opacity-[0.22]" />
 
-          <div
-            ref={railRef}
-            className="flex gap-5 overflow-x-auto scroll-snap-x scrollbar-thin pb-4 -mx-6 px-6 snap-mandatory"
-          >
-            {MODULES.map((m, i) => (
-              <Link
-                key={m.to}
-                to={m.to}
-                className="snap-card group min-w-[300px] md:min-w-[340px] glass rounded-2xl p-6 hover-glow flex flex-col animate-fade-in-up"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <div className="flex items-center justify-between mb-5">
-                  <div className="h-11 w-11 rounded-xl bg-gradient-data/20 border border-amber-500/30 flex items-center justify-center group-hover:bg-gradient-data group-hover:border-transparent transition-all">
-                    <m.icon className="h-5 w-5 text-amber-300 group-hover:text-primary-foreground transition-colors" />
-                  </div>
-                  <StatusBadge status={m.status} />
-                </div>
-                <h3 className="font-display text-lg font-semibold mb-2">{m.title}</h3>
-                <p className="text-[13.5px] text-muted-foreground leading-relaxed flex-1">{m.desc}</p>
-                <div className="mt-5 flex items-center text-[12.5px] text-amber-300/90 font-medium gap-1.5 group-hover:gap-3 transition-all">
-                  Open module <ArrowRight className="h-3.5 w-3.5" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== STATUS / IMPLEMENTED NOW ===== */}
-      <section id="status" className="relative py-24 px-6 border-t border-border/50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// What is implemented now</div>
-          <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-4 max-w-3xl">
-            Real today. <span className="text-gradient-warm">Ready for tomorrow.</span>
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mb-12">
-            The core retail workspace runs today: inventory, competitor signals, recommendations, financial context, and campaign creative generation.
-          </p>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {SHOP_SERVICES.map((s, i) => (
-              <div key={s.name} className="glass rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: `${i * 80}ms` }}>
-                <div className="flex items-center justify-between mb-4">
-                  <StatusDot status={s.status} />
-                  <StatusBadge status={s.status} />
-                </div>
-                <div className="font-display text-[16px] font-semibold mb-1.5">{s.name}</div>
-                <div className="text-[12.5px] text-muted-foreground leading-relaxed">{s.desc}</div>
+        {/* ===== MODULE RAIL (swipeable) ===== */}
+        <section id="modules" className="relative py-24 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-end justify-between mb-8 gap-4 flex-wrap">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Module overview</div>
+                <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight max-w-2xl">
+                  Five command surfaces.<br />
+                  <span className="text-gradient-warm">One retail brain.</span>
+                </h2>
               </div>
-            ))}
+              <div className="hidden md:flex gap-2">
+                <button onClick={() => scrollRail(-1)} className="h-11 w-11 rounded-full glass hover-glow flex items-center justify-center" aria-label="Previous"><ChevronLeft className="h-5 w-5" /></button>
+                <button onClick={() => scrollRail(1)} className="h-11 w-11 rounded-full glass hover-glow flex items-center justify-center" aria-label="Next"><ChevronRight className="h-5 w-5" /></button>
+              </div>
+            </div>
+            <div
+              ref={railRef}
+              className="flex gap-5 overflow-x-auto scroll-snap-x scrollbar-thin pb-4 -mx-6 px-6 snap-mandatory"
+            >
+              {MODULES.map((m, i) => (
+                <Link
+                  key={m.to}
+                  to={m.to}
+                  className="snap-card group min-w-[300px] md:min-w-[340px] glass rounded-2xl p-6 hover-glow flex flex-col animate-fade-in-up"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                >
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="h-11 w-11 rounded-xl bg-gradient-data/20 border border-amber-500/30 flex items-center justify-center group-hover:bg-gradient-data group-hover:border-transparent transition-all">
+                      <m.icon className="h-5 w-5 text-amber-300 group-hover:text-primary-foreground transition-colors" />
+                    </div>
+                    <StatusBadge status={m.status} />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold mb-2">{m.title}</h3>
+                  <p className="text-[13.5px] text-muted-foreground leading-relaxed flex-1">{m.desc}</p>
+                  <div className="mt-5 flex items-center text-[12.5px] text-amber-300/90 font-medium gap-1.5 group-hover:gap-3 transition-all">
+                    Open module <ArrowRight className="h-3.5 w-3.5" />
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ===== ACTIONS THE SYSTEM GIVES ===== */}
-      <section className="relative py-24 px-6 border-t border-border/50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// What it tells you to do</div>
-          <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-4 max-w-3xl">
-            Four decisions. <span className="text-gradient-warm">Always reviewed by you.</span>
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mb-12">
-            Every recommendation comes with confidence, top reasons, suggested price and projected margin.
-            Human approval is required before any action is committed.
-          </p>
+        {/* ===== STATUS / IMPLEMENTED NOW ===== */}
+        <section id="status" className="relative py-24 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// What is implemented now</div>
+            <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-4 max-w-3xl">
+              Real today. <span className="text-gradient-warm">Ready for tomorrow.</span>
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mb-12">
+              The core retail workspace runs today: inventory, competitor signals, recommendations, financial context, and campaign creative generation.
+            </p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {SHOP_SERVICES.map((s, i) => (
+                <div key={s.name} className="glass rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: `${i * 80}ms` }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <StatusDot status={s.status} />
+                    <StatusBadge status={s.status} />
+                  </div>
+                  <div className="font-display text-[16px] font-semibold mb-1.5">{s.name}</div>
+                  <div className="text-[12.5px] text-muted-foreground leading-relaxed">{s.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {ACTIONS.map((a, i) => (
-              <div
-                key={a.key}
-                className={cn(
-                  'relative rounded-2xl p-6 overflow-hidden hover-glow animate-fade-in-up border',
-                  a.tone === 'hold' && 'bg-decision-hold-bg border-decision-hold/30',
-                  a.tone === 'markdown' && 'bg-decision-markdown-bg border-decision-markdown/40',
-                  a.tone === 'promote' && 'bg-decision-promote-bg border-decision-promote/40',
-                  a.tone === 'clear' && 'bg-decision-clear-bg border-decision-clear/40',
-                )}
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                <div className={cn(
-                  'absolute -top-10 -right-10 h-32 w-32 rounded-full blur-3xl opacity-40',
-                  a.tone === 'markdown' && 'bg-decision-markdown',
-                  a.tone === 'promote' && 'bg-decision-promote',
-                  a.tone === 'clear' && 'bg-decision-clear',
-                  a.tone === 'hold' && 'bg-decision-hold',
-                )} />
-                <div className="relative">
-                  <a.icon className={cn(
-                    'h-7 w-7 mb-4',
-                    a.tone === 'hold' && 'text-decision-hold',
-                    a.tone === 'markdown' && 'text-decision-markdown',
-                    a.tone === 'promote' && 'text-decision-promote',
-                    a.tone === 'clear' && 'text-decision-clear',
+        {/* ===== ACTIONS THE SYSTEM GIVES ===== */}
+        <section className="relative py-24 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// What it tells you to do</div>
+            <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-4 max-w-3xl">
+              Four decisions. <span className="text-gradient-warm">Always reviewed by you.</span>
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mb-12">
+              Every recommendation comes with confidence, top reasons, suggested price and projected margin.
+              Human approval is required before any action is committed.
+            </p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {ACTIONS.map((a, i) => (
+                <div
+                  key={a.key}
+                  className={cn(
+                    'relative rounded-2xl p-6 overflow-hidden hover-glow animate-fade-in-up border',
+                    a.tone === 'hold' && 'bg-decision-hold-bg border-decision-hold/30',
+                    a.tone === 'markdown' && 'bg-decision-markdown-bg border-decision-markdown/40',
+                    a.tone === 'promote' && 'bg-decision-promote-bg border-decision-promote/40',
+                    a.tone === 'clear' && 'bg-decision-clear-bg border-decision-clear/40',
+                  )}
+                  style={{ animationDelay: `${i * 80}ms` }}
+                >
+                  <div className={cn(
+                    'absolute -top-10 -right-10 h-32 w-32 rounded-full blur-3xl opacity-40',
+                    a.tone === 'markdown' && 'bg-decision-markdown',
+                    a.tone === 'promote' && 'bg-decision-promote',
+                    a.tone === 'clear' && 'bg-decision-clear',
+                    a.tone === 'hold' && 'bg-decision-hold',
                   )} />
-                  <ToneBadge tone={a.tone} />
-                  <div className="font-display text-2xl font-bold mt-3">{a.key}</div>
-                  <p className="text-[13px] text-muted-foreground mt-2 leading-relaxed">{a.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== GO DEEPER ===== */}
-      <section className="relative py-24 px-6 border-t border-border/50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Go deeper</div>
-          <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-12">
-            Step inside a <span className="text-gradient-warm">control room.</span>
-          </h2>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[
-              { to: '/overview', icon: Radar, title: 'Executive Overview', desc: 'KPI snapshot, alerts and seasonal calendar.' },
-              { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze SKU decisions.' },
-              { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.' },
-              { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
-              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
-              { to: '/closed-loop', icon: Target, title: 'Closed Loop', desc: 'Track approved decisions and measure real pricing outcomes.' },
-            ].map((m, i) => (
-              <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
-                <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">
-                  <m.icon className="h-6 w-6 text-primary-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-display font-semibold text-[16px] mb-1">{m.title}</div>
-                  <div className="text-[13px] text-muted-foreground leading-relaxed">{m.desc}</div>
-                  <div className="mt-3 flex items-center gap-1.5 text-[12px] text-amber-300/90 font-medium group-hover:gap-3 transition-all">
-                    Enter <ArrowRight className="h-3.5 w-3.5" />
+                  <div className="relative">
+                    <a.icon className={cn(
+                      'h-7 w-7 mb-4',
+                      a.tone === 'hold' && 'text-decision-hold',
+                      a.tone === 'markdown' && 'text-decision-markdown',
+                      a.tone === 'promote' && 'text-decision-promote',
+                      a.tone === 'clear' && 'text-decision-clear',
+                    )} />
+                    <ToneBadge tone={a.tone} />
+                    <div className="font-display text-2xl font-bold mt-3">{a.key}</div>
+                    <p className="text-[13px] text-muted-foreground mt-2 leading-relaxed">{a.desc}</p>
                   </div>
                 </div>
-              </Link>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ===== FOOTER ===== */}
-      <footer className="border-t border-border/50 py-10 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-[12px] text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <Radar className="h-4 w-4 text-amber-400" />
-            <span className="font-display font-semibold text-foreground">Retail Radar AI</span>
-            <span>· Powered by StylePulse · Lebanon · Fresh USD</span>
+        {/* ===== GO DEEPER ===== */}
+        <section className="relative py-24 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Go deeper</div>
+            <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight mb-12">
+              Step inside a <span className="text-gradient-warm">control room.</span>
+            </h2>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[
+                { to: '/overview', icon: Radar, title: 'Executive Overview', desc: 'KPI snapshot, alerts and seasonal calendar.' },
+                { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze SKU decisions.' },
+                { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.' },
+                { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
+                { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
+                { to: '/closed-loop', icon: Target, title: 'Closed Loop', desc: 'Track approved decisions and measure real pricing outcomes.' },
+              ].map((m, i) => (
+                <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
+                  <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">
+                    <m.icon className="h-6 w-6 text-primary-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-display font-semibold text-[16px] mb-1">{m.title}</div>
+                    <div className="text-[13px] text-muted-foreground leading-relaxed">{m.desc}</div>
+                    <div className="mt-3 flex items-center gap-1.5 text-[12px] text-amber-300/90 font-medium group-hover:gap-3 transition-all">
+                      Enter <ArrowRight className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </footer>
+        </section>
+
+        {/* ===== FOOTER ===== */}
+        <footer className="py-10 px-6">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-[12px] text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Radar className="h-4 w-4 text-amber-400" />
+              <span className="font-display font-semibold text-foreground">Retail Radar AI</span>
+              <span>· Powered by StylePulse · Lebanon · Fresh USD</span>
+            </div>
+          </div>
+        </footer>
+
+      </div>{/* end warm wrapper */}
     </div>
   );
 }
