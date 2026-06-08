@@ -156,6 +156,25 @@ class ShopStatusPayload(BaseModel):
     onboarding_status: Literal["pending", "active", "suspended", "archived"]
 
 
+class RecommendationReviewPayload(BaseModel):
+    """Human validation of a system recommendation."""
+
+    action: Literal["accept", "override", "reject"]
+    final_decision: Literal["HOLD", "MARKDOWN", "PROMOTE", "CLEAR"] | None = None
+    final_price_usd: float | None = PField(default=None, gt=0)
+    final_discount_pct: float | None = PField(default=None, ge=0, le=100)
+    note: str | None = PField(default=None, max_length=2000)
+    recommendation_id: str | None = None
+
+
+class RecommendationReviewUpdatePayload(BaseModel):
+    action: Literal["accept", "override", "reject"] | None = None
+    final_decision: Literal["HOLD", "MARKDOWN", "PROMOTE", "CLEAR"] | None = None
+    final_price_usd: float | None = PField(default=None, gt=0)
+    final_discount_pct: float | None = PField(default=None, ge=0, le=100)
+    note: str | None = PField(default=None, max_length=2000)
+
+
 app = FastAPI(
     title="StylePulse AI — EEP Executive Platform",
     description="Unified dashboard API for the Retail Radar frontend.",
@@ -1165,6 +1184,188 @@ def portfolio_accuracy(
         return get_accuracy(decision_type, tenant_id=_tenant_id_from_request(request))
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ─── Human Validation Layer ──────────────────────────────────────────────────
+# Final human-review stage applied AFTER the system recommendation is generated.
+# The original system recommendation is never modified — each review snapshots it.
+
+def _reviewer_from_ctx(ctx: AuthContext) -> dict[str, Any]:
+    return {"user_id": ctx.user_id, "email": ctx.email, "role": ctx.global_role}
+
+
+@app.post("/recommendations/{sku_id}/review")
+def submit_recommendation_review(
+    sku_id: str,
+    payload: "RecommendationReviewPayload",
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict[str, Any]:
+    """Record a human accept/override/reject of the system recommendation for a SKU."""
+    ctx = _required_shop(request)
+    from eep.human_validation_db import ReviewValidationError, create_review
+    try:
+        review = create_review(
+            sku_id=sku_id,
+            action=payload.action,
+            final_decision=payload.final_decision,
+            final_price_usd=payload.final_price_usd,
+            final_discount_pct=payload.final_discount_pct,
+            note=payload.note,
+            reviewer=_reviewer_from_ctx(ctx),
+            recommendation_id=payload.recommendation_id,
+            tenant_id=ctx.tenant_id,
+        )
+    except ReviewValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Keep the closed-loop outcome tracker working: snapshot the acted decision.
+    final_decision = review.get("final_decision")
+    if payload.action in {"accept", "override"} and final_decision and final_decision != "HOLD":
+        background_tasks.add_task(
+            _snapshot_in_background,
+            sku_id=sku_id,
+            decision_type=final_decision,
+            recommendation_id=review.get("recommendation_id"),
+            cost_price_usd=0.0,
+            tenant_id=ctx.tenant_id,
+        )
+    return review
+
+
+@app.get("/recommendations/reviews")
+def list_recommendation_reviews(
+    request: Request,
+    action: str | None = Query(default=None, pattern="^(accept|override|reject)$"),
+    model_version: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=50, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> list[dict[str, Any]]:
+    ctx = _required_shop(request)
+    from eep.human_validation_db import list_reviews
+    try:
+        return list_reviews(
+            tenant_id=ctx.tenant_id,
+            action=action,
+            model_version=model_version,
+            limit=limit,
+            offset=offset,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/recommendations/reviews/{review_id}/history")
+def recommendation_review_history(review_id: str, request: Request) -> list[dict[str, Any]]:
+    ctx = _required_shop(request)
+    from eep.human_validation_db import get_review_history
+    try:
+        return get_review_history(review_id, tenant_id=ctx.tenant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/recommendations/reviews/{review_id}")
+def update_recommendation_review(
+    review_id: str,
+    payload: "RecommendationReviewUpdatePayload",
+    request: Request,
+) -> dict[str, Any]:
+    ctx = _required_shop(request)
+    from eep.human_validation_db import ReviewValidationError, update_review
+    try:
+        return update_review(
+            review_id,
+            action=payload.action,
+            final_decision=payload.final_decision,
+            final_price_usd=payload.final_price_usd,
+            final_discount_pct=payload.final_discount_pct,
+            note=payload.note,
+            reviewer=_reviewer_from_ctx(ctx),
+            tenant_id=ctx.tenant_id,
+        )
+    except ReviewValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Review not found: {review_id}") from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/recommendations/{sku_id}/review")
+def get_recommendation_review(sku_id: str, request: Request) -> dict[str, Any] | None:
+    ctx = _required_shop(request)
+    from eep.human_validation_db import get_current_review_for_sku
+    try:
+        return get_current_review_for_sku(sku_id, tenant_id=ctx.tenant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/analytics/recommendation-reviews")
+def recommendation_review_analytics(
+    request: Request,
+    model_version: str | None = Query(default=None, max_length=120),
+) -> dict[str, Any]:
+    """Acceptance rate, override rate, agreement, and trends for the tenant."""
+    ctx = _required_shop(request)
+    from eep.human_validation_db import get_review_analytics
+    try:
+        return get_review_analytics(tenant_id=ctx.tenant_id, model_version=model_version)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/recommendation-reviews/aggregate")
+def admin_recommendation_review_aggregate(
+    request: Request,
+    model_version: str | None = Query(default=None, max_length=120),
+) -> dict[str, Any]:
+    """Cross-tenant human-vs-system agreement aggregate, broken down by model version."""
+    _required_admin(request)
+    from eep.human_validation_db import get_review_analytics_cross_tenant
+    try:
+        return get_review_analytics_cross_tenant(model_version=model_version)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/export/training-labels")
+def admin_export_training_labels(
+    request: Request,
+    tenant_id: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    include_unlabeled: bool = Query(default=False),
+    limit: int = Query(default=10000, ge=1, le=100000),
+) -> Response:
+    """Export human-reviewed ground-truth labels as JSON Lines for retraining pipelines."""
+    _required_admin(request)
+    from eep.human_validation_db import export_training_labels
+    since_dt: datetime | None = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="`since` must be ISO-8601.") from exc
+    try:
+        rows = export_training_labels(
+            tenant_id=tenant_id,
+            since=since_dt,
+            include_unlabeled=include_unlabeled,
+            limit=limit,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    body = "\n".join(json.dumps(row, default=str) for row in rows)
+    return Response(
+        content=body,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": "attachment; filename=training_labels.jsonl"},
+    )
 
 
 @app.delete("/inventory/items/{sku_id}")

@@ -803,6 +803,76 @@ async function apiError(response: Response, label: string) {
   }
 }
 
+// ─── Human Validation Layer ───────────────────────────────────────────────────
+
+/** Submit a human accept/override/reject of the system recommendation for a SKU. */
+export async function submitRecommendationReview(
+  skuId: string,
+  input: import('@/types/domain').ReviewSubmitInput,
+): Promise<import('@/types/domain').RecommendationReview | { ok: boolean; db_connected: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/${encodeURIComponent(skuId)}/review`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
+  if (!r.ok) throw new Error(await apiError(r, `EEP POST /recommendations/${skuId}/review`));
+  return r.json();
+}
+
+export async function fetchReviewForSku(
+  skuId: string,
+): Promise<import('@/types/domain').RecommendationReview | null> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/${encodeURIComponent(skuId)}/review`, {
+    headers: apiHeaders(),
+  });
+  if (r.status === 503 || r.status === 404) return null;
+  if (!r.ok) throw new Error(await apiError(r, `EEP GET /recommendations/${skuId}/review`));
+  return r.json();
+}
+
+export async function fetchRecommendationReviews(
+  params: { action?: string; modelVersion?: string; limit?: number; offset?: number } = {},
+): Promise<import('@/types/domain').RecommendationReview[]> {
+  const { base } = settings();
+  const qs = new URLSearchParams();
+  if (params.action) qs.set('action', params.action);
+  if (params.modelVersion) qs.set('model_version', params.modelVersion);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const r = await fetch(`${base}/recommendations/reviews?${qs.toString()}`, { headers: apiHeaders() });
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /recommendations/reviews'));
+  return r.json();
+}
+
+export async function updateRecommendationReview(
+  reviewId: string,
+  input: Partial<import('@/types/domain').ReviewSubmitInput>,
+): Promise<import('@/types/domain').RecommendationReview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/reviews/${encodeURIComponent(reviewId)}`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP PUT /recommendations/reviews/${reviewId}`));
+  return r.json();
+}
+
+export async function fetchReviewAnalytics(
+  modelVersion?: string,
+): Promise<import('@/types/domain').ReviewAnalytics | null> {
+  const { base } = settings();
+  const qs = modelVersion ? `?model_version=${encodeURIComponent(modelVersion)}` : '';
+  const r = await fetch(`${base}/analytics/recommendation-reviews${qs}`, { headers: apiHeaders() });
+  if (r.status === 503) return null;
+  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /analytics/recommendation-reviews'));
+  return r.json();
+}
+
 // ─── Outcome Tracking ─────────────────────────────────────────────────────────
 
 export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[]> {

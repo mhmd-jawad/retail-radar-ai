@@ -3,6 +3,86 @@
 
 export type Decision = 'HOLD' | 'MARKDOWN' | 'PROMOTE' | 'CLEAR';
 export type RecommendationStatus = 'pending' | 'approved' | 'edited' | 'rejected' | 'snoozed';
+
+// ── Human Validation Layer ──────────────────────────────────────────────────
+export type ReviewAction = 'accept' | 'override' | 'reject';
+
+export interface RecommendationReview {
+  id: string;
+  tenant_id: string;
+  sku_id: string;
+  variant_id?: string | null;
+  recommendation_id?: string | null;
+  system_decision_run_id?: string | null;
+  system_recommendation: Decision;
+  system_confidence?: number | null;
+  system_suggested_price_usd?: number | null;
+  system_suggested_discount_pct?: number | null;
+  model_version?: string | null;
+  rule_override?: string | null;
+  fallback_used: boolean;
+  requires_human_approval: boolean;
+  context_features?: Record<string, unknown> | null;
+  model_metadata?: Record<string, unknown> | null;
+  review_action: ReviewAction;
+  final_decision?: Decision | null;
+  final_price_usd?: number | null;
+  final_discount_pct?: number | null;
+  review_note?: string | null;
+  is_override: boolean;
+  agrees_with_system: boolean;
+  reviewer_email?: string | null;
+  reviewer_role?: string | null;
+  reviewed_via?: string | null;
+  revision: number;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  product_name?: string | null;
+  brand?: string | null;
+  category?: string | null;
+}
+
+export interface ReviewSubmitInput {
+  action: ReviewAction;
+  final_decision?: Decision | null;
+  final_price_usd?: number | null;
+  final_discount_pct?: number | null;
+  note?: string | null;
+  recommendation_id?: string | null;
+}
+
+export interface ReviewAnalyticsByDecision {
+  system_recommendation: Decision;
+  model_version: string;
+  total_reviews: number;
+  accept_count: number;
+  override_count: number;
+  reject_count: number;
+  acceptance_rate: number | null;
+  override_rate: number | null;
+  agreement_rate: number | null;
+}
+
+export interface ReviewAnalyticsTrendPoint {
+  week: string;
+  total_reviews: number;
+  acceptance_rate: number | null;
+  override_rate: number | null;
+}
+
+export interface ReviewAnalytics {
+  total_reviews: number;
+  accept_count: number;
+  override_count: number;
+  reject_count: number;
+  acceptance_rate: number | null;
+  override_rate: number | null;
+  agreement_rate: number | null;
+  by_decision: ReviewAnalyticsByDecision[];
+  trend: ReviewAnalyticsTrendPoint[];
+  model_version?: string | null;
+}
 export type PricePosition = 'premium' | 'above_market' | 'at_market' | 'below_market' | 'deep_value';
 export type DataMode = 'mock-report' | 'ie2-live' | 'eep-live' | 'supabase-ready';
 
