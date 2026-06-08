@@ -39,7 +39,6 @@ import type {
   ShopProfile,
   ShopProfileInput,
   ShopSignupInput,
-  AdminOutcomesAggregate,
   AdminFinancialOverview,
   AdminCampaignsOverview,
   AdminAssistantMessage,
@@ -934,24 +933,6 @@ export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]
 }
 
 // ─── Admin Platform Operations ────────────────────────────────────────────────
-
-export async function fetchAdminOutcomes(): Promise<AdminOutcomesAggregate> {
-  const { base } = settings();
-  const r = await fetch(`${base}/admin/outcomes/aggregate`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/admin/outcomes/aggregate ${r.status}`);
-  return r.json();
-}
-
-export async function triggerAdminMeasurement(snapshotId: number, windowDays: 7 | 14): Promise<Record<string, unknown>> {
-  const { base } = settings();
-  const r = await fetch(`${base}/admin/outcomes/trigger`, {
-    method: 'POST',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ snapshot_id: snapshotId, window_days: windowDays }),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'trigger measurement'));
-  return r.json();
-}
 
 export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
   const { base } = settings();

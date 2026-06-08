@@ -838,52 +838,6 @@ export interface OutcomeRow extends OutcomeSnapshot {
 
 // ─── Admin Platform Operations Types ─────────────────────────────────────────
 
-export interface AdminOutcomesByType {
-  count: number;
-  avg_accuracy: number;
-}
-
-export interface AdminOutcomePending {
-  snapshot_id: number;
-  tenant_id: string;
-  tenant_name: string;
-  product_name: string;
-  decision_type: Decision;
-  window_days: 7 | 14;
-  check_due_at: string;
-}
-
-export interface AdminOutcomeTenantRow {
-  tenant_id: string;
-  tenant_name: string;
-  decisions: number;
-  avg_accuracy: number;
-  revenue_delta_usd: number;
-  last_decision_at: string | null;
-}
-
-export interface AdminCalibrationPoint {
-  confidence: number;
-  accuracy: number;
-}
-
-export interface AdminAccuracyTrendPoint {
-  date: string;
-  avg_accuracy: number;
-}
-
-export interface AdminOutcomesAggregate {
-  total_decisions: number;
-  avg_accuracy_pct: number;
-  pending_measurements: number;
-  total_revenue_impact_usd: number;
-  by_decision_type: Partial<Record<Decision, AdminOutcomesByType>>;
-  calibration: AdminCalibrationPoint[];
-  per_tenant: AdminOutcomeTenantRow[];
-  pending: AdminOutcomePending[];
-  accuracy_trend: AdminAccuracyTrendPoint[];
-}
-
 export interface AdminFinancialTenantScore {
   tenant_id: string;
   tenant_name: string;

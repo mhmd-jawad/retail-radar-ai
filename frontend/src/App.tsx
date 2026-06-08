@@ -14,7 +14,6 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminNotifications from "./pages/admin/AdminNotifications";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminShops from "./pages/admin/AdminShops";
-import AdminOutcomes from "./pages/admin/AdminOutcomes";
 import AdminFinancial from "./pages/admin/AdminFinancial";
 import AdminCampaigns from "./pages/admin/AdminCampaigns";
 import AdminAssistant from "./pages/admin/AdminAssistant";
@@ -84,7 +83,6 @@ const App = () => (
           <Route element={<ProtectedRoute roles={["admin"]} />}>
             <Route element={<AdminShell />}>
               <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/outcomes" element={<AdminOutcomes />} />
               <Route path="/admin/financial" element={<AdminFinancial />} />
               <Route path="/admin/campaigns" element={<AdminCampaigns />} />
               <Route path="/admin/assistant" element={<AdminAssistant />} />
