@@ -35,6 +35,7 @@ ADDITIVE_SCHEMA_PATHS = [
     ROOT / "infra" / "postgres" / "004_multi_tenant_scalability.sql",
     ROOT / "infra" / "postgres" / "008_financial_profiles.sql",
     ROOT / "infra" / "postgres" / "009_financial_line_items.sql",
+    ROOT / "infra" / "postgres" / "010_chat_sessions.sql",
 ]
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
 DEFAULT_TENANT_SLUG = "default"

@@ -903,3 +903,20 @@ export interface AdminAssistantMessage {
   content: string;
   tools_used?: string[];
 }
+
+export interface FinancialProfileInput {
+  total_assets_usd: number | null;
+  total_liabilities_usd: number | null;
+  monthly_fixed_opex_usd: number | null;
+  annual_revenue_projected_usd: number | null;
+  cash_runway_months: number | null;
+  breakeven_monthly_revenue_usd: number | null;
+}
+
+export interface FinancialLineItem {
+  id: string;
+  item_type: 'asset' | 'liability';
+  label: string;
+  amount_usd: number;
+  sort_order: number;
+}

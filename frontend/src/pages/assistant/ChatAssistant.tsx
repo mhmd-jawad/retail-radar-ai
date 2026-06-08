@@ -27,7 +27,8 @@ interface Message {
 
 const ASSISTANT_BASE =
   (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ??
-  (import.meta.env.PROD ? '/assistant-api' : 'http://localhost:8004');
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 async function assistantErrorMessage(res: Response): Promise<string> {
   let detail = '';
@@ -260,17 +261,44 @@ export default function ChatAssistant() {
   const sessionIdRef = useRef<string>('');
   const initialMessageFiredRef = useRef(false);
 
-  // Stable session ID per tenant, persisted in sessionStorage
+  // Stable session ID per tenant, persisted in localStorage so it survives tab close
   useEffect(() => {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
-    let sid = sessionStorage.getItem(key);
+    let sid = localStorage.getItem(key);
     if (!sid) {
       sid = randomId();
-      sessionStorage.setItem(key, sid);
+      localStorage.setItem(key, sid);
     }
     sessionIdRef.current = sid;
   }, [tenantId]);
+
+  // Load persisted chat history from the backend on mount
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    const base = ASSISTANT_BASE.replace(/\/$/, '');
+    fetch(`${base}/chat/history?session_id=${encodeURIComponent(sid)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { messages?: Array<{ role: string; content: string; tools_used?: string[]; ts?: string }> } | null) => {
+        if (data?.messages?.length) {
+          setMessages(
+            data.messages.map((m) => ({
+              id: randomId(),
+              role: m.role as Role,
+              content: m.content,
+              tools: m.tools_used ?? [],
+              timestamp: m.ts ? new Date(m.ts) : new Date(),
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, token]);
 
   // Fire an initial message passed via Link state (e.g. from Financial page)
   useEffect(() => {
@@ -379,7 +407,7 @@ export default function ChatAssistant() {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
     const newSid = randomId();
-    sessionStorage.setItem(key, newSid);
+    localStorage.setItem(key, newSid);
     sessionIdRef.current = newSid;
     setMessages([]);
     setInput('');

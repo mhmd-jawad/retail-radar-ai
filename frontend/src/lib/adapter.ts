@@ -959,6 +959,62 @@ export const supabaseRepo = {
   },
 };
 
+export async function fetchFinancialProfile(): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-profile`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-profile'));
+  return r.json();
+}
+
+export async function updateFinancialProfile(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-profile`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-profile'));
+  return r.json();
+}
+
+export async function fetchFinancialLineItems(): Promise<Record<string, unknown>[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-items'));
+  return r.json();
+}
+
+export async function createFinancialLineItem(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-items'));
+  return r.json();
+}
+
+export async function updateFinancialLineItem(id: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items/${id}`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /shop/financial-items/${id}`));
+  return r.json();
+}
+
+export async function deleteFinancialLineItem(id: string): Promise<void> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items/${id}`, {
+    method: 'DELETE',
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /shop/financial-items/${id}`));
+}
+
 export function modeLabel(m: DataMode) {
   return ({ 'mock-report': 'Mock Report', 'ie2-live': 'IE2 Live', 'eep-live': 'EEP Live', 'supabase-ready': 'Supabase' } as const)[m];
 }

@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import {
   Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone,
   ListChecks, ChevronLeft, ChevronRight, Database,
-  CircleDot, Pause, TrendingUp, Tag, Flame, Target,
+  CircleDot, Pause, TrendingUp, Tag, Flame, Target, Wallet,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
 import { cn } from '@/lib/utils';

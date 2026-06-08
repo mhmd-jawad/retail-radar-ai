@@ -119,6 +119,11 @@ from eep.retail_db import (
     upsert_system_decision_error,
     upsert_system_decision_success,
     update_inventory_item,
+    get_financial_profile,
+    upsert_financial_profile,
+    get_financial_line_items,
+    upsert_financial_line_item,
+    delete_financial_line_item,
 )
 from pydantic import BaseModel
 
@@ -309,6 +314,89 @@ def shop_profile_update(payload: ShopProfileUpdatePayload, request: Request) -> 
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/shop/financial-profile")
+def shop_financial_profile(request: Request) -> dict[str, Any]:
+    try:
+        return get_financial_profile(_required_shop(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+class FinancialProfilePayload(BaseModel):
+    total_assets_usd: float | None = None
+    total_liabilities_usd: float | None = None
+    monthly_fixed_opex_usd: float | None = None
+    annual_revenue_projected_usd: float | None = None
+    cash_runway_months: float | None = None
+    breakeven_monthly_revenue_usd: float | None = None
+
+
+@app.put("/shop/financial-profile")
+def shop_financial_profile_update(payload: FinancialProfilePayload, request: Request) -> dict[str, Any]:
+    try:
+        return upsert_financial_profile(_required_shop(request), payload.model_dump(exclude_unset=False))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/shop/financial-items")
+def shop_financial_items(request: Request) -> list[dict[str, Any]]:
+    try:
+        return get_financial_line_items(_required_shop(request))
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+class FinancialLineItemPayload(BaseModel):
+    label: str
+    amount_usd: float
+    item_type: str
+    sort_order: int = 0
+
+
+@app.post("/shop/financial-items")
+def shop_financial_item_create(payload: FinancialLineItemPayload, request: Request) -> dict[str, Any]:
+    try:
+        return upsert_financial_line_item(
+            _required_shop(request), None,
+            payload.label, payload.amount_usd, payload.item_type, payload.sort_order,
+        )
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/shop/financial-items/{item_id}")
+def shop_financial_item_update(item_id: str, payload: FinancialLineItemPayload, request: Request) -> dict[str, Any]:
+    try:
+        return upsert_financial_line_item(
+            _required_shop(request), item_id,
+            payload.label, payload.amount_usd, payload.item_type, payload.sort_order,
+        )
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/shop/financial-items/{item_id}")
+def shop_financial_item_delete(item_id: str, request: Request) -> dict[str, Any]:
+    try:
+        deleted = delete_financial_line_item(_required_shop(request), item_id)
+        return {"deleted": deleted}
+    except AuthError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/shop/notifications")
 def shop_notifications(
     request: Request,
@@ -450,6 +538,11 @@ class CampaignPersistPayload(BaseModel):
 
 
 class AdminAssistantPayload(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+class RetailerChatPayload(BaseModel):
     message: str
     session_id: str | None = None
 
@@ -656,6 +749,219 @@ async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Assistant error: {exc}") from exc
+
+
+@app.post("/chat")
+async def retailer_assistant_chat(payload: RetailerChatPayload, request: Request) -> dict[str, Any]:
+    """
+    Retailer-facing AI assistant.
+
+    Scoped to the authenticated retailer's tenant. Uses Claude with 14 live-data
+    tools and persists every conversation turn to core.chat_sessions so history
+    survives browser refreshes.
+    """
+    ctx = _required_shop(request)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        raise HTTPException(status_code=503, detail="Anthropic API key not configured.")
+
+    try:
+        import anthropic as _anthropic
+        from eep import chat_db, assistant_db
+        from services.telegram_assistant.assistant_tools import TOOLS as RETAILER_TOOLS
+
+        client = _anthropic.Anthropic(api_key=anthropic_key)
+
+        # ── Session management ────────────────────────────────────────────────
+        session_id = payload.session_id or ""
+        if not session_id:
+            import uuid as _uuid
+            session_id = str(_uuid.uuid4())
+
+        chat_db.get_or_create_session(session_id, str(ctx.tenant_id))
+        history = chat_db.get_history(session_id, str(ctx.tenant_id))
+
+        # ── System prompt — tenant-specific ───────────────────────────────────
+        from datetime import date as _date
+        competitors = assistant_db.get_competitor_list(str(ctx.tenant_id))
+        competitor_str = ", ".join(competitors) if competitors else "none configured yet"
+
+        system_prompt = (
+            f"You are the Radar Intelligence Assistant for {ctx.tenant_name or 'this retailer'}. "
+            "You are a senior retail analytics AI helping an Adidas single-brand retailer make "
+            "data-driven decisions on inventory, pricing, promotions, and competitors. "
+            f"Today is {_date.today().isoformat()}. "
+            f"Competitors being tracked: {competitor_str}.\n\n"
+
+            "TOOLS: You have 14 live-data tools. Always call the relevant tool(s) BEFORE answering "
+            "any question about inventory, pricing, recommendations, competitors, or financials. "
+            "Never answer data questions from memory — always fetch fresh data first.\n\n"
+
+            "PROACTIVE BEHAVIOUR: When answering a question, use ALL tools that are relevant — "
+            "not just the one most directly named. For example, when asked about recommendations, "
+            "also check inventory levels and competitor prices to give richer context. "
+            "When asked 'what should I focus on today?', call get_next_actions, get_stockout_days, "
+            "and get_pending_recommendations together.\n\n"
+
+            "GRACEFUL DEGRADATION — THIS IS CRITICAL: If one tool returns empty data, test data "
+            "(SKU IDs containing 'TEST', 'DEMO', 'SYNTHETIC', or product names like 'Test Sneaker'), "
+            "or zero values across the board, DO NOT stop there and refuse to help. Instead:\n"
+            "  1. Briefly note the data gap in one sentence.\n"
+            "  2. Immediately call the other tools that DO have data and present those insights.\n"
+            "  3. Always give the retailer something actionable — never end with 'I cannot help'.\n"
+            "  4. If recommendations are all test/empty, automatically run get_inventory_overview, "
+            "     get_stockout_days, and get_competitor_prices and answer from those instead.\n\n"
+
+            "FORMAT: Use *bold* for key numbers and product names. Use bullet points for lists. "
+            "Keep answers focused and actionable — the retailer is busy. "
+            "End every answer with a concrete next step or follow-up question. "
+            "Respond in the same language the retailer uses (English or Arabic)."
+        )
+
+        # ── Build message list from persisted history + new message ───────────
+        # History is stored as [{role, content, tools_used, ts}]; Claude API needs {role, content}
+        claude_history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in history
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ]
+        # Limit to last 20 turns to avoid hitting token limits
+        claude_history = claude_history[-20:]
+        messages: list[dict] = claude_history + [{"role": "user", "content": payload.message}]
+
+        # ── Claude tool-use loop ──────────────────────────────────────────────
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1500,
+            system=system_prompt,
+            tools=RETAILER_TOOLS,
+            messages=messages,
+        )
+
+        tools_used: list[str] = []
+        tenant_id_str = str(ctx.tenant_id)
+
+        while response.stop_reason == "tool_use":
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                tools_used.append(block.name)
+                inp = block.input or {}
+                try:
+                    if block.name == "get_inventory_overview":
+                        data = assistant_db.get_inventory_overview(tenant_id_str)
+                    elif block.name == "get_stockout_days":
+                        data = assistant_db.get_stockout_days(tenant_id_str)
+                    elif block.name == "get_reorder_suggestions":
+                        data = assistant_db.get_reorder_suggestions(tenant_id_str)
+                    elif block.name == "get_sku_velocity_trend":
+                        data = assistant_db.get_sku_velocity_trend(
+                            tenant_id_str, inp["sku_id"], inp.get("days", 30)
+                        )
+                    elif block.name == "get_category_performance":
+                        data = assistant_db.get_category_performance(tenant_id_str, inp.get("days", 30))
+                    elif block.name == "get_competitor_prices":
+                        data = assistant_db.get_competitor_prices(
+                            tenant_id_str,
+                            sku_id=inp.get("sku_id"),
+                            competitor_name=inp.get("competitor_name"),
+                        )
+                    elif block.name == "get_pending_recommendations":
+                        data = assistant_db.get_pending_recommendations(tenant_id_str)
+                    elif block.name == "approve_recommendation":
+                        data = assistant_db.approve_recommendation(
+                            tenant_id_str,
+                            inp["recommendation_id"],
+                            inp["sku_id"],
+                            inp.get("modified_discount_pct"),
+                        )
+                    elif block.name == "reject_recommendation":
+                        data = assistant_db.reject_recommendation(
+                            tenant_id_str, inp["recommendation_id"], inp["sku_id"]
+                        )
+                    elif block.name == "get_decision_progress":
+                        data = assistant_db.get_decision_progress(tenant_id_str)
+                    elif block.name == "get_roadmap_summary":
+                        data = assistant_db.get_roadmap_summary(tenant_id_str)
+                    elif block.name == "get_recommendation_detail":
+                        data = assistant_db.get_recommendation_detail(
+                            tenant_id_str, str(inp["roadmap_id"])
+                        )
+                    elif block.name == "get_next_actions":
+                        data = assistant_db.get_next_actions(tenant_id_str)
+                    elif block.name == "get_financial_health":
+                        data = assistant_db.get_financial_health(tenant_id_str)
+                    else:
+                        data = {"error": f"Unknown tool: {block.name}"}
+                except Exception as tool_exc:
+                    data = {"error": str(tool_exc)}
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(data, default=str),
+                })
+
+            messages = messages + [
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": tool_results},
+            ]
+
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1500,
+                system=system_prompt,
+                tools=RETAILER_TOOLS,
+                messages=messages,
+            )
+
+        reply = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                reply += block.text
+
+        # ── Persist this turn to DB ───────────────────────────────────────────
+        import datetime as _dt
+        ts = _dt.datetime.utcnow().isoformat()
+        chat_db.append_messages(
+            session_id,
+            tenant_id_str,
+            [
+                {"role": "user", "content": payload.message, "tools_used": [], "ts": ts},
+                {"role": "assistant", "content": reply, "tools_used": list(dict.fromkeys(tools_used)), "ts": ts},
+            ],
+        )
+
+        return {
+            "reply": reply,
+            "tools_used": list(dict.fromkeys(tools_used)),
+            "session_id": session_id,
+        }
+
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Assistant error: {exc}") from exc
+
+
+@app.get("/chat/history")
+def retailer_chat_history(request: Request, session_id: str) -> dict[str, Any]:
+    """
+    Return persisted message history for a chat session.
+
+    Used by the frontend on mount to reload a previous conversation.
+    Only returns messages belonging to the authenticated retailer's tenant.
+    """
+    ctx = _required_shop(request)
+    try:
+        from eep import chat_db
+        messages = chat_db.get_history(session_id, str(ctx.tenant_id))
+        return {"messages": messages, "session_id": session_id}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"History error: {exc}") from exc
 
 
 @app.post("/webhooks/apify/run-succeeded")
