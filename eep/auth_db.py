@@ -1,3 +1,14 @@
+"""
+Authentication and multi-tenant shop management for the EEP service.
+
+Covers shop signup and login (bcrypt passwords, JWT tokens), token
+validation and claims decoding, shop profile reads and updates, and admin
+operations such as tenant listing, competitor management, social account
+management, and notification broadcasting.
+
+All functions connect to the ``marketing`` PostgreSQL schema.
+The database URL is read from the ``DATABASE_URL`` environment variable.
+"""
 from __future__ import annotations
 
 import base64

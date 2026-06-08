@@ -1,3 +1,17 @@
+"""
+Core retail database layer for the EEP service.
+
+Manages the ``retail_core`` PostgreSQL schema lifecycle (lazy initialisation)
+and exposes tenant-isolated read/write functions for:
+
+- Product catalogue and inventory positions
+- Competitor price records ingested from IE1/scraping
+- Financial snapshot writes from StylePulse analysis
+- Recommendation storage and approval workflow
+
+The ``_connect()`` helper returns a psycopg connection. All public functions
+are synchronous and safe to call from FastAPI background tasks.
+"""
 from __future__ import annotations
 
 import os

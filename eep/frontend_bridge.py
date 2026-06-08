@@ -1,3 +1,17 @@
+"""
+Data assembly bridge between raw storage and the frontend API.
+
+Reads from the StylePulse report JSON, live product/inventory CSVs,
+competitor price data, and PostgreSQL, then assembles dashboard-ready
+response payloads for the EEP frontend endpoints.
+
+Key responsibilities:
+
+- Transform StylePulse analysis results into per-SKU dashboard cards
+- Build competitor price comparison tables
+- Construct inventory health summaries with trend data
+- Assemble financial KPI widgets from snapshot history
+"""
 from __future__ import annotations
 
 import csv

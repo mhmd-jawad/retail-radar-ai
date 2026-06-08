@@ -1,3 +1,14 @@
+"""
+Shared price normalisation utilities across all StylePulse services.
+
+Converts scraped competitor prices from Lebanese Pounds (LBP) or
+ambiguous-currency values into clean USD floats. The LBP/USD rate
+is read from the ``LBP_TO_USD_RATE`` environment variable at runtime,
+defaulting to 90,000 LBP/USD (the April 2026 market rate).
+
+These helpers are imported by IE1, EEP, and the data pipeline scripts
+to ensure consistent currency handling across the system.
+"""
 from __future__ import annotations
 
 import os

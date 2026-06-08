@@ -445,10 +445,11 @@ def curate_store_catalogue(all_products, target_skus=350):
 
     A Lebanese multi-brand sportswear store typically carries 300–500 SKUs.
     Selection prioritizes:
-      1. Products stocked by multiple competitors (proven demand)
-      2. Balanced brand mix (anchored by Adidas/Nike, diversified with 8-10 brands)
-      3. Balanced category mix (footwear 30%, apparel 35%, accessories 15%, other 20%)
-      4. Healthy margins (skip items where cost ≈ retail)
+
+    1. Products stocked by multiple competitors (proven demand)
+    2. Balanced brand mix (anchored by Adidas/Nike, diversified with 8-10 brands)
+    3. Balanced category mix (footwear 30%, apparel 35%, accessories 15%, other 20%)
+    4. Healthy margins (skip items where cost ≈ retail)
     """
     rng = random.Random(42)  # reproducible
 
