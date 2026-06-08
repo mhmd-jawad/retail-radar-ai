@@ -16,20 +16,22 @@ import { useReport } from '@/hooks/useReport';
 
 interface Props {
   sku: SkuAnalysis | null;
+  systemDecision?: IE2Result;
+  disableLiveFetch?: boolean;
   open: boolean;
   onClose: () => void;
 }
 
-export function RecommendationDrawer({ sku, open, onClose }: Props) {
+export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = false, open, onClose }: Props) {
   const { recState, setRecStatus, mode } = useSettings();
   const { data: report } = useReport();
   const tenantScope = useTenantScopeKey();
   const [discount, setDiscount] = useState(15);
   const isLive = mode === 'eep-live';
 
-  const { data: ie2 } = useQuery({
+  const { data: liveIe2 } = useQuery({
     queryKey: ['ie2', tenantScope, sku?.sku_id],
-    enabled: !!sku,
+    enabled: !!sku && !systemDecision && !disableLiveFetch,
     queryFn: async (): Promise<IE2Result> =>
       recommend({
         sku_id: sku!.sku_id, product_name: sku!.product_name, brand: sku!.brand, category: sku!.category,
@@ -40,6 +42,7 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
         days_at_current_price: sku!.days_at_current_price,
       }),
   });
+  const ie2 = systemDecision ?? liveIe2;
 
   const { data: accuracy } = useQuery({
     queryKey: ['portfolio-accuracy', tenantScope, ie2?.recommendation],

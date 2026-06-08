@@ -13,12 +13,17 @@ Run:
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
+import threading
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from zoneinfo import ZoneInfo
 
 # Load .env from repo root (no-op if file absent or dotenv not installed)
 try:
@@ -93,13 +98,26 @@ from eep.retail_db import (
     _context,
     archive_inventory_item,
     create_inventory_item,
+    create_system_decision_run,
     db_status,
+    fail_stale_system_decision_runs,
+    get_active_system_decision_run,
+    get_system_decision_run,
     get_variant_id_for_sku,
     import_inventory,
+    list_active_inventory_sku_ids,
     list_inventory_items,
+    list_system_decision_latest,
+    list_tenant_ids,
+    list_unsynced_inventory_sku_ids,
+    mark_system_decisions_syncing,
     patch_inventory_price,
     record_inventory_movement,
     record_retailer_decision,
+    system_decision_run_exists_today,
+    update_system_decision_run,
+    upsert_system_decision_error,
+    upsert_system_decision_success,
     update_inventory_item,
 )
 from pydantic import BaseModel
@@ -162,6 +180,26 @@ configure_metrics(app)
 
 
 _READONLY_ALLOWED_PREFIXES = ("/auth/logout",)
+_SYSTEM_DECISION_SCHEDULER_STARTED = False
+_SYSTEM_DECISION_SCHEDULER_LOCK = threading.Lock()
+_REPORT_LIVE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_SYSTEM_DECISION_LATEST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_READ_CACHE_LOCK = threading.Lock()
+
+SYSTEM_DECISION_DAILY_TRIGGER = "daily_7am"
+SYSTEM_DECISION_MANUAL_ALL_TRIGGER = "manual_all"
+SYSTEM_DECISION_MANUAL_UNSYNCED_TRIGGER = "manual_unsynced"
+SYSTEM_DECISION_NEW_SKU_TRIGGER = "new_sku"
+
+
+def _clear_read_caches(tenant_id: str | None = None) -> None:
+    with _READ_CACHE_LOCK:
+        if tenant_id:
+            _REPORT_LIVE_CACHE.pop(str(tenant_id), None)
+            _SYSTEM_DECISION_LATEST_CACHE.pop(str(tenant_id), None)
+        else:
+            _REPORT_LIVE_CACHE.clear()
+            _SYSTEM_DECISION_LATEST_CACHE.clear()
 
 
 @app.middleware("http")
@@ -190,6 +228,8 @@ def _startup_accounts() -> None:
         ensure_default_admin_account()
     except Exception as exc:
         print(f"Admin account bootstrap skipped: {exc}")
+    _reconcile_stale_system_decision_syncs()
+    _start_system_decision_scheduler()
 
 
 @app.get("/health")
@@ -212,6 +252,8 @@ def auth_login(payload: LoginPayload, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/auth/signup-shop")
@@ -226,7 +268,10 @@ def auth_signup_shop(payload: ShopSignupPayload, request: Request) -> dict[str, 
 
 @app.get("/auth/me")
 def auth_me(request: Request) -> dict[str, Any]:
-    return _required_auth(request).model_dump()
+    try:
+        return _required_auth(request).model_dump()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/auth/logout")
@@ -236,6 +281,8 @@ def auth_logout(request: Request) -> dict[str, Any]:
         return logout(token)
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/auth/competitors")
@@ -1202,6 +1249,452 @@ async def recommend_batch(
     ]
 
 
+@app.get("/system-decisions/latest")
+def system_decisions_latest(request: Request) -> dict[str, Any]:
+    try:
+        tenant_id = str(_tenant_id_from_request(request))
+        ttl_seconds = float(os.environ.get("SYSTEM_DECISION_LATEST_CACHE_SECONDS", "5"))
+        now = time.time()
+        with _READ_CACHE_LOCK:
+            cached = _SYSTEM_DECISION_LATEST_CACHE.get(tenant_id)
+            if cached and now - cached[0] <= ttl_seconds:
+                return cached[1]
+        payload = list_system_decision_latest(tenant_id=tenant_id)
+        with _READ_CACHE_LOCK:
+            _SYSTEM_DECISION_LATEST_CACHE[tenant_id] = (now, payload)
+        return payload
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/system-decisions/sync-all")
+def system_decisions_sync_all(background_tasks: BackgroundTasks, request: Request) -> dict[str, Any]:
+    tenant_id = _tenant_id_from_request(request)
+    try:
+        sku_ids = list_active_inventory_sku_ids(tenant_id=tenant_id)
+        return _begin_system_decision_sync(
+            sku_ids,
+            tenant_id=tenant_id,
+            trigger=SYSTEM_DECISION_MANUAL_ALL_TRIGGER,
+            background_tasks=background_tasks,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/system-decisions/sync-unsynced")
+def system_decisions_sync_unsynced(background_tasks: BackgroundTasks, request: Request) -> dict[str, Any]:
+    tenant_id = _tenant_id_from_request(request)
+    try:
+        sku_ids = list_unsynced_inventory_sku_ids(tenant_id=tenant_id)
+        return _begin_system_decision_sync(
+            sku_ids,
+            tenant_id=tenant_id,
+            trigger=SYSTEM_DECISION_MANUAL_UNSYNCED_TRIGGER,
+            background_tasks=background_tasks,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/system-decisions/sync/{sku_id}")
+def system_decisions_sync_sku(sku_id: str, background_tasks: BackgroundTasks, request: Request) -> dict[str, Any]:
+    tenant_id = _tenant_id_from_request(request)
+    try:
+        return _begin_system_decision_sync(
+            [sku_id],
+            tenant_id=tenant_id,
+            trigger=SYSTEM_DECISION_NEW_SKU_TRIGGER,
+            background_tasks=background_tasks,
+            allow_existing_run=False,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/system-decisions/runs/{run_id}")
+def system_decision_run(run_id: str, request: Request) -> dict[str, Any]:
+    try:
+        run = get_system_decision_run(run_id, tenant_id=_tenant_id_from_request(request))
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not run:
+        raise HTTPException(status_code=404, detail=f"System decision run not found: {run_id}")
+    return run
+
+
+def _begin_system_decision_sync(
+    sku_ids: list[str],
+    *,
+    tenant_id: str,
+    trigger: str,
+    background_tasks: BackgroundTasks | None = None,
+    allow_existing_run: bool = True,
+) -> dict[str, Any]:
+    _clear_read_caches(tenant_id)
+    _reconcile_stale_system_decision_syncs()
+    unique_sku_ids = _unique_non_empty(sku_ids)
+    if allow_existing_run:
+        active_run = get_active_system_decision_run(tenant_id=tenant_id)
+        if active_run:
+            return {**active_run, "already_running": True}
+
+    run = create_system_decision_run(trigger=trigger, total_count=len(unique_sku_ids), tenant_id=tenant_id)
+    if not unique_sku_ids:
+        update_system_decision_run(
+            run["id"],
+            tenant_id=tenant_id,
+            status="completed",
+            completed_count=0,
+            failed_count=0,
+            finished=True,
+        )
+        completed_run = get_system_decision_run(run["id"], tenant_id=tenant_id)
+        return {**(completed_run or run), "already_running": False}
+
+    if background_tasks is not None:
+        background_tasks.add_task(
+            _run_system_decision_sync_job,
+            run["id"],
+            unique_sku_ids,
+            tenant_id,
+            trigger,
+        )
+    else:
+        threading.Thread(
+            target=_run_system_decision_sync_job,
+            args=(run["id"], unique_sku_ids, tenant_id, trigger),
+            name=f"system-decision-sync-{run['id']}",
+            daemon=True,
+        ).start()
+    return {**run, "already_running": False}
+
+
+def _reconcile_stale_system_decision_syncs() -> None:
+    stale_minutes = max(1, int(os.environ.get("SYSTEM_DECISION_STALE_RUN_MINUTES", "10")))
+    reason = (
+        "Previous sync run stopped before completion. "
+        "This row is safe to retry with Sync Unsynced or Sync All."
+    )
+    try:
+        result = fail_stale_system_decision_runs(stale_minutes, reason)
+        if result.get("stale_runs") or result.get("stale_items"):
+            _clear_read_caches(None)
+            print(
+                "Recovered stale system decision syncs: "
+                f"{result.get('stale_runs', 0)} runs, {result.get('stale_items', 0)} items."
+            )
+    except Exception as exc:
+        print(f"Stale system decision sync recovery skipped: {exc}")
+
+
+def _run_system_decision_sync_job(run_id: str, sku_ids: list[str], tenant_id: str, trigger: str) -> None:
+    completed = 0
+    failed = 0
+    total = len(sku_ids)
+    summary_error: str | None = None
+    update_system_decision_run(run_id, tenant_id=tenant_id, status="running", completed_count=0, failed_count=0)
+
+    batch_size = max(1, int(os.environ.get("SYSTEM_DECISION_SYNC_BATCH_SIZE", "25")))
+    concurrency = max(1, int(os.environ.get("SYSTEM_DECISION_SYNC_CONCURRENCY", "1")))
+    chunks = list(_chunks(sku_ids, batch_size))
+
+    def record_progress(result: tuple[int, int, str | None]) -> None:
+        nonlocal completed, failed, summary_error
+        result_completed, result_failed, result_error = result
+        completed += result_completed
+        failed += result_failed
+        if result_error:
+            summary_error = result_error
+        _clear_read_caches(tenant_id)
+        update_system_decision_run(run_id, tenant_id=tenant_id, completed_count=completed, failed_count=failed)
+
+    if concurrency == 1 or len(chunks) <= 1:
+        for chunk in chunks:
+            record_progress(_process_system_decision_sync_chunk(run_id, chunk, tenant_id, trigger))
+    else:
+        with ThreadPoolExecutor(max_workers=min(concurrency, len(chunks))) as executor:
+            futures = {
+                executor.submit(_process_system_decision_sync_chunk, run_id, chunk, tenant_id, trigger): chunk
+                for chunk in chunks
+            }
+            for future in as_completed(futures):
+                try:
+                    record_progress(future.result())
+                except Exception as exc:
+                    # A worker-level crash is unexpected; keep the run visible instead of silently stalling.
+                    chunk = futures[future]
+                    completed += len(chunk)
+                    failed += len(chunk)
+                    summary_error = str(exc)
+                    update_system_decision_run(run_id, tenant_id=tenant_id, completed_count=completed, failed_count=failed)
+
+    if failed == 0:
+        final_status = "completed"
+    elif failed >= total:
+        final_status = "failed"
+    else:
+        final_status = "partial"
+    update_system_decision_run(
+        run_id,
+        tenant_id=tenant_id,
+        status=final_status,
+        completed_count=completed,
+        failed_count=failed,
+        summary_error=summary_error,
+        finished=True,
+    )
+
+
+def _process_system_decision_sync_chunk(
+    run_id: str,
+    chunk: list[str],
+    tenant_id: str,
+    trigger: str,
+) -> tuple[int, int, str | None]:
+    completed = 0
+    failed = 0
+    summary_error: str | None = None
+
+    mark_system_decisions_syncing(chunk, tenant_id=tenant_id, run_id=run_id, trigger=trigger)
+    try:
+        feature_results = _ie1_feature_batch(chunk, tenant_id=tenant_id)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        error_code = _classify_sync_error("IE1", detail, exc.status_code)
+        for sku_id in chunk:
+            upsert_system_decision_error(
+                sku_id,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                trigger=trigger,
+                error_stage="IE1",
+                error_code=error_code,
+                error_detail=detail,
+            )
+        return len(chunk), len(chunk), detail
+    except Exception as exc:
+        detail = str(exc)
+        for sku_id in chunk:
+            upsert_system_decision_error(
+                sku_id,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                trigger=trigger,
+                error_stage="IE1",
+                error_code=_classify_sync_error("IE1", detail, 503),
+                error_detail=detail,
+            )
+        return len(chunk), len(chunk), detail
+
+    valid_features: list[dict[str, Any]] = []
+    valid_sku_ids: list[str] = []
+    for index, feature_payload in enumerate(feature_results):
+        sku_id = str(feature_payload.get("sku_id") if isinstance(feature_payload, dict) else chunk[index])
+        if not isinstance(feature_payload, dict):
+            detail = "IE1 returned an invalid feature row."
+            upsert_system_decision_error(
+                sku_id,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                trigger=trigger,
+                error_stage="IE1",
+                error_code="IE1_FEATURE_ERROR",
+                error_detail=detail,
+            )
+            completed += 1
+            failed += 1
+            summary_error = detail
+            continue
+        if feature_payload.get("error"):
+            detail = str(feature_payload.get("error") or "IE1 feature construction failed.")
+            status_code = int(feature_payload.get("status_code") or 503)
+            upsert_system_decision_error(
+                sku_id,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                trigger=trigger,
+                error_stage="IE1",
+                error_code=_classify_sync_error("IE1", detail, status_code),
+                error_detail=detail,
+            )
+            completed += 1
+            failed += 1
+            summary_error = detail
+            continue
+        validation_error = _feature_validation_error(feature_payload)
+        if validation_error:
+            error_code, detail = validation_error
+            upsert_system_decision_error(
+                sku_id,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                trigger=trigger,
+                error_stage="DATA_VALIDATION",
+                error_code=error_code,
+                error_detail=detail,
+            )
+            completed += 1
+            failed += 1
+            summary_error = detail
+            continue
+        valid_features.append(feature_payload)
+        valid_sku_ids.append(sku_id)
+
+    if valid_features:
+        try:
+            decision_results = _ie2_recommend_features_batch(valid_features)
+        except HTTPException as exc:
+            detail = str(exc.detail)
+            error_code = _classify_sync_error("IE2", detail, exc.status_code)
+            for sku_id in valid_sku_ids:
+                upsert_system_decision_error(
+                    sku_id,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    trigger=trigger,
+                    error_stage="IE2",
+                    error_code=error_code,
+                    error_detail=detail,
+                )
+            return completed + len(valid_sku_ids), failed + len(valid_sku_ids), detail
+        except Exception as exc:
+            detail = str(exc)
+            for sku_id in valid_sku_ids:
+                upsert_system_decision_error(
+                    sku_id,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    trigger=trigger,
+                    error_stage="IE2",
+                    error_code=_classify_sync_error("IE2", detail, 503),
+                    error_detail=detail,
+                )
+            return completed + len(valid_sku_ids), failed + len(valid_sku_ids), detail
+
+        for feature_payload, sku_id, decision in zip(valid_features, valid_sku_ids, decision_results):
+            if not isinstance(decision, dict) or decision.get("error"):
+                detail = str(decision.get("error") if isinstance(decision, dict) else "IE2 returned an invalid row.")
+                status_code = int(decision.get("status_code") if isinstance(decision, dict) and decision.get("status_code") else 502)
+                upsert_system_decision_error(
+                    sku_id,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    trigger=trigger,
+                    error_stage="IE2",
+                    error_code=_classify_sync_error("IE2", detail, status_code),
+                    error_detail=detail,
+                )
+                failed += 1
+                summary_error = detail
+            else:
+                competitor_metric_payload = feature_payload.get("competitor_signals")
+                observe_competitor_match(competitor_metric_payload)
+                observe_recommendation("/system-decisions/sync", decision.get("recommendation"))
+                response_payload = serialize_frontend_recommendation(decision)
+                full_payload = {
+                    **response_payload,
+                    "sku_id": sku_id,
+                    "competitor_signals_used": competitor_metric_payload,
+                    "input_context": _frontend_input_context(feature_payload, competitor_metric_payload),
+                }
+                upsert_system_decision_success(
+                    sku_id,
+                    full_payload,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    trigger=trigger,
+                )
+            completed += 1
+
+        if len(decision_results) < len(valid_sku_ids):
+            missing_sku_ids = valid_sku_ids[len(decision_results):]
+            detail = "IE2 returned fewer recommendation rows than requested."
+            for sku_id in missing_sku_ids:
+                upsert_system_decision_error(
+                    sku_id,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    trigger=trigger,
+                    error_stage="IE2",
+                    error_code="IE2_DECISION_ERROR",
+                    error_detail=detail,
+                )
+                completed += 1
+                failed += 1
+            summary_error = detail
+
+    return completed, failed, summary_error
+
+
+def _start_system_decision_scheduler() -> None:
+    global _SYSTEM_DECISION_SCHEDULER_STARTED
+    if os.environ.get("SYSTEM_DECISION_SCHEDULER_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+        return
+    with _SYSTEM_DECISION_SCHEDULER_LOCK:
+        if _SYSTEM_DECISION_SCHEDULER_STARTED:
+            return
+        _SYSTEM_DECISION_SCHEDULER_STARTED = True
+        threading.Thread(target=_system_decision_scheduler_loop, name="system-decision-scheduler", daemon=True).start()
+
+
+def _system_decision_scheduler_loop() -> None:
+    timezone_name = os.environ.get("SYSTEM_DECISION_SCHEDULER_TIMEZONE", "Asia/Beirut")
+    hour = int(os.environ.get("SYSTEM_DECISION_SCHEDULER_HOUR", "7"))
+    minute = int(os.environ.get("SYSTEM_DECISION_SCHEDULER_MINUTE", "0"))
+    tz = ZoneInfo(timezone_name)
+    while True:
+        try:
+            now = datetime.now(tz)
+            if now.hour == hour and now.minute == minute:
+                for tenant_id in list_tenant_ids():
+                    active_run = get_active_system_decision_run(tenant_id=tenant_id)
+                    if active_run or system_decision_run_exists_today(tenant_id, SYSTEM_DECISION_DAILY_TRIGGER, timezone_name):
+                        continue
+                    sku_ids = list_active_inventory_sku_ids(tenant_id=tenant_id)
+                    _begin_system_decision_sync(
+                        sku_ids,
+                        tenant_id=tenant_id,
+                        trigger=SYSTEM_DECISION_DAILY_TRIGGER,
+                        background_tasks=None,
+                    )
+            time.sleep(60)
+        except Exception as exc:
+            print(f"System decision scheduler skipped cycle: {exc}")
+            time.sleep(60)
+
+
+def _classify_sync_error(stage: str, detail: str, status_code: int | None = None) -> str:
+    text = detail.lower()
+    if status_code in {401, 403}:
+        return "AUTH_ERROR"
+    if status_code == 404 or "sku not found" in text:
+        return "SKU_NOT_FOUND"
+    if "tenant" in text and ("not found" in text or "scope" in text):
+        return "TENANT_SCOPE_MISMATCH"
+    if "timed out" in text or "timeout" in text:
+        return f"{stage}_TIMEOUT"
+    if "network" in text or "service call failed" in text or "connection" in text:
+        return "NETWORK_ERROR"
+    return "IE1_FEATURE_ERROR" if stage == "IE1" else "IE2_DECISION_ERROR"
+
+
+def _unique_non_empty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _chunks(values: list[str], size: int) -> list[list[str]]:
+    return [values[index:index + size] for index in range(0, len(values), size)]
+
+
 def _batch_error_row(sku_id: str, detail: str, status_code: int) -> dict[str, Any]:
     return {
         "sku_id": sku_id,
@@ -1217,6 +1710,28 @@ def _batch_error_row(sku_id: str, detail: str, status_code: int) -> dict[str, An
         "error": detail,
         "status_code": status_code,
     }
+
+
+def _safe_sync_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _feature_validation_error(feature_payload: dict[str, Any]) -> tuple[str, str] | None:
+    features = feature_payload.get("features") if isinstance(feature_payload.get("features"), dict) else {}
+    retail_price = _safe_sync_float(feature_payload.get("retail_price_usd") or features.get("retail_price_usd"))
+    cost_price = _safe_sync_float(feature_payload.get("cost_price_usd") or features.get("cost_price_usd"))
+    if retail_price is None or retail_price <= 0:
+        return "INVALID_RETAIL_PRICE", "Invalid inventory pricing: retail_price_usd must be greater than zero."
+    if cost_price is None or cost_price < 0:
+        return "INVALID_COST_PRICE", "Invalid inventory pricing: cost_price_usd must be zero or greater."
+    if cost_price >= retail_price:
+        return "INVALID_PRICE_MARGIN", "Invalid inventory pricing: cost_price_usd must be lower than retail_price_usd."
+    return None
 
 
 async def _recommend_batch_item(
@@ -1366,6 +1881,7 @@ def _ie1_feature_instance(sku_id: str, tenant_id: str | None) -> dict[str, Any]:
 
 
 def _ie1_feature_batch(sku_ids: list[str], tenant_id: str | None) -> list[dict[str, Any]]:
+    timeout = float(os.environ.get("SYSTEM_DECISION_IE1_BATCH_TIMEOUT_SECONDS", "300"))
     payload = {
         "items": [{"sku_id": sku_id} for sku_id in sku_ids],
         "tenant_id": tenant_id,
@@ -1374,7 +1890,7 @@ def _ie1_feature_batch(sku_ids: list[str], tenant_id: str | None) -> list[dict[s
         f"{_ie1_base_url()}/features/batch",
         method="POST",
         payload=payload,
-        timeout=90.0,
+        timeout=timeout,
     )
     if not isinstance(result, list):
         raise HTTPException(status_code=502, detail="IE1 returned an invalid feature batch payload.")
@@ -1397,12 +1913,13 @@ def _ie2_recommend_from_features(feature_payload: dict[str, Any]) -> dict[str, A
 
 def _ie2_recommend_features_batch(feature_payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     api_key = os.environ.get("IE2_API_KEY", "ie2-local-postman-key")
+    timeout = float(os.environ.get("SYSTEM_DECISION_IE2_BATCH_TIMEOUT_SECONDS", "180"))
     result = _service_json(
         f"{_ie2_base_url()}/recommend/features/batch",
         method="POST",
         payload={"items": feature_payloads},
         headers={"X-API-Key": api_key},
-        timeout=90.0,
+        timeout=timeout,
     )
     if not isinstance(result, list):
         raise HTTPException(status_code=502, detail="IE2 returned an invalid recommendation batch payload.")
@@ -1441,6 +1958,13 @@ def report_live(request: Request) -> dict[str, Any]:
 
     try:
         request_tenant_id = _tenant_id_from_request(request)
+        tenant_cache_key = str(request_tenant_id)
+        ttl_seconds = float(os.environ.get("REPORT_LIVE_CACHE_SECONDS", "120"))
+        now_epoch = time.time()
+        with _READ_CACHE_LOCK:
+            cached = _REPORT_LIVE_CACHE.get(tenant_cache_key)
+            if cached and now_epoch - cached[0] <= ttl_seconds:
+                return cached[1]
         with _connect() as conn:
             with conn.cursor() as cur:
                 ctx = _context(cur, tenant_id=request_tenant_id)
@@ -1711,7 +2235,7 @@ def report_live(request: Request) -> dict[str, Any]:
                 "velocity": s["velocity_units_per_day"],
             })
 
-    return {
+    payload = {
         "inventory": {
             "metrics": {
                 "total_skus": len(inventory_skus),
@@ -1792,6 +2316,9 @@ def report_live(request: Request) -> dict[str, Any]:
             "source": "live-db",
         },
     }
+    with _READ_CACHE_LOCK:
+        _REPORT_LIVE_CACHE[tenant_cache_key] = (now_epoch, payload)
+    return payload
 
 
 @app.get("/financial/balance-sheet")

@@ -21,6 +21,8 @@ import type {
   RetailInventoryMovementInput,
   RetailInventoryMovementResult,
   RetailInventoryResponse,
+  SystemDecisionLatestResponse,
+  SystemDecisionRun,
   AuthResponse,
   AdminTenant,
   AppNotification,
@@ -64,9 +66,24 @@ function hasAuthSession(): boolean {
   return Boolean(useAuth.getState().token);
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Request timed out. The backend or database is not responding.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export async function loginAccount(email: string, password: string): Promise<AuthResponse> {
   const { base } = settings();
-  const r = await fetch(`${base}/auth/login`, {
+  const r = await fetchWithTimeout(`${base}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -77,7 +94,7 @@ export async function loginAccount(email: string, password: string): Promise<Aut
 
 export async function signupShop(payload: ShopSignupInput): Promise<AuthResponse> {
   const { base } = settings();
-  const r = await fetch(`${base}/auth/signup-shop`, {
+  const r = await fetchWithTimeout(`${base}/auth/signup-shop`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -88,14 +105,14 @@ export async function signupShop(payload: ShopSignupInput): Promise<AuthResponse
 
 export async function fetchCurrentUser(): Promise<AuthResponse['user']> {
   const { base } = settings();
-  const r = await fetch(`${base}/auth/me`, { headers: apiHeaders() });
+  const r = await fetchWithTimeout(`${base}/auth/me`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/me'));
   return r.json();
 }
 
 export async function logoutAccount(): Promise<void> {
   const { base } = settings();
-  const r = await fetch(`${base}/auth/logout`, { method: 'POST', headers: apiHeaders() });
+  const r = await fetchWithTimeout(`${base}/auth/logout`, { method: 'POST', headers: apiHeaders() });
   if (!r.ok) throw new Error(await apiError(r, 'EEP /auth/logout'));
 }
 
@@ -470,6 +487,50 @@ export async function recommendBatch(items: IE2Request[]): Promise<IE2Result[]> 
   }
 
   return Promise.all(items.map(mockRecommend));
+}
+
+export async function fetchSystemDecisionLatest(): Promise<SystemDecisionLatestResponse> {
+  const { base } = settings();
+  const r = await fetch(`${base}/system-decisions/latest`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /system-decisions/latest'));
+  return r.json();
+}
+
+export async function startSystemDecisionSyncAll(): Promise<SystemDecisionRun> {
+  const { base } = settings();
+  const r = await fetch(`${base}/system-decisions/sync-all`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /system-decisions/sync-all'));
+  return r.json();
+}
+
+export async function startSystemDecisionSyncUnsynced(): Promise<SystemDecisionRun> {
+  const { base } = settings();
+  const r = await fetch(`${base}/system-decisions/sync-unsynced`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /system-decisions/sync-unsynced'));
+  return r.json();
+}
+
+export async function startSystemDecisionSyncSku(skuId: string): Promise<SystemDecisionRun> {
+  const { base } = settings();
+  const r = await fetch(`${base}/system-decisions/sync/${encodeURIComponent(skuId)}`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /system-decisions/sync/${skuId}`));
+  return r.json();
+}
+
+export async function fetchSystemDecisionRun(runId: string): Promise<SystemDecisionRun> {
+  const { base } = settings();
+  const r = await fetch(`${base}/system-decisions/runs/${encodeURIComponent(runId)}`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /system-decisions/runs/${runId}`));
+  return r.json();
 }
 
 export async function pingIE2(): Promise<{ ok: boolean; latency_ms: number; detail?: string }> {
