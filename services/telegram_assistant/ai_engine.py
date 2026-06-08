@@ -23,25 +23,19 @@ logger = logging.getLogger("telegram_assistant.ai_engine")
 
 MAX_TOOL_ITERATIONS = 5
 
-_STAFF_BLOCKED_TOOLS = {"get_financials", "get_revenue_trend"}
-
-
 def _role_system_suffix(role: str) -> str:
     """Return a role-specific addendum appended to the system prompt."""
     if role == "staff":
         return (
             "\n\n## YOUR ACCESS LEVEL: STAFF\n"
             "You are speaking with a staff member, not the owner. "
-            "Only answer questions about inventory levels, stock availability, and product queries. "
-            "Do NOT discuss financials, cash runway, margins, revenue trends, or profit figures — "
-            "if asked, politely say that financial data is available to the owner and managers only."
+            "Only answer questions about inventory levels, stock availability, and product queries."
         )
     if role == "manager":
         return (
             "\n\n## YOUR ACCESS LEVEL: MANAGER\n"
             "You are speaking with a store manager. "
-            "You can discuss inventory, pricing, decisions, and recommendations in full. "
-            "Avoid sharing owner-level P&L details (cash runway, OPEX) unless directly asked."
+            "You can discuss inventory, pricing, decisions, and recommendations in full."
         )
     return ""  # owner — full access, no restriction
 
@@ -106,7 +100,7 @@ The owner uses you to compete and protect their capital. Every interaction shoul
 - Know exactly where they stand: which SKUs are healthy, which are trapped, which are at risk
 - Act before it costs them: dead stock compounds, competitor out-of-stocks are time-limited opportunities
 - Keep margin: losing 5 margin points to move 10 extra units is usually not worth it — do the math
-- Prioritise: when multiple things need attention, rank by financial impact (value at risk)
+- Prioritise: when multiple things need attention, rank by inventory risk, urgency, and expected decision impact
 
 When asked "what should I focus on today?" — call get_next_actions and get_inventory_overview in parallel, then give a ranked list with the one highest-impact action first.
 
@@ -137,7 +131,6 @@ Use past outcomes to calibrate current recommendations when relevant.
 
 ## GROUND RULES
 - Never invent numbers. If a tool returns nothing, say so and suggest what to do next.
-- Cash runway below 2 months: flag it at the top of any financial response, without exception.
 - Lebanon context: 3–8 week import lead times, ~85% cash payments, generator costs ~$220/month.
 - End every reply with one concrete next action unless it's pure chitchat.
 
@@ -205,7 +198,7 @@ class AIEngine:
                 tools_used.extend(b.name for b in tool_blocks)
 
                 # Run all tool calls in this turn concurrently — common when Claude
-                # asks for inventory + recommendations + financials in one shot.
+                # asks for inventory + recommendations in one shot.
                 results = await asyncio.gather(
                     *[
                         self._execute_tool(b.name, dict(b.input), tenant_id, chat_id, role)
@@ -372,8 +365,6 @@ class AIEngine:
             "get_category_performance": lambda inp: self._bds.get_category_performance(
                 tid, inp.get("days", 30)
             ),
-            "get_financials": lambda _: self._bds.get_financials_snapshot(tid),
-            "get_revenue_trend": lambda _: self._bds.get_revenue_trend(tid),
             "get_competitor_prices": lambda inp: self._bds.get_competitor_prices(
                 tid, sku_id=inp.get("sku_id"), competitor_name=inp.get("competitor_name")
             ),
@@ -389,6 +380,7 @@ class AIEngine:
             "get_roadmap_summary": lambda _: self._get_roadmap_summary(tenant_id),
             "get_recommendation_detail": _recommendation_detail,
             "get_next_actions": lambda _: self._get_next_actions(tenant_id),
+            "get_financial_health": lambda _: self._bds.get_financial_health(tid),
         }
 
     async def _get_decision_progress(self, tenant_id: UUID) -> Any:
@@ -411,11 +403,6 @@ class AIEngine:
         chat_id: str,
         role: str = "owner",
     ) -> Any:
-        if role == "staff" and name in _STAFF_BLOCKED_TOOLS:
-            return {
-                "error": "Access denied — financial data is restricted to owners and managers.",
-                "tool": name,
-            }
         dispatch = self._get_dispatch(tenant_id, chat_id)
         handler = dispatch.get(name)
         if handler is None:
@@ -460,21 +447,21 @@ class AIEngine:
                 )
                 rec = await cur.fetchone()
 
+            if not rec:
+                return {"status": "error", "message": f"Recommendation {recommendation_id} not found."}
+
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     UPDATE marketing.recommendations
                     SET status = 'approved', reviewed_at = now(), reviewed_by = 'telegram'
-                    WHERE id = %s
+                    WHERE id = %s AND tenant_id = %s
                     """,
-                    (recommendation_id,),
+                    (recommendation_id, str(tenant_id)),
                 )
             await conn.commit()
         finally:
             await conn.close()
-
-        if not rec:
-            return {"status": "error", "message": f"Recommendation {recommendation_id} not found."}
 
         rec_type = rec["recommendation"]
         product_name = rec.get("product_name") or sku_id

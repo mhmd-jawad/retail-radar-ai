@@ -10,7 +10,7 @@ Key responsibilities:
 - Transform StylePulse analysis results into per-SKU dashboard cards
 - Build competitor price comparison tables
 - Construct inventory health summaries with trend data
-- Assemble financial KPI widgets from snapshot history
+
 """
 from __future__ import annotations
 
@@ -38,8 +38,6 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "data" / "reports" / "report.json"
 PRODUCTS_PATH = ROOT / "data" / "real" / "products.csv"
 INVENTORY_PATH = ROOT / "data" / "real" / "inventory.csv"
-CASHFLOW_PATH = ROOT / "data" / "real" / "cashflow_template.csv"
-FINANCIAL_PROFILE_PATH = ROOT / "data" / "real" / "financial_profile.json"
 HISTORICAL_STATES_PATH = ROOT / "data" / "features" / "historical_product_states.csv"
 SCRAPING_OUTPUT_ROOT = ROOT / "scraping" / "data" / "output"
 SCRAPE_MANIFEST_PATH = SCRAPING_OUTPUT_ROOT / "manifest.json"
@@ -83,7 +81,6 @@ CATEGORY_LABELS = {
 }
 
 SERVICE_OWNERS = {
-    "financial": "Finance",
     "inventory": "Operations",
     "marketing": "Marketing",
     "planning": "Operations",
@@ -97,8 +94,6 @@ ALERT_TITLES = {
     "slow_mover": "Slow-moving stock pressure",
     "margin_warning": "Margin floor warning",
     "inventory_concentration": "Inventory concentration risk",
-    "cash_runway": "Cash runway is tight",
-    "cash_runway_critical": "Cash runway is critical",
 }
 
 PRIORITY_URGENCY = {
@@ -206,17 +201,9 @@ def load_inventory_index() -> dict[str, dict[str, str]]:
 
 
 @lru_cache(maxsize=1)
-def load_cashflow_rows() -> list[dict[str, str]]:
-    if not CASHFLOW_PATH.exists():
-        return []
-    return _read_csv(CASHFLOW_PATH)
 
 
 @lru_cache(maxsize=1)
-def load_financial_profile() -> dict[str, Any]:
-    if not FINANCIAL_PROFILE_PATH.exists():
-        return {}
-    return _read_json(FINANCIAL_PROFILE_PATH)
 
 
 @lru_cache(maxsize=1)
@@ -315,21 +302,6 @@ def _inventory_alerts(raw_alerts: list[dict[str, Any]], sku_map: dict[str, dict[
     return alerts
 
 
-def _financial_alerts(raw_alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    created_at = report_generated_at()
-    alerts: list[dict[str, Any]] = []
-    for alert in raw_alerts:
-        alert_type = str(alert.get("type", "financial_alert"))
-        alerts.append(
-            {
-                "id": _stable_id("fin", alert_type, alert.get("message")),
-                "severity": str(alert.get("severity", "low")).lower(),
-                "title": ALERT_TITLES.get(alert_type, alert_type.replace("_", " ").title()),
-                "detail": alert.get("message", ""),
-                "created_at": created_at,
-            }
-        )
-    return alerts
 
 
 def build_frontend_report() -> dict[str, Any]:
@@ -527,51 +499,6 @@ def build_frontend_report() -> dict[str, Any]:
             }
         )
 
-    cashflow_rows = load_cashflow_rows()
-    inflows = [_to_float(row.get("revenue_usd"), 0.0) for row in cashflow_rows]
-    outflows = [
-        _to_float(row.get("cogs_usd"), 0.0)
-        + _to_float(row.get("total_opex_usd"), 0.0)
-        + _to_float(row.get("inventory_restock_usd"), 0.0)
-        for row in cashflow_rows
-    ]
-    gross_profits = [_to_float(row.get("gross_profit_usd"), 0.0) for row in cashflow_rows]
-    opex_values = [_to_float(row.get("total_opex_usd"), 0.0) for row in cashflow_rows]
-    cash_series = [
-        {
-            "month": row.get("month_name", row.get("month", "")),
-            "in": round(_to_float(row.get("revenue_usd"), 0.0), 2),
-            "out": round(
-                _to_float(row.get("cogs_usd"), 0.0)
-                + _to_float(row.get("total_opex_usd"), 0.0)
-                + _to_float(row.get("inventory_restock_usd"), 0.0),
-                2,
-            ),
-            "net": round(_to_float(row.get("net_cash_movement_usd"), 0.0), 2),
-        }
-        for row in cashflow_rows
-    ]
-
-    financial_raw = raw_report.get("financial", {})
-    balance_sheet_raw = financial_raw.get("balance_sheet_health", {})
-    cashflow_raw = financial_raw.get("cashflow_health", {})
-    profitability_raw = financial_raw.get("profitability", {})
-    category_values = sorted(
-        (summary["value_usd"] for summary in inventory_category_summary.values()),
-        reverse=True,
-    )
-    total_inventory_value = sum(category_values)
-    top5_concentration = (
-        round(sum(category_values[:5]) / total_inventory_value * 100, 1)
-        if total_inventory_value > 0 else 0.0
-    )
-    avg_outflow = round(sum(outflows) / len(outflows), 2) if outflows else 0.0
-    avg_inflow = round(sum(inflows) / len(inflows), 2) if inflows else 0.0
-    latest_cash_balance = _to_float(cashflow_rows[-1].get("cumulative_cash_usd"), 0.0) if cashflow_rows else 0.0
-    opex_coverage_ratio = (
-        round(sum(gross_profits) / max(sum(opex_values), 1.0), 2)
-        if gross_profits and opex_values else 0.0
-    )
 
     promotions_raw = raw_report.get("promotions", {})
     promote_items = []
@@ -709,30 +636,6 @@ def build_frontend_report() -> dict[str, Any]:
             "category_summary": competitor_category_summary,
             "opportunities": opportunities,
         },
-        "financial": {
-            "balance_sheet_health": {
-                "current_ratio": round(_to_float(balance_sheet_raw.get("current_ratio"), 0.0), 2),
-                "inventory_pct_of_assets": round(_to_float(balance_sheet_raw.get("inventory_pct_of_assets"), 0.0), 1),
-                "inventory_concentration_top5_pct": top5_concentration,
-                "total_assets_usd": round(_to_float(balance_sheet_raw.get("total_assets_usd"), 0.0), 2),
-                "liabilities_usd": round(_to_float(balance_sheet_raw.get("total_liabilities_usd"), 0.0), 2),
-                "equity_usd": round(_to_float(balance_sheet_raw.get("total_equity_usd"), 0.0), 2),
-            },
-            "cashflow_health": {
-                "cash_runway_months": round(_to_float(cashflow_raw.get("cash_runway_months"), 0.0), 1),
-                "monthly_burn_usd": avg_outflow,
-                "monthly_cash_in_usd": avg_inflow,
-                "cash_on_hand_usd": round(latest_cash_balance, 2),
-                "series": cash_series,
-            },
-            "profitability": {
-                "blended_margin_pct": round(_to_float(profitability_raw.get("blended_margin_pct"), _to_float(inventory_metrics_raw.get("blended_margin_pct"), 0.0)), 1),
-                "breakeven_revenue_usd": round(_to_float(cashflow_raw.get("breakeven_monthly_revenue_usd"), 0.0), 2),
-                "annual_revenue_projection_usd": round(_to_float(cashflow_raw.get("projected_annual_revenue_usd"), 0.0), 2),
-                "opex_coverage_ratio": opex_coverage_ratio,
-            },
-            "alerts": _financial_alerts(financial_raw.get("alerts", [])),
-        },
         "promotions": {
             "hold_pricing": hold_items,
             "promote": promote_items,
@@ -751,7 +654,7 @@ def build_frontend_report() -> dict[str, Any]:
             "generated_at": report_generated_at(),
             "engine_version": raw_report.get("metadata", {}).get("engine_version", "1.0.0"),
             "market": "Lebanon",
-            "currency": load_financial_profile().get("store_profile", {}).get("currency", "fresh USD"),
+            "currency": "fresh USD",
             "data_window_days": DEFAULT_REPORT_WINDOW_DAYS,
             "source": "stylepulse-report",
         },
@@ -996,3 +899,4 @@ def serialize_frontend_recommendation(result: Any) -> dict[str, Any]:
         "processing_time_ms": _to_int(payload.get("processing_time_ms"), 0),
         "requires_human_approval": bool(payload.get("requires_human_approval", True)),
     }
+

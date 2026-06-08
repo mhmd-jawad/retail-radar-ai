@@ -92,6 +92,8 @@ const FIELD_HINTS = {
   ig_user_id: 'Query /{page-id}?fields=instagram_business_account in Graph API Explorer',
   tg_token: 'Get this from @BotFather on Telegram using /newbot',
   tg_username: 'The @username of your bot, used for display only',
+  fb_display_name: "Retailer's Facebook Page name as shown to customers, e.g. \"Fouani's Electronics\"",
+  ig_display_name: "Retailer's Instagram handle without @, e.g. \"fouanis_store\"",
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -312,10 +314,11 @@ export function SocialAccountsManager({ tenantId }: Props) {
           value={tiles.facebook.pageId}
           onChange={(v) => setTile('facebook', { pageId: v })}
         />
-        <Input
+        <FieldWithHint
           placeholder="Display name (optional)"
+          hint={FIELD_HINTS.fb_display_name}
           value={tiles.facebook.accountName}
-          onChange={(e) => setTile('facebook', { accountName: e.target.value })}
+          onChange={(v) => setTile('facebook', { accountName: v })}
         />
 
         <div className="flex gap-2 pt-1">
@@ -356,10 +359,11 @@ export function SocialAccountsManager({ tenantId }: Props) {
           value={tiles.instagram.userId}
           onChange={(v) => setTile('instagram', { userId: v })}
         />
-        <Input
+        <FieldWithHint
           placeholder="Display name (optional)"
+          hint={FIELD_HINTS.ig_display_name}
           value={tiles.instagram.accountName}
-          onChange={(e) => setTile('instagram', { accountName: e.target.value })}
+          onChange={(v) => setTile('instagram', { accountName: v })}
         />
 
         <div className="flex gap-2 pt-1">

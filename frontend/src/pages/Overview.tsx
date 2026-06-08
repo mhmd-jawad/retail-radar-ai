@@ -6,7 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtDos, fmtUSD, fmtPct, fmtNum, isUnknownDos, relativeTime } from '@/lib/format';
 import {
-  Boxes, Radar, DollarSign, Wallet, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database, Target,
+  Boxes, Radar, DollarSign, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database, Target,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -33,7 +33,7 @@ export default function Overview() {
     );
   }
 
-  const { inventory, competitor, financial, promotions, metadata } = report;
+  const { inventory, competitor, promotions, metadata } = report;
   const skuCount = inventory.sku_analysis.length;
   const distribution: { name: Decision; value: number; color: string }[] = [
     { name: 'HOLD', value: promotions.summary.hold_count, color: 'hsl(var(--decision-hold))' },
@@ -43,9 +43,7 @@ export default function Overview() {
   ];
   const total = Math.max(distribution.reduce((s, x) => s + x.value, 0), 1);
   const actionableCount = promotions.summary.promote_count + promotions.summary.markdown_count + promotions.summary.clearance_count;
-  const cashRunwayMonths = financial.cashflow_health.cash_runway_months ?? 0;
-  const inventoryPctOfAssets = financial.balance_sheet_health.inventory_pct_of_assets ?? 0;
-
+  const ownerDirectives = promotions.directives.filter((directive) => directive.owner !== 'Finance');
   const categoryRows = Object.entries(inventory.category_summary)
     .map(([k, v]) => ({ name: k, ...v }))
     .sort((a, b) => b.value_usd - a.value_usd);
@@ -86,21 +84,16 @@ export default function Overview() {
               </h2>
               <p className="text-panel-muted text-[14px] mt-3 max-w-2xl">
                 {skuCount === 0 ? (
-                  <>Add or import inventory to generate recommendations, pricing signals, and financial diagnostics for this shop.</>
+                  <>Add or import inventory to generate recommendations and pricing signals for this shop.</>
                 ) : (
                   <>
-                    Cash runway at <span className="text-panel-foreground font-semibold">{cashRunwayMonths.toFixed(1)} months</span> with inventory absorbing
-                    {' '}<span className="text-panel-foreground font-semibold">{inventoryPctOfAssets.toFixed(1)}%</span> of assets.
-                    Review {actionableCount} inventory actions generated from this shop&apos;s live data.
+                    Review {actionableCount} inventory actions generated from this shop&apos;s live data, competitor positions, and stock health.
                   </>
                 )}
               </p>
               <div className="flex flex-wrap gap-3 mt-5">
                 <Link to="/queue" className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow">
                   Open recommendations queue
-                </Link>
-                <Link to="/financial" className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
-                  View cashflow detail
                 </Link>
                 <Link to="/closed-loop" className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
                   Closed-loop results
@@ -125,11 +118,9 @@ export default function Overview() {
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Inventory @ Cost" icon={Boxes} value={fmtUSD(inventory.metrics.inventory_value_at_cost_usd, { compact: true })}
             hint={`${fmtNum(inventory.metrics.total_units)} units · ${medianDosHint}`} />
-          <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${cashRunwayMonths.toFixed(1)} mo`}
-            hint={`Burn ${fmtUSD(financial.cashflow_health.monthly_burn_usd, { compact: true })}/mo`} trend={{ value: '-0.4 mo', direction: 'down', positive: false }} />
           <KpiCard label="Competitor Records" icon={Radar} variant="data" value={fmtNum(competitor.market_overview.competitor_records)}
             hint={`${competitor.market_overview.shops_covered} shops · ${competitor.market_overview.data_freshness_hours}h freshness`} />
           <KpiCard label="Blended Margin" icon={TrendingUp} variant="success" value={fmtPct(inventory.metrics.blended_margin_pct)}
@@ -168,7 +159,7 @@ export default function Overview() {
           <Section title="Priority Owner Directives" subtitle="Resolved by the analytics engine — human approval required"
             action={<Link to="/promotions" className="text-[12px] text-primary font-semibold hover:underline">View all</Link>}>
             <ul className="space-y-3">
-              {promotions.directives.slice(0, 5).map((d, i) => (
+              {ownerDirectives.slice(0, 5).map((d, i) => (
                 <li key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-accent/40 transition">
                   <div className={`h-9 w-9 shrink-0 rounded-md flex items-center justify-center text-[10px] font-mono font-semibold uppercase ${
                     d.priority === 'high' ? 'bg-decision-clear-bg text-decision-clear' :
@@ -191,10 +182,10 @@ export default function Overview() {
 
         {/* Alerts + Seasonal */}
         <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
-          <Section title="Alerts" subtitle="Inventory & financial signals from the analytics engine"
-            action={<span className="text-[11px] font-mono text-muted-foreground">{[...inventory.alerts, ...financial.alerts].length} active</span>}>
+          <Section title="Alerts" subtitle="Inventory signals from the analytics engine"
+            action={<span className="text-[11px] font-mono text-muted-foreground">{inventory.alerts.length} active</span>}>
             <ul className="divide-y divide-border -my-2">
-              {[...inventory.alerts, ...financial.alerts].slice(0, 6).map((a) => (
+              {inventory.alerts.slice(0, 6).map((a) => (
                 <li key={a.id} className="flex items-start gap-3 py-3">
                   <div className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${
                     a.severity === 'critical' ? 'bg-decision-clear-bg text-decision-clear' :
@@ -277,12 +268,11 @@ export default function Overview() {
 
         {/* Quick links */}
         <Section title="Jump In" subtitle="Deep-dive into a specific intelligence layer">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { to: '/queue', icon: Database, label: 'Recommendations', count: String(skuCount) },
               { to: '/inventory', icon: Boxes, label: 'Inventory & Stock', count: `${inventory.metrics.dead_stock_skus} dead` },
               { to: '/promotions', icon: DollarSign, label: 'Promotions', count: `${promotions.promote.length} ready` },
-              { to: '/financial', icon: Wallet, label: 'Financial', count: `${financial.cashflow_health.cash_runway_months}mo runway` },
             ].map((q) => (
               <Link key={q.to} to={q.to} className="group p-4 rounded-lg border border-border hover:border-primary/40 hover:shadow-md-soft transition-all">
                 <q.icon className="h-5 w-5 text-primary mb-2" />

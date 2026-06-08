@@ -1,5 +1,4 @@
-// Retail Radar AI - Domain models mirroring the Python analytics engine output
-// and IE2/EEP service contracts.
+﻿// Retail Radar AI - Domain models mirroring the Python analytics engine output
 
 export type Decision = 'HOLD' | 'MARKDOWN' | 'PROMOTE' | 'CLEAR';
 export type RecommendationStatus = 'pending' | 'approved' | 'edited' | 'rejected' | 'snoozed';
@@ -983,4 +982,21 @@ export interface AdminAssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   tools_used?: string[];
+}
+
+export interface FinancialProfileInput {
+  total_assets_usd: number | null;
+  total_liabilities_usd: number | null;
+  monthly_fixed_opex_usd: number | null;
+  annual_revenue_projected_usd: number | null;
+  cash_runway_months: number | null;
+  breakeven_monthly_revenue_usd: number | null;
+}
+
+export interface FinancialLineItem {
+  id: string;
+  item_type: 'asset' | 'liability';
+  label: string;
+  amount_usd: number;
+  sort_order: number;
 }

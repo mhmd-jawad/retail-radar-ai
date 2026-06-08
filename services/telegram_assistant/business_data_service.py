@@ -1,18 +1,14 @@
-"""
-Business Data Service — fetches and caches live business KPIs for Telegram AI context.
+﻿"""
+Business Data Service â€” fetches and caches live business KPIs for Telegram AI context.
 
 All live data is queried directly from AWS RDS PostgreSQL.
-Financial profile / cashflow CSV are loaded from data/real/ as a fallback when
 the DB has no sales history yet (early deployment).
 """
 from __future__ import annotations
 
-import csv
-import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -28,13 +24,12 @@ from services.telegram_assistant.conversation_store import ConversationManager, 
 
 logger = logging.getLogger("telegram_assistant.business_data_service")
 
-# ── Prometheus gauges ─────────────────────────────────────────────────────────
-retail_cash_runway_months = Gauge("retail_cash_runway_months", "Cash runway in months")
+# â”€â”€ Prometheus gauges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 retail_low_stock_sku_count = Gauge("retail_low_stock_sku_count", "SKUs under 21 days of supply")
 
 _CACHE_TTL_HOURS = 4
 
-# ── DOS estimation helpers ────────────────────────────────────────────────────
+# â”€â”€ DOS estimation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # The /inventory/items endpoint does not expose days_of_supply directly.
 # We estimate: DOS = current_stock / daily_rate
 # daily_rate = reorder_quantity / 30  (if set), else reorder_point / 15, else assume 1 unit/day.
@@ -56,32 +51,14 @@ class BusinessDataService:
     def __init__(
         self,
         db_url: str,
-        financial_data_path: str,
         eep_base_url: str = "",  # reserved, unused
     ) -> None:
         self._db_url = db_url
-        self._data_dir = Path(financial_data_path)
         self._conv = ConversationManager(db_url)
 
-    # ── CSV / JSON fallback loaders (used when DB has no sales history yet) ───
+    # â”€â”€ CSV / JSON fallback loaders (used when DB has no sales history yet) â”€â”€â”€
 
-    def _load_financial_profile(self) -> dict[str, Any]:
-        path = self._data_dir / "financial_profile.json"
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-
-    def _load_cashflow_current_month(self) -> float:
-        """Return revenue_projected_usd for the current calendar month from CSV."""
-        path = self._data_dir / "cashflow_template.csv"
-        current_month = datetime.now().month
-        with open(path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if int(row["month"]) == current_month:
-                    return float(row.get("revenue_usd") or row.get("revenue_projected_usd") or 0)
-        return 0.0
-
-    # ── Direct RDS queries ────────────────────────────────────────────────────
+    # â”€â”€ Direct RDS queries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async def _db_connect(self):
         return await psycopg.AsyncConnection.connect(self._db_url, row_factory=dict_row)
@@ -255,11 +232,11 @@ class BusinessDataService:
             await conn.close()
 
     async def _fetch_inventory(self) -> list[dict[str, Any]]:
-        """Legacy method kept for backward compatibility — returns empty list."""
+        """Legacy method kept for backward compatibility â€” returns empty list."""
         return []
 
     async def _fetch_competitor_count(self) -> int:
-        """Legacy shim — count rows in intel.competitor_products_latest directly."""
+        """Legacy shim â€” count rows in intel.competitor_products_latest directly."""
         conn = await self._db_connect()
         try:
             async with conn.cursor() as cur:
@@ -271,7 +248,7 @@ class BusinessDataService:
         finally:
             await conn.close()
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    # â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async def get_business_context(
         self, chat_id: str, force_refresh: bool = False,
@@ -295,6 +272,7 @@ class BusinessDataService:
         # Resolve tenant_id
         _tenant_id = tenant_id
         if not _tenant_id:
+            conn = None
             try:
                 conn = await self._db_connect()
                 async with conn.cursor() as cur:
@@ -303,16 +281,14 @@ class BusinessDataService:
                     )
                     row = await cur.fetchone()
                     _tenant_id = str(row["id"]) if row else None
-                await conn.close()
             except Exception as exc:
                 logger.warning("Could not resolve tenant_id: %s", exc)
+            finally:
+                if conn is not None:
+                    await conn.close()
 
         context: dict[str, Any] = {
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            # Financial (from CSV — source of truth until POS is live)
-            "cash_runway_months": 0.0,
-            "monthly_fixed_opex": 0.0,
-            "blended_margin_pct": 0.0,
             # Inventory (from RDS)
             "total_sku_count": 0,
             "total_units": 0,
@@ -329,17 +305,6 @@ class BusinessDataService:
             # AI recommendations (from RDS marketing schema)
             "pending_recommendations": [],  # list of {recommendation, sku_id, product_name, confidence_pct, discount_pct, explanation}
         }
-
-        # 1. Financial profile (CSV — reliable baseline)
-        try:
-            fp = self._load_financial_profile()
-            cf = fp.get("cashflow_summary", {})
-            inv = fp.get("inventory_summary", {})
-            context["cash_runway_months"] = float(cf.get("cash_runway_months", 0))
-            context["monthly_fixed_opex"] = float(cf.get("monthly_fixed_opex_usd", 0))
-            context["blended_margin_pct"] = float(inv.get("blended_margin_pct", 0))
-        except Exception as exc:
-            logger.warning("Failed to load financial_profile.json: %s", exc)
 
         if _tenant_id:
             # 2. Inventory from RDS
@@ -389,15 +354,7 @@ class BusinessDataService:
                 context["revenue_last_7d_usd"] = float(rev.get("last_7d_usd") or 0)
                 context["revenue_last_30d_usd"] = float(rev.get("last_30d_usd") or 0)
                 context["sales_txn_count_this_month"] = int(rev.get("txn_count_this_month") or 0)
-                # Fall back to CSV projection if DB has no sales yet
-                if context["revenue_current_month_usd"] == 0:
-                    try:
-                        context["revenue_current_month_usd"] = self._load_cashflow_current_month()
-                        context["_revenue_source"] = "csv_projection"
-                    except Exception:
-                        pass
-                else:
-                    context["_revenue_source"] = "live_pos"
+                context["_revenue_source"] = "live_pos" if context["revenue_current_month_usd"] > 0 else "unavailable"
             except Exception as exc:
                 logger.warning("Failed to fetch revenue from RDS: %s", exc)
 
@@ -458,7 +415,6 @@ class BusinessDataService:
                 logger.warning("Failed to fetch recommendations from RDS: %s", exc)
 
         # Update Prometheus gauges
-        retail_cash_runway_months.set(context["cash_runway_months"])
         retail_low_stock_sku_count.set(len(context["low_stock_skus"]))
 
         # Cache result
@@ -469,29 +425,15 @@ class BusinessDataService:
 
         return context
 
-    async def warmup(self) -> None:
-        """Load financial data and pre-populate Prometheus gauges at startup."""
-        try:
-            fp = self._load_financial_profile()
-            runway = float(fp.get("cashflow_summary", {}).get("cash_runway_months", 0))
-            retail_cash_runway_months.set(runway)
-            logger.info("Warmup: cash_runway_months=%.1f", runway)
-        except Exception as exc:
-            logger.warning("Warmup failed: %s", exc)
-
-    async def get_cash_runway(self) -> float:
-        fp = self._load_financial_profile()
-        return float(fp.get("cashflow_summary", {}).get("cash_runway_months", 0))
-
-    async def get_low_stock_skus(self) -> list[dict[str, Any]]:
-        ctx = await self.get_business_context("__internal__")
+    async def get_low_stock_skus(self, tenant_id: str) -> list[dict[str, Any]]:
+        ctx = await self.get_business_context("__internal__", tenant_id=tenant_id)
         return ctx.get("low_stock_skus", [])
 
-    async def get_dead_stock_skus(self) -> list[dict[str, Any]]:
-        ctx = await self.get_business_context("__internal__")
+    async def get_dead_stock_skus(self, tenant_id: str) -> list[dict[str, Any]]:
+        ctx = await self.get_business_context("__internal__", tenant_id=tenant_id)
         return ctx.get("dead_stock_skus", [])
 
-    # ── Tool-facing public wrappers ────────────────────────────────────────────
+    # â”€â”€ Tool-facing public wrappers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async def get_inventory_overview(self, tenant_id: str) -> dict[str, Any]:
         """Summary inventory snapshot with proactive_insight field for the LLM."""
@@ -536,7 +478,7 @@ class BusinessDataService:
         if total_value > 0 and dead_value / total_value > 0.15:
             proactive_insight = (
                 f"Dead stock represents {dead_value / total_value * 100:.0f}% "
-                f"(${dead_value:,.0f}) of your inventory value — consider a markdown bundle."
+                f"(${dead_value:,.0f}) of your inventory value â€” consider a markdown bundle."
             )
         elif len(low_stock) >= 5:
             proactive_insight = (
@@ -555,92 +497,6 @@ class BusinessDataService:
         }
         if proactive_insight:
             result["proactive_insight"] = proactive_insight
-        return result
-
-    async def _fetch_financial_config_from_db(self, tenant_id: str) -> dict[str, Any]:
-        """Load per-tenant financial config from core.tenant_financial_config."""
-        conn = await self._db_connect()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT monthly_fixed_opex_usd, blended_margin_pct
-                    FROM core.tenant_financial_config
-                    WHERE tenant_id = %s
-                    LIMIT 1
-                    """,
-                    (tenant_id,),
-                )
-                row = await cur.fetchone()
-            return dict(row) if row else {}
-        except Exception as exc:
-            logger.warning("Failed to fetch tenant financial config: %s", exc)
-            return {}
-        finally:
-            await conn.close()
-
-    async def _fetch_latest_financial_snapshot_from_db(self, tenant_id: str) -> dict[str, Any]:
-        """Load the most recent monthly snapshot from core.tenant_financial_snapshots."""
-        conn = await self._db_connect()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT cash_on_hand_usd, bank_balance_usd, receivables_usd,
-                           supplier_payables_usd, loan_balance_usd,
-                           monthly_sales_usd, monthly_expenses_usd, period_month
-                    FROM core.tenant_financial_snapshots
-                    WHERE tenant_id = %s
-                    ORDER BY period_month DESC
-                    LIMIT 1
-                    """,
-                    (tenant_id,),
-                )
-                row = await cur.fetchone()
-            return dict(row) if row else {}
-        except Exception as exc:
-            logger.warning("Failed to fetch tenant financial snapshot: %s", exc)
-            return {}
-        finally:
-            await conn.close()
-
-    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
-        """Financial snapshot from per-tenant DB tables with live revenue."""
-        result: dict[str, Any] = {}
-
-        # Per-tenant config (OPEX, margin)
-        fin_cfg = await self._fetch_financial_config_from_db(tenant_id)
-        result["monthly_fixed_opex_usd"] = float(fin_cfg.get("monthly_fixed_opex_usd") or 0)
-        result["blended_margin_pct"] = float(fin_cfg.get("blended_margin_pct") or 0)
-
-        # Per-tenant monthly snapshot (cash, bank, payables, loans)
-        snap = await self._fetch_latest_financial_snapshot_from_db(tenant_id)
-        cash = float(snap.get("cash_on_hand_usd") or 0) + float(snap.get("bank_balance_usd") or 0)
-        monthly_expenses = float(snap.get("monthly_expenses_usd") or result["monthly_fixed_opex_usd"] or 0)
-        if cash > 0 and monthly_expenses > 0:
-            result["cash_runway_months"] = round(cash / monthly_expenses, 1)
-        else:
-            result["cash_runway_months"] = 0.0
-        result["cash_on_hand_usd"] = cash
-        result["supplier_payables_usd"] = float(snap.get("supplier_payables_usd") or 0)
-        result["loan_balance_usd"] = float(snap.get("loan_balance_usd") or 0)
-
-        try:
-            rev = await self._fetch_revenue_from_db(tenant_id)
-            result["revenue_current_month_usd"] = float(rev.get("current_month_usd") or 0)
-            result["revenue_last_7d_usd"] = float(rev.get("last_7d_usd") or 0)
-            result["revenue_last_30d_usd"] = float(rev.get("last_30d_usd") or 0)
-            result["transactions_this_month"] = int(rev.get("txn_count_this_month") or 0)
-            result["revenue_source"] = "live_pos" if result["revenue_current_month_usd"] > 0 else "unavailable"
-        except Exception as exc:
-            logger.warning("Failed to fetch revenue for financials snapshot: %s", exc)
-
-        runway = result.get("cash_runway_months", 0)
-        if runway > 0 and runway < 2:
-            result["proactive_insight"] = (
-                f"URGENT: Cash runway is only {runway:.1f} months. "
-                "Review OPEX cuts and accelerate collections immediately."
-            )
         return result
 
     async def get_competitor_prices(
@@ -679,7 +535,7 @@ class BusinessDataService:
             result = [r for r in result if competitor_name.lower() in r["competitor"].lower()]
         return result
 
-    # ── New on-demand query methods ────────────────────────────────────────────
+    # â”€â”€ New on-demand query methods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async def _fetch_sku_velocity_trend(
         self, tenant_id: str, sku_id: str, days: int = 30
@@ -912,8 +768,8 @@ class BusinessDataService:
                 SELECT
                     COUNT(*)                              AS total_tracked,
                     MIN(COALESCE(cl.competitor_sale_price, cl.competitor_price)) AS cheapest_price,
-                    MIN(cl.currency)                    AS cheapest_currency,
-                    MIN(cl.shop_code)                     AS cheapest_shop,
+                    (array_agg(cl.currency ORDER BY COALESCE(cl.competitor_sale_price, cl.competitor_price) ASC))[1] AS cheapest_currency,
+                    (array_agg(cl.shop_code ORDER BY COALESCE(cl.competitor_sale_price, cl.competitor_price) ASC))[1] AS cheapest_shop,
                     SUM(CASE WHEN cl.is_on_sale THEN 1 ELSE 0 END)  AS on_sale_count,
                     SUM(CASE WHEN cl.availability = 'out_of_stock' THEN 1 ELSE 0 END) AS oos_count
                 FROM intel.competitor_products_latest cl
@@ -990,29 +846,29 @@ class BusinessDataService:
         price_after = round(retail * (1 - disc / 100), 2) if disc > 0 else None
         margin_after = round((price_after - cost) / price_after * 100, 1) if price_after and price_after > cost else None
 
-        # DOS zone — used by Claude to contextualise
+        # DOS zone â€” used by Claude to contextualise
         if dos is None:
             dos_zone = "no_velocity_data"
         elif dos < 14:
-            dos_zone = "critical_low (< 14 days — risk of stockout)"
+            dos_zone = "critical_low (< 14 days â€” risk of stockout)"
         elif dos < 30:
-            dos_zone = "low (14–30 days — reorder soon)"
+            dos_zone = "low (14â€“30 days â€” reorder soon)"
         elif dos <= 90:
-            dos_zone = "healthy (30–90 days)"
+            dos_zone = "healthy (30â€“90 days)"
         elif dos <= 120:
-            dos_zone = "excess (90–120 days — above optimal)"
+            dos_zone = "excess (90â€“120 days â€” above optimal)"
         else:
-            dos_zone = "dead_stock (120+ days — capital trapped)"
+            dos_zone = "dead_stock (120+ days â€” capital trapped)"
 
         # Margin zone
         if margin_now >= 50:
-            margin_zone = "high — strong pricing power"
+            margin_zone = "high â€” strong pricing power"
         elif margin_now >= 35:
-            margin_zone = "healthy — above the 35% protection floor"
+            margin_zone = "healthy â€” above the 35% protection floor"
         elif margin_now >= 25:
-            margin_zone = "thin — approaching the 35% floor"
+            margin_zone = "thin â€” approaching the 35% floor"
         else:
-            margin_zone = "below floor — cannot discount without special approval"
+            margin_zone = "below floor â€” cannot discount without special approval"
 
         return {
             "sku_id": row["sku_id"],
@@ -1170,7 +1026,7 @@ class BusinessDataService:
             "daily": [{"day": str(r["day"]), "revenue_usd": float(r["revenue_usd"])} for r in rows],
         }
 
-    # ── Public API aliases ────────────────────────────────────────────────────
+    # â”€â”€ Public API aliases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # These thin wrappers expose the private fetch methods as stable public API so
     # callers (ai_engine dispatch, tests) don't depend on private naming conventions.
 
@@ -1201,23 +1057,159 @@ class BusinessDataService:
     ) -> dict[str, Any]:
         return await self._fetch_live_signals_for_recommendation(tenant_id, sku_id, discount_pct)
 
+    async def get_financial_health(self, tenant_id: str) -> dict[str, Any]:
+        """
+        Returns a full financial health snapshot using live inventory + stored financial profile
+        + itemized assets/liabilities entered by the retailer.
+        Lebanon-adjusted thresholds applied to each metric.
+        """
+        # 1. Inventory metrics (always available)
+        items = await self._fetch_inventory_from_db(tenant_id)
+        total_units = sum(int(i.get("current_stock") or 0) for i in items)
+        cost_total = sum(
+            float(i.get("current_stock") or 0) * float(i.get("cost_price_usd") or 0)
+            for i in items
+        )
+        retail_total = sum(
+            float(i.get("current_stock") or 0) * float(i.get("retail_price_usd") or 0)
+            for i in items
+        )
+        dead_stock_units = sum(
+            int(i.get("current_stock") or 0)
+            for i in items
+            if int(i.get("current_stock") or 0) > 30 and float(i.get("retail_price_usd") or 0) == 0
+        )
+        dead_stock_value = sum(
+            float(i.get("current_stock") or 0) * float(i.get("cost_price_usd") or 0)
+            for i in items
+            if int(i.get("current_stock") or 0) > 30 and float(i.get("retail_price_usd") or 0) == 0
+        )
+        gross_profit = retail_total - cost_total
+        blended_margin = round((gross_profit / retail_total * 100), 1) if retail_total > 0 else 0.0
+
+        # 2. Stored financial profile (user-entered aggregates)
+        profile: dict[str, Any] = {}
+        line_items: list[dict[str, Any]] = []
+        try:
+            conn = await self._db_connect()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT * FROM core.financial_profiles WHERE tenant_id = %s",
+                        (tenant_id,),
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        profile = dict(row)
+                    await cur.execute(
+                        """
+                        SELECT id, item_type, label, amount_usd, sort_order
+                        FROM core.financial_line_items
+                        WHERE tenant_id = %s
+                        ORDER BY item_type, sort_order, label
+                        """,
+                        (tenant_id,),
+                    )
+                    line_items = [dict(r) for r in await cur.fetchall()]
+            finally:
+                await conn.close()
+        except Exception as exc:
+            logger.warning("Failed to fetch financial profile from DB: %s", exc)
+
+        # 3. Compute balance sheet from line items (prefer itemized over aggregate)
+        asset_items = [i for i in line_items if i["item_type"] == "asset"]
+        liability_items = [i for i in line_items if i["item_type"] == "liability"]
+
+        user_asset_total = sum(float(i["amount_usd"]) for i in asset_items)
+        user_liability_total = sum(float(i["amount_usd"]) for i in liability_items)
+
+        # Total assets = inventory at cost (live) + user-added assets
+        total_assets = cost_total + user_asset_total if asset_items else (
+            float(profile.get("total_assets_usd") or cost_total)
+        )
+        total_liabilities = user_liability_total if liability_items else float(profile.get("total_liabilities_usd") or 0)
+        net_equity = total_assets - total_liabilities
+        current_ratio = round(total_assets / total_liabilities, 2) if total_liabilities > 0 else None
+
+        # 4. Lebanon thresholds
+        margin_status = "healthy" if blended_margin >= 45 else "warning" if blended_margin >= 35 else "critical"
+        ratio_status = (
+            "healthy" if (current_ratio or 0) >= 2.0
+            else "adequate" if (current_ratio or 0) >= 1.5
+            else "critical"
+        ) if current_ratio is not None else "unknown"
+        cash_runway = float(profile["cash_runway_months"]) if profile.get("cash_runway_months") is not None else None
+        runway_status = (
+            "safe" if cash_runway >= 4 else "adequate" if cash_runway >= 2.5 else "critical"
+        ) if cash_runway is not None else "not_set"
+
+        result: dict[str, Any] = {
+            "data_source": "live_inventory + stored_financial_profile",
+            "profitability": {
+                "inventory_value_at_cost_usd": round(cost_total, 2),
+                "inventory_value_at_retail_usd": round(retail_total, 2),
+                "gross_profit_usd": round(gross_profit, 2),
+                "blended_margin_pct": blended_margin,
+                "margin_status": margin_status,
+                "margin_target_pct": 45,
+                "margin_floor_pct": 35,
+                "note": "Lebanon sportswear thresholds — healthy ≥45%, floor ≥35%",
+            },
+            "balance_sheet": {
+                "total_assets_usd": round(total_assets, 2),
+                "total_liabilities_usd": round(total_liabilities, 2),
+                "net_equity_usd": round(net_equity, 2),
+                "current_ratio": current_ratio,
+                "current_ratio_status": ratio_status,
+                "itemized_assets": [
+                    {"label": "Inventory at Cost (live)", "amount_usd": round(cost_total, 2), "source": "live"},
+                    *[{"label": i["label"], "amount_usd": float(i["amount_usd"]), "source": "user"} for i in asset_items],
+                ],
+                "itemized_liabilities": [
+                    {"label": i["label"], "amount_usd": float(i["amount_usd"])} for i in liability_items
+                ],
+            },
+            "inventory_health": {
+                "total_skus": len(items),
+                "total_units_on_hand": total_units,
+                "dead_stock_units": dead_stock_units,
+                "dead_stock_value_usd": round(dead_stock_value, 2),
+            },
+        }
+
+        # Optional profile fields
+        if cash_runway is not None:
+            result["cash_runway"] = {
+                "months": cash_runway,
+                "status": runway_status,
+                "target_months": 4,
+                "note": "Lebanon target: ≥4 months runway",
+            }
+        if profile.get("monthly_fixed_opex_usd") is not None:
+            monthly_opex = float(profile["monthly_fixed_opex_usd"])
+            result["opex"] = {
+                "monthly_fixed_usd": monthly_opex,
+                "annual_fixed_usd": round(monthly_opex * 12, 2),
+            }
+        if profile.get("annual_revenue_projected_usd") is not None:
+            result["revenue_projected_usd"] = float(profile["annual_revenue_projected_usd"])
+        if profile.get("breakeven_monthly_revenue_usd") is not None:
+            result["breakeven_monthly_revenue_usd"] = float(profile["breakeven_monthly_revenue_usd"])
+
+        return result
+
     async def get_sku_live_snapshot(self, tenant_id: str, sku_id: str) -> dict[str, Any]:
         return await self._fetch_sku_live_snapshot(tenant_id, sku_id)
 
 
-# ── Formatting helper ─────────────────────────────────────────────────────────
+# â”€â”€ Formatting helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def format_business_context_for_prompt(context: dict[str, Any]) -> str:
     ts = context.get("timestamp", "unknown")
     lines = [f"LIVE BUSINESS DATA (as of {ts}):"]
 
-    # ── Financial ─────────────────────────────────────────────────────────────
-    lines.append("\n[FINANCIALS]")
-    lines.append(f"- Cash runway: {context.get('cash_runway_months', 0)} months")
-    lines.append(f"- Monthly fixed OPEX: ${context.get('monthly_fixed_opex', 0):,.0f}")
-    lines.append(f"- Blended gross margin: {context.get('blended_margin_pct', 0):.1f}%")
-
-    # ── Revenue ───────────────────────────────────────────────────────────────
+    # â”€â”€ Financial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â”€â”€ Revenue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     rev_source = context.get("_revenue_source", "unknown")
     lines.append(f"\n[REVENUE] (source: {rev_source})")
     lines.append(f"- This month so far: ${context.get('revenue_current_month_usd', 0):,.2f}")
@@ -1225,7 +1217,7 @@ def format_business_context_for_prompt(context: dict[str, Any]) -> str:
     lines.append(f"- Last 30 days: ${context.get('revenue_last_30d_usd', 0):,.2f}")
     lines.append(f"- Transactions this month: {context.get('sales_txn_count_this_month', 0)}")
 
-    # ── Inventory ─────────────────────────────────────────────────────────────
+    # â”€â”€ Inventory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     lines.append(f"\n[INVENTORY]")
     lines.append(f"- Total SKUs: {context.get('total_sku_count', 0)}")
     lines.append(f"- Total units on hand: {context.get('total_units', 0)}")
@@ -1233,43 +1225,43 @@ def format_business_context_for_prompt(context: dict[str, Any]) -> str:
 
     low_stock = context.get("low_stock_skus", [])
     if low_stock:
-        lines.append(f"\n[LOW STOCK — {len(low_stock)} SKUs at or below reorder point]")
+        lines.append(f"\n[LOW STOCK â€” {len(low_stock)} SKUs at or below reorder point]")
         for s in low_stock[:8]:
-            lines.append(f"  • {s['brand']} {s['product_name']} ({s['sku_id']}): {s['units']} units left (reorder at {s['reorder_point']}), retail ${s['retail_price_usd']:.2f}")
+            lines.append(f"  â€¢ {s['brand']} {s['product_name']} ({s['sku_id']}): {s['units']} units left (reorder at {s['reorder_point']}), retail ${s['retail_price_usd']:.2f}")
     else:
         lines.append("- Low stock SKUs: none detected (inventory not yet synced)")
 
     dead = context.get("dead_stock_skus", [])
     if dead:
-        lines.append(f"\n[DEAD STOCK — {len(dead)} SKUs with high stock, no price set]")
+        lines.append(f"\n[DEAD STOCK â€” {len(dead)} SKUs with high stock, no price set]")
         for s in dead[:5]:
-            lines.append(f"  • {s['brand']} {s['product_name']} ({s['sku_id']}): {s['units']} units, ${s['value_usd']:,.2f} tied up")
+            lines.append(f"  â€¢ {s['brand']} {s['product_name']} ({s['sku_id']}): {s['units']} units, ${s['value_usd']:,.2f} tied up")
 
-    # ── Competitor intel ──────────────────────────────────────────────────────
+    # â”€â”€ Competitor intel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     comp = context.get("competitor_intel", [])
     if comp:
-        lines.append(f"\n[COMPETITOR PRICES — {len(comp)} matched SKUs]")
+        lines.append(f"\n[COMPETITOR PRICES â€” {len(comp)} matched SKUs]")
         for c in comp[:12]:
             sale_note = f" (ON SALE: ${c['comp_sale_price_usd']:.2f})" if c.get("comp_sale_price_usd") else ""
             avail = f", {c['availability']}" if c.get("availability") else ""
             gap = c.get("price_gap_pct", 0)
             gap_note = f"we are {abs(gap):.1f}% {'MORE expensive' if gap > 0 else 'cheaper'}"
             lines.append(
-                f"  • {c['brand']} {c['our_product']} ({c['our_sku']}): "
-                f"our ${c['our_price_usd']:.2f} vs {c['competitor']} ${c['comp_price_usd']:.2f}{sale_note}{avail} — {gap_note}"
+                f"  â€¢ {c['brand']} {c['our_product']} ({c['our_sku']}): "
+                f"our ${c['our_price_usd']:.2f} vs {c['competitor']} ${c['comp_price_usd']:.2f}{sale_note}{avail} â€” {gap_note}"
             )
     else:
         lines.append("\n[COMPETITOR PRICES] No matched competitor data yet (scraper not yet synced to DB)")
 
-    # ── AI Recommendations ────────────────────────────────────────────────────
+    # â”€â”€ AI Recommendations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     recs = context.get("pending_recommendations", [])
     if recs:
-        lines.append(f"\n[PENDING AI RECOMMENDATIONS — {len(recs)} items]")
+        lines.append(f"\n[PENDING AI RECOMMENDATIONS â€” {len(recs)} items]")
         for r in recs:
-            price_note = f"→ ${r['suggested_price_usd']:.2f}" if r.get("suggested_price_usd") else ""
+            price_note = f"â†’ ${r['suggested_price_usd']:.2f}" if r.get("suggested_price_usd") else ""
             lines.append(
-                f"  • {r['recommendation']} {r['brand']} {r['product_name']} ({r['sku_id']}): "
-                f"{r['confidence_pct']}% confidence, {r['suggested_discount_pct']:.0f}% off {price_note} — {r['explanation'][:80]}"
+                f"  â€¢ {r['recommendation']} {r['brand']} {r['product_name']} ({r['sku_id']}): "
+                f"{r['confidence_pct']}% confidence, {r['suggested_discount_pct']:.0f}% off {price_note} â€” {r['explanation'][:80]}"
             )
     else:
         lines.append("\n[PENDING AI RECOMMENDATIONS] None pending")
@@ -1277,7 +1269,7 @@ def format_business_context_for_prompt(context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-# ── Self-test ─────────────────────────────────────────────────────────────────
+# â”€â”€ Self-test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if __name__ == "__main__":
     import asyncio
@@ -1289,23 +1281,16 @@ if __name__ == "__main__":
         load_dotenv(_env_file, override=True)
 
     _DB_URL = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
-    _DATA_DIR = str(_Path(__file__).resolve().parents[2] / "data" / "real")
-
     TEST_PHONE = "+96170000000"
 
     async def _run_test() -> None:
         svc = BusinessDataService(
             eep_base_url="",
             db_url=_DB_URL,
-            financial_data_path=_DATA_DIR,
         )
 
         ctx = await svc.get_business_context(TEST_PHONE, force_refresh=True)
         print(format_business_context_for_prompt(ctx))
-
-        runway = ctx.get("cash_runway_months", 0)
-        assert runway > 0, f"Expected cash_runway_months > 0, got {runway}"
-        print(f"\ncash_runway_months = {runway}")
         print("Business data test passed")
 
     asyncio.run(

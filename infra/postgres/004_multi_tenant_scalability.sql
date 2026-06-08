@@ -1,8 +1,8 @@
--- Migration 004: Full multi-tenant scalability
--- Adds per-tenant financial records, social accounts, Telegram registration codes,
+﻿-- Migration 004: Full multi-tenant scalability
+-- Adds social accounts, Telegram registration codes,
 -- and fixes conversation/processed-message isolation.
 
--- ─── 1. Telegram: registration codes ───────────────────────────────────────────
+-- â”€â”€â”€ 1. Telegram: registration codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Retailers generate a one-time code in the dashboard, then /register <code>
 -- in Telegram to bind their chat_id to their tenant.
 CREATE SCHEMA IF NOT EXISTS telegram;
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS telegram.registration_codes (
     used_by_chat_id  text
 );
 
--- ─── 2. Telegram: fix conversations PRIMARY KEY to (tenant_id, chat_id) ────────
+-- â”€â”€â”€ 2. Telegram: fix conversations PRIMARY KEY to (tenant_id, chat_id) â”€â”€â”€â”€â”€â”€â”€â”€
 -- Currently chat_id is the sole PK.  Drop it and add the composite key so
 -- two different tenants could theoretically share a Telegram group chat
 -- without colliding, and so all lookups can be enforced per-tenant.
@@ -33,7 +33,7 @@ BEGIN
 EXCEPTION WHEN duplicate_table THEN NULL;
 END $$;
 
--- ─── 3. Telegram: add tenant_id to processed_messages ──────────────────────────
+-- â”€â”€â”€ 3. Telegram: add tenant_id to processed_messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- processed_messages is created by the Python app at startup via CREATE TABLE IF
 -- NOT EXISTS, so it may or may not exist.  We handle both cases.
 DO $$
@@ -55,13 +55,13 @@ BEGIN
         ALTER TABLE telegram.processed_messages
             ALTER COLUMN tenant_id SET NOT NULL;
 
-        -- Swap PK: message_id → (tenant_id, message_id)
+        -- Swap PK: message_id â†’ (tenant_id, message_id)
         ALTER TABLE telegram.processed_messages DROP CONSTRAINT IF EXISTS processed_messages_pkey;
         ALTER TABLE telegram.processed_messages ADD PRIMARY KEY (tenant_id, message_id);
     END IF;
 END $$;
 
--- ─── 4. Telegram: tighten closed_loop_notifications unique constraint ────────────
+-- â”€â”€â”€ 4. Telegram: tighten closed_loop_notifications unique constraint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- The table is also created at runtime by Python.  The current unique constraint
 -- is (chat_id, snapshot_id, window_days, notification_type) which doesn't include
 -- tenant_id.  We drop and recreate it.
@@ -89,46 +89,8 @@ BEGIN
     END IF;
 END $$;
 
--- ─── 5. Per-tenant financial config (mutable OpEx settings) ─────────────────────
-CREATE TABLE IF NOT EXISTS core.tenant_financial_config (
-    tenant_id              uuid        PRIMARY KEY REFERENCES core.tenants(id) ON DELETE CASCADE,
-    currency               text        NOT NULL DEFAULT 'USD',
-    opex_categories        jsonb       NOT NULL DEFAULT '[]',
-    monthly_fixed_opex_usd numeric(12,2),
-    blended_margin_pct     numeric(5,2),
-    payment_processing_pct numeric(5,2) NOT NULL DEFAULT 1.5,
-    marketing_pct          numeric(5,2) NOT NULL DEFAULT 3.5,
-    logistics_pct          numeric(5,2) NOT NULL DEFAULT 2.0,
-    shrinkage_pct          numeric(5,2) NOT NULL DEFAULT 0.8,
-    updated_at             timestamptz NOT NULL DEFAULT now()
-);
 
--- ─── 6. Per-inventory-event financial records (immutable) ───────────────────────
--- Written once, never updated.  One row per inventory_movement row.
-CREATE TABLE IF NOT EXISTS core.inventory_financial_records (
-    id                   uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id            uuid        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
-    movement_id          uuid        NOT NULL REFERENCES core.inventory_movements(id) ON DELETE CASCADE,
-    variant_id           uuid        NOT NULL REFERENCES core.sku_variants(id) ON DELETE CASCADE,
-    store_id             uuid        REFERENCES core.stores(id) ON DELETE SET NULL,
-    movement_type        text        NOT NULL,
-    quantity             integer     NOT NULL,
-    cost_price_usd       numeric(12,2),
-    total_cost_usd       numeric(12,2),
-    retail_price_usd     numeric(12,2),
-    expected_revenue_usd numeric(12,2),
-    expected_margin_pct  numeric(5,2),
-    recorded_at          timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (movement_id)  -- one financial record per movement
-);
-
-CREATE INDEX IF NOT EXISTS idx_inv_fin_records_tenant_date
-    ON core.inventory_financial_records (tenant_id, recorded_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_inv_fin_records_tenant_variant
-    ON core.inventory_financial_records (tenant_id, variant_id);
-
--- ─── 7. Per-tenant social media accounts (campaign publishing) ──────────────────
+-- â”€â”€â”€ 7. Per-tenant social media accounts (campaign publishing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CREATE TABLE IF NOT EXISTS marketing.tenant_social_accounts (
     id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id        uuid        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
@@ -142,3 +104,5 @@ CREATE TABLE IF NOT EXISTS marketing.tenant_social_accounts (
     created_at       timestamptz NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, platform)
 );
+
+

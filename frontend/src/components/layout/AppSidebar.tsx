@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  Target,
+  LayoutDashboard, ListChecks, Boxes, Radar, Megaphone,
+  Target, TrendingUp,
   User, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,7 +23,7 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
     items: [
       { to: '/inventory', label: 'Inventory & Stock', icon: Boxes },
       { to: '/promotions', label: 'Promotions', icon: Megaphone },
-      { to: '/financial', label: 'Financial', icon: Wallet },
+      { to: '/financial', label: 'Financial Health', icon: TrendingUp },
     ],
   },
   {

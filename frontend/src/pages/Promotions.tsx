@@ -3,23 +3,22 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useLiveReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
-import { Section } from '@/components/shared/Section';
 import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtPct, fmtUSD } from '@/lib/format';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   ChevronDown, ChevronUp, Copy, ExternalLink, Loader2, RefreshCw,
-  Sparkles, TrendingUp, CheckCircle2, Package, Tag, Calendar, PauseCircle,
+  Sparkles, TrendingUp, CheckCircle2, Package, Tag, PauseCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/store/settings';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
-import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, fetchOutcomesBySku } from '@/lib/adapter';
+import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, fetchOutcomesBySku, persistCampaign } from '@/lib/adapter';
 import type {
-  CampaignCreative, ClearanceItem, Decision, HoldPricingItem,
+  CampaignCreative, ClearanceItem, HoldPricingItem,
   MarkdownItem, PromoteItem, OutcomeSnapshot,
 } from '@/types/domain';
 import { OutcomeChip } from '@/components/outcomes/OutcomePanel';
@@ -210,9 +209,22 @@ function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: nu
       shap_top5: [], fallback_used: false, model_version: 'ie3',
       processing_time_ms: 0, requires_human_approval: false,
     }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setCreative(data);
       setCampaign(item.sku_id, data);
+      try {
+        await persistCampaign({
+          channel: 'multi-channel',
+          headline: data.headline || item.product_name,
+          body: data.ad_copy_long || data.ad_copy_short || data.instagram_post || data.facebook_post || '',
+          tone: data.tone_used,
+          generation_confidence: data.generation_confidence,
+          fallback_used: data.fallback_used,
+        });
+      } catch {
+        // Campaign analytics persistence should not block the retailer action.
+      }
+      await recordDecision(item.sku_id, 'promote', `Campaign generated — ${item.product_name}`);
       setExpanded(true);
       onGenerated?.();
       const failed = (data.social_posts ?? []).filter(p => !p.success);
@@ -302,7 +314,7 @@ function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: nu
 function MarkdownRow({ item, onActioned }: { item: MarkdownItem; onActioned?: () => void }) {
   const [customPct, setCustomPct] = useState(item.suggested_discount_pct);
   const [applied, setApplied] = useState(false);
-  const newPrice = item.current_price_usd * (1 - customPct / 100);
+  const newPrice = Number((item.current_price_usd * (1 - customPct / 100)).toFixed(2));
   const isDirty = customPct !== item.suggested_discount_pct;
 
   const mutation = useMutation({
@@ -312,7 +324,7 @@ function MarkdownRow({ item, onActioned }: { item: MarkdownItem; onActioned?: ()
       setApplied(true);
       onActioned?.();
       if (db_connected) {
-        toast.success(`Markdown saved — ${item.product_name} → ${fmtUSD(newPrice)}`);
+        toast.success(`Markdown saved — ${item.product_name} → ${fmtUSD(newPrice, { decimals: 2 })}`);
       } else {
         toast.warning(`Markdown applied locally — SKU not synced to DB yet`);
       }
@@ -376,17 +388,17 @@ function MarkdownRow({ item, onActioned }: { item: MarkdownItem; onActioned?: ()
 function ClearanceCard({ item, onActioned }: { item: ClearanceItem; onActioned?: () => void }) {
   const [confirmed, setConfirmed] = useState(false);
   const [customPrice, setCustomPrice] = useState(item.suggested_price_usd.toFixed(2));
-  const parsedPrice = Number(customPrice);
+  const parsedPrice = Number(Number(customPrice).toFixed(2));
   const isDirty = Math.abs(parsedPrice - item.suggested_price_usd) > 0.001;
   const isValidPrice = parsedPrice > 0 && !isNaN(parsedPrice);
-  const liveRecover = isValidPrice ? parsedPrice * item.current_stock : item.recovered_cash_usd;
+  const liveRecover = isValidPrice ? Number((parsedPrice * item.current_stock).toFixed(2)) : item.recovered_cash_usd;
 
   const mutation = useMutation({
     mutationFn: () => patchInventoryPrice(
       item.sku_id,
       parsedPrice,
       'clearance',
-      `Clearance confirmed at ${fmtUSD(parsedPrice)} — ${item.product_name}`,
+      `Clearance confirmed at ${fmtUSD(parsedPrice, { decimals: 2 })} — ${item.product_name}`,
     ),
     onSuccess: ({ db_connected }) => {
       setConfirmed(true);
@@ -415,7 +427,7 @@ function ClearanceCard({ item, onActioned }: { item: ClearanceItem; onActioned?:
         {[
           { label: 'Stock left',   value: String(item.current_stock), unit: 'units' },
           { label: 'Age',          value: String(item.age_days),       unit: 'days' },
-          { label: 'Recover',      value: fmtUSD(liveRecover, { compact: true }), unit: 'if cleared', highlight: true },
+          { label: 'Recover',      value: fmtUSD(liveRecover, { decimals: 2 }), unit: 'if cleared', highlight: true },
         ].map(({ label, value, unit, highlight }) => (
           <div key={label}>
             <div className="text-[9.5px] uppercase font-mono text-muted-foreground mb-0.5">{label}</div>
@@ -473,7 +485,7 @@ function HoldRow({ item, onActioned }: { item: HoldPricingItem; onActioned?: () 
 
   const mutation = useMutation({
     mutationFn: () => recordDecision(item.sku_id, 'hold',
-      `Hold pricing reviewed — ${item.product_name} (margin ${fmtPct(item.margin_pct, 0)}, velocity ${item.velocity}/d)`),
+      `Hold pricing reviewed — ${item.product_name} (margin ${fmtPct(item.margin_pct, 1)}, velocity ${item.velocity}/d)`),
     onSuccess: ({ db_connected }) => {
       setAcked(true);
       onActioned?.();
@@ -493,7 +505,7 @@ function HoldRow({ item, onActioned }: { item: HoldPricingItem; onActioned?: () 
         <div className="text-[10.5px] font-mono text-muted-foreground mt-0.5">{item.sku_id} · {item.brand}</div>
       </td>
       <td className="px-4 py-3 text-[12px] text-muted-foreground max-w-[220px]">{item.reason}</td>
-      <td className="px-4 py-3 text-right font-mono text-decision-promote text-[12.5px] font-semibold">{fmtPct(item.margin_pct, 0)}</td>
+      <td className="px-4 py-3 text-right font-mono text-decision-promote text-[12.5px] font-semibold">{fmtPct(item.margin_pct, 1)}</td>
       <td className="px-4 py-3 text-right font-mono text-[12.5px]">{item.velocity}/d</td>
       <td className="px-4 py-3 text-right">
         {acked
@@ -520,11 +532,19 @@ function HoldRow({ item, onActioned }: { item: HoldPricingItem; onActioned?: () 
 
 export default function Promotions() {
   const { data: r, isLoading, isError, error, refetch } = useLiveReport();
-  const { campaignCache } = useSettings();
-  const tenantScope = useTenantScopeKey();
-  const [generatingAll, setGeneratingAll] = useState(false);
-  const [actioned, setActioned] = useState({ promote: 0, markdown: 0, clearance: 0, hold: 0 });
-  const inc = (key: keyof typeof actioned) => setActioned(a => ({ ...a, [key]: a[key] + 1 }));
+  const [handledSkus, setHandledSkus] = useState({
+    promote: [] as string[],
+    markdown: [] as string[],
+    clearance: [] as string[],
+    hold: [] as string[],
+  });
+  const markHandled = (key: keyof typeof handledSkus, skuId: string) => {
+    setHandledSkus(current => (
+      current[key].includes(skuId)
+        ? current
+        : { ...current, [key]: [...current[key], skuId] }
+    ));
+  };
 
   if (isLoading) return (<><TopBar title="Promotions & Campaigns" /><PageSkeleton /></>);
 
@@ -552,56 +572,24 @@ export default function Promotions() {
   );
 
   const p = r.promotions;
-  const generatedCount = p.promote.filter(item => !!campaignCache[scopedSkuKey(item.sku_id, tenantScope)]).length;
-
-  async function handleGenerateAll() {
-    setGeneratingAll(true);
-    const { setCampaign } = useSettings.getState();
-    let generated = 0;
-    let partial = 0;
-    let failedCount = 0;
-    for (const item of p.promote) {
-      if (campaignCache[scopedSkuKey(item.sku_id, tenantScope)]) continue;
-      try {
-        const creative = await generateAndPublishCampaign(item.sku_id, item.product_name, {
-          recommendation: 'PROMOTE', confidence: 0.9, explanation: item.reason,
-          shap_top5: [], fallback_used: false, model_version: 'ie3',
-          processing_time_ms: 0, requires_human_approval: false,
-        });
-        setCampaign(item.sku_id, creative);
-        const failed = creative.social_posts.filter(sp => !sp.success);
-        generated += 1;
-        if (failed.length) {
-          partial += 1;
-          toast.warning(`${item.product_name}: draft ready; publish failed for ${failed.map(sp => sp.platform).join(', ')}`);
-        }
-      } catch (err: unknown) {
-        failedCount += 1;
-        toast.error(`${item.product_name}: ${err instanceof Error ? err.message : 'failed'}`);
-      }
-    }
-    setGeneratingAll(false);
-    if (failedCount) {
-      toast.warning(`Campaign batch finished: ${generated} generated, ${partial} partial, ${failedCount} failed`);
-    } else {
-      toast.success(`Campaign batch finished: ${generated} generated${partial ? `, ${partial} partial` : ''}`);
-    }
-  }
+  const visiblePromote = p.promote.filter(item => !handledSkus.promote.includes(item.sku_id));
+  const visibleMarkdown = p.markdown.filter(item => !handledSkus.markdown.includes(item.sku_id));
+  const visibleClearance = p.clearance.filter(item => !handledSkus.clearance.includes(item.sku_id));
+  const visibleHold = p.hold_pricing.filter(item => !handledSkus.hold.includes(item.sku_id));
 
   return (
     <>
       <TopBar
         title="Promotions & Campaigns"
-        subtitle={`${p.promote.length - actioned.promote} promote · ${p.markdown.length - actioned.markdown} markdown · ${p.clearance.length - actioned.clearance} clearance · ${p.hold_pricing.length - actioned.hold} hold`}
+        subtitle={`${visiblePromote.length} promote · ${visibleMarkdown.length} markdown · ${visibleClearance.length} clearance · ${visibleHold.length} hold`}
       />
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
         <Tabs defaultValue="promote">
           <TabsList className="bg-surface-raised border border-border">
-            <TabsTrigger value="promote">Promote ({p.promote.length - actioned.promote})</TabsTrigger>
-            <TabsTrigger value="markdown">Markdown ({p.markdown.length - actioned.markdown})</TabsTrigger>
-            <TabsTrigger value="clearance">Clearance ({p.clearance.length - actioned.clearance})</TabsTrigger>
-            <TabsTrigger value="hold">Hold Pricing ({p.hold_pricing.length - actioned.hold})</TabsTrigger>
-            <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
+            <TabsTrigger value="promote">Promote ({visiblePromote.length})</TabsTrigger>
+            <TabsTrigger value="markdown">Markdown ({visibleMarkdown.length})</TabsTrigger>
+            <TabsTrigger value="clearance">Clearance ({visibleClearance.length})</TabsTrigger>
+            <TabsTrigger value="hold">Hold Pricing ({visibleHold.length})</TabsTrigger>
           </TabsList>
 
           {/* PROMOTE */}
@@ -613,22 +601,8 @@ export default function Promotions() {
             />
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
-                <span>{generatedCount} of {p.promote.length} campaigns generated</span>
-                {generatedCount > 0 && (
-                  <span className="inline-flex items-center gap-1 text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />{generatedCount} ready
-                  </span>
-                )}
+                <span>{visiblePromote.length} promotion opportunities ready</span>
               </div>
-              {generatedCount < p.promote.length && (
-                <button onClick={handleGenerateAll} disabled={generatingAll}
-                  className="h-8 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition">
-                  {generatingAll
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Generating…</>
-                    : <><Sparkles className="h-3.5 w-3.5" />Generate All</>
-                  }
-                </button>
-              )}
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <div className="grid items-center gap-3 px-4 py-2 bg-muted/30 border-b border-border text-[10px] uppercase tracking-wider font-mono text-muted-foreground"
@@ -638,8 +612,8 @@ export default function Promotions() {
                 <span className="hidden lg:block">Channels</span>
                 <span className="text-right">Action</span>
               </div>
-              {p.promote.map((item, i) => (
-                <PromoteRow key={item.sku_id} item={item} index={i} onGenerated={() => inc('promote')} />
+              {visiblePromote.map((item, i) => (
+                <PromoteRow key={item.sku_id} item={item} index={i} onGenerated={() => markHandled('promote', item.sku_id)} />
               ))}
             </div>
           </TabsContent>
@@ -666,7 +640,7 @@ export default function Promotions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {p.markdown.map(m => <MarkdownRow key={m.sku_id} item={m} onActioned={() => inc('markdown')} />)}
+                  {visibleMarkdown.map(m => <MarkdownRow key={m.sku_id} item={m} onActioned={() => markHandled('markdown', m.sku_id)} />)}
                 </tbody>
               </table>
             </div>
@@ -680,7 +654,7 @@ export default function Promotions() {
               detail="Items sitting far beyond their expected days of supply with very low velocity. Clearing them now recovers cash and shelf space before they become a write-off. Override the AI-suggested price if needed, then confirm."
             />
             <div className="grid md:grid-cols-2 gap-4">
-              {p.clearance.map(c => <ClearanceCard key={c.sku_id} item={c} onActioned={() => inc('clearance')} />)}
+              {visibleClearance.map(c => <ClearanceCard key={c.sku_id} item={c} onActioned={() => markHandled('clearance', c.sku_id)} />)}
             </div>
           </TabsContent>
 
@@ -703,41 +677,12 @@ export default function Promotions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {p.hold_pricing.map(h => <HoldRow key={h.sku_id} item={h} onActioned={() => inc('hold')} />)}
+                  {visibleHold.map(h => <HoldRow key={h.sku_id} item={h} onActioned={() => markHandled('hold', h.sku_id)} />)}
                 </tbody>
               </table>
             </div>
           </TabsContent>
 
-          {/* SEASONAL */}
-          <TabsContent value="seasonal" className="mt-5">
-            <TabExplainer
-              icon={Calendar}
-              title="Seasonal planning based on category trends and inventory cycles"
-              detail="The AI maps each category's historical sell-through patterns against the calendar. Use this to time promotions, plan restocks, or open clearance windows before seasonal demand shifts. Click Schedule Action to add it to your planning calendar."
-            />
-            <Section title="Action Timeline">
-              <div className="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-border">
-                {p.seasonal_actions.map((s, i) => (
-                  <div key={i} className="relative">
-                    <div className="absolute -left-6 top-1.5 h-3 w-3 rounded-full bg-primary ring-4 ring-background" />
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground w-16">{s.month}</span>
-                      <DecisionBadge decision={s.action as Decision} size="sm" />
-                      <span className="text-[13px] font-semibold">{s.category}</span>
-                    </div>
-                    <p className="text-[12.5px] text-muted-foreground mt-1">{s.detail}</p>
-                    <button
-                      onClick={() => toast.success(`Scheduled: ${s.action} for ${s.category} in ${s.month}`)}
-                      className="mt-2 h-7 px-3 rounded-md border border-border bg-muted/40 hover:bg-muted/70 text-[11px] font-medium transition inline-flex items-center gap-1"
-                    >
-                      <Calendar className="h-3 w-3" />Schedule Action
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          </TabsContent>
         </Tabs>
       </main>
     </>
