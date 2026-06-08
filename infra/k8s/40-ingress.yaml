@@ -34,6 +34,12 @@ spec:
       middlewares: [{ name: strip-api }]
       services: [{ name: eep, port: 8000 }]
       priority: 100
+    # Dashboard web chat -> assistant service. Strip /assistant-api -> /chat.
+    - kind: Rule
+      match: PathPrefix(`/assistant-api`)
+      middlewares: [{ name: strip-assistant-api }]
+      services: [{ name: telegram, port: 8004 }]
+      priority: 100
     # Apify webhook (external) posts to bare paths — keep them, no strip.
     - { kind: Rule, match: "PathPrefix(`/apify`) || PathPrefix(`/webhooks`)", services: [{ name: eep, port: 8000 }], priority: 100 }
     # Telegram webhook (distinct from EEP's /webhooks).

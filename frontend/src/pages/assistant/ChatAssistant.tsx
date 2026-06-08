@@ -48,6 +48,17 @@ async function assistantErrorMessage(res: Response): Promise<string> {
   return detail || `Radar Assistant request failed with HTTP ${res.status}`;
 }
 
+function randomId() {
+  try {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+  } catch {
+    // Fall through for non-secure HTTP origins.
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const TOOL_LABELS: Record<string, string> = {
   get_inventory_overview: 'Inventory',
   get_stockout_days: 'Stockouts',
@@ -255,7 +266,7 @@ export default function ChatAssistant() {
     const key = `radar-chat-sid-${tenantId}`;
     let sid = sessionStorage.getItem(key);
     if (!sid) {
-      sid = crypto.randomUUID();
+      sid = randomId();
       sessionStorage.setItem(key, sid);
     }
     sessionIdRef.current = sid;
@@ -281,7 +292,7 @@ export default function ChatAssistant() {
 
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'user', content: trimmed, timestamp: new Date() },
+        { id: randomId(), role: 'user', content: trimmed, timestamp: new Date() },
       ]);
       setInput('');
       setLoading(true);
@@ -309,7 +320,7 @@ export default function ChatAssistant() {
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             role: 'assistant',
             content: data.reply,
             tools: data.tools_used,
@@ -324,7 +335,7 @@ export default function ChatAssistant() {
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             role: 'assistant',
             content:
               authError
@@ -356,7 +367,7 @@ export default function ChatAssistant() {
   function newChat() {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
-    const newSid = crypto.randomUUID();
+    const newSid = randomId();
     sessionStorage.setItem(key, newSid);
     sessionIdRef.current = newSid;
     setMessages([]);

@@ -19,13 +19,14 @@ resources:
   - 30-frontend-telegram.yaml
   - 40-ingress.yaml
   - 50-monitoring.yaml
+  - 60-lb-node-proxy.yaml
 
 # One place to pin the version of every app image. Replace `latest` with your
 # pushed tag, e.g. the output of `git rev-parse --short HEAD`.
 images:
-  - { name: ghcr.io/mhmd-jawad/retail-radar-eep,      newTag: latest }
-  - { name: ghcr.io/mhmd-jawad/retail-radar-ie1,      newTag: latest }
-  - { name: ghcr.io/mhmd-jawad/retail-radar-ie2,      newTag: latest }
-  - { name: ghcr.io/mhmd-jawad/retail-radar-ie3,      newTag: latest }
-  - { name: ghcr.io/mhmd-jawad/retail-radar-frontend, newTag: latest }
-  - { name: ghcr.io/mhmd-jawad/retail-radar-telegram, newTag: latest }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-eep,      newTag: caad164 }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie1,      newTag: caad164 }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie2,      newTag: caad164 }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-ie3,      newTag: caad164 }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-frontend, newTag: caad164-assistant2 }
+  - { name: ghcr.io/mhmd-jawad/retail-radar-telegram, newTag: caad164 }

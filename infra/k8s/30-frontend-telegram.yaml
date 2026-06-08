@@ -28,10 +28,7 @@ spec: { selector: { app: frontend }, ports: [{ port: 80, targetPort: 80 }] }
 ---
 # ─────────────────────────────────────────── Telegram assistant (8004)
 # SINGLE replica by design — it runs background poll loops; two copies would
-# double-send alerts. Starts at replicas: 0 so a missing bot token can't
-# CrashLoop on first deploy. To enable: put TELEGRAM_BOT_TOKEN / RETAILER_CHAT_ID /
-# TELEGRAM_WEBHOOK_SECRET in retail-secrets, then:
-#   kubectl -n retail-radar scale deploy/telegram --replicas=1
+# double-send alerts. Keep this at 1 when the dashboard Radar Assistant is enabled.
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: telegram, namespace: retail-radar }

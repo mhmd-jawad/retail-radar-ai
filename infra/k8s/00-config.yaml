@@ -20,7 +20,7 @@ data:
   SYSTEM_DECISION_SYNC_BATCH_SIZE: "1"
   # The cluster's public domain (the one on the Lightsail Load Balancer's cert).
   # The Apify webhook still hits Box A separately; this is for the dashboard/API.
-  WEBHOOK_DOMAIN: "yourdomain.com"              # CHANGE to your LB domain
+  WEBHOOK_DOMAIN: "e43c88ab0453c69b919ea0b68ffac616-860150828.eu-central-1.elb.amazonaws.com"              # CHANGE to your LB domain
   # In-cluster service discovery (k8s DNS = service name). EEP calls these.
   IE1_BASE_URL: "http://ie1:8001"
   IE2_BASE_URL: "http://ie2:8002"
