@@ -20,7 +20,7 @@ export default function AdminSettings() {
         <Section title="Workspace Rules" subtitle="Current separation policy" className="mt-6">
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>Admin accounts can access admin routes, shop lists, competitor requests, notifications, and global competitor catalog data.</p>
-            <p>Shop accounts can access only their tenant-scoped inventory, recommendations, competitors, profile, and financial screens.</p>
+            <p>Shop accounts can access only their tenant-scoped inventory, recommendations, competitors, and profile screens.</p>
             <p>Admin users are blocked from shop routes unless a dedicated “view as shop” feature is added later.</p>
           </div>
         </Section>

@@ -1,258 +1,1037 @@
-﻿import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { useReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
+import { KpiCard } from '@/components/shared/KpiCard';
+import { Section } from '@/components/shared/Section';
 import { PageSkeleton } from '@/components/shared/Skeleton';
-import { DataSourceBanner } from '@/components/shared/DataSourceBanner';
-import { fmtPct, fmtUSD } from '@/lib/format';
-import {
-  Wallet, TrendingUp, Activity, AlertTriangle,
-  BarChart3, ChevronRight, LineChart, Edit3, Target,
-} from 'lucide-react';
+import { fmtPct, fmtUSD, fmtNum, relativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import {
+  TrendingUp, DollarSign, Boxes, AlertTriangle, Bot, ShieldAlert,
+  BarChart2, ArrowRight, Settings, Save, Plus, Pencil, Trash2, X, Check, Info,
+  CheckCircle2, XCircle,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  RadarChart, PolarGrid, PolarAngleAxis, Radar,
+  ResponsiveContainer, BarChart, Bar, Cell, LabelList, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+} from 'recharts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { useAuth } from '@/store/auth';
+import {
+  fetchFinancialProfile, updateFinancialProfile,
+  fetchFinancialLineItems, createFinancialLineItem, updateFinancialLineItem, deleteFinancialLineItem,
+} from '@/lib/adapter';
+import type { FinancialProfileInput, FinancialLineItem } from '@/types/domain';
 
-// â”€â”€ hub card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-interface HubCardProps {
-  to: string;
-  icon: React.ElementType;
-  title: string;
-  metric: string;
-  metricLabel: string;
-  status: 'ok' | 'warn' | 'bad' | 'data';
-  statusText: string;
-  description: string;
+const MARGIN_HEALTHY = 45;
+const MARGIN_FLOOR = 35;
+const FINANCIAL_PROMPT = "Give me a financial health summary for my store — focus on margin, cash runway, and any risks I should know about.";
+
+// ── Form helpers ──────────────────────────────────────────────────────────────
+
+function decimalText(v: string) {
+  return v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
 }
 
-function HubCard({ to, icon: Icon, title, metric, metricLabel, status, statusText, description }: HubCardProps) {
-  const navigate = useNavigate();
-  const statusColors = {
-    ok:   'text-decision-promote border-decision-promote/20 bg-decision-promote-bg',
-    warn: 'text-decision-markdown border-decision-markdown/20 bg-decision-markdown-bg',
-    bad:  'text-decision-clear border-decision-clear/20 bg-decision-clear-bg',
-    data: 'text-primary border-primary/20 bg-primary/5',
+type ProfileFormState = {
+  total_assets_usd: string;
+  total_liabilities_usd: string;
+  monthly_fixed_opex_usd: string;
+  annual_revenue_projected_usd: string;
+  cash_runway_months: string;
+  breakeven_monthly_revenue_usd: string;
+};
+
+function toForm(p: Partial<FinancialProfileInput>): ProfileFormState {
+  return {
+    total_assets_usd: p.total_assets_usd != null ? String(p.total_assets_usd) : '',
+    total_liabilities_usd: p.total_liabilities_usd != null ? String(p.total_liabilities_usd) : '',
+    monthly_fixed_opex_usd: p.monthly_fixed_opex_usd != null ? String(p.monthly_fixed_opex_usd) : '',
+    annual_revenue_projected_usd: p.annual_revenue_projected_usd != null ? String(p.annual_revenue_projected_usd) : '',
+    cash_runway_months: p.cash_runway_months != null ? String(p.cash_runway_months) : '',
+    breakeven_monthly_revenue_usd: p.breakeven_monthly_revenue_usd != null ? String(p.breakeven_monthly_revenue_usd) : '',
   };
-  const dotColors = { ok: 'bg-decision-promote', warn: 'bg-decision-markdown', bad: 'bg-decision-clear', data: 'bg-primary' };
+}
 
+function parseForm(f: ProfileFormState): FinancialProfileInput {
+  const n = (s: string) => (s.trim() === '' ? null : parseFloat(s));
+  return {
+    total_assets_usd: n(f.total_assets_usd),
+    total_liabilities_usd: n(f.total_liabilities_usd),
+    monthly_fixed_opex_usd: n(f.monthly_fixed_opex_usd),
+    annual_revenue_projected_usd: n(f.annual_revenue_projected_usd),
+    cash_runway_months: n(f.cash_runway_months),
+    breakeven_monthly_revenue_usd: n(f.breakeven_monthly_revenue_usd),
+  };
+}
+
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <button
-      onClick={() => navigate(to)}
-      className="group relative overflow-hidden text-left rounded-xl border border-border bg-card/80 p-5 shadow-sm-soft transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-glow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-      <div className="flex items-start justify-between mb-4">
-        <div className="h-10 w-10 rounded-lg border border-border bg-muted/70 flex items-center justify-center group-hover:border-primary/30 group-hover:bg-primary/10 transition-colors">
-          <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary-glow transition-colors" />
-        </div>
-        <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
-      </div>
-
-      <div className="mb-1">
-        <div className="text-[22px] font-bold font-display leading-none">{metric}</div>
-        <div className="text-[11px] text-muted-foreground mt-1 uppercase tracking-wide">{metricLabel}</div>
-      </div>
-
-      <div className="text-[14px] font-semibold text-foreground mt-3 mb-1">{title}</div>
-      <p className="text-[12px] text-muted-foreground leading-snug mb-3">{description}</p>
-
-      <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full border', statusColors[status])}>
-        <span className={cn('h-1.5 w-1.5 rounded-full', dotColors[status])} />
-        {statusText}
-      </span>
-    </button>
+    <label className={cn('space-y-1.5', className)}>
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+      {children}
+    </label>
   );
 }
 
-// â”€â”€ main hub page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export default function Financial() {
-  const navigate = useNavigate();
-  const { data: r, isLoading, isError, error, refetch } = useReport();
+// ── Balance sheet line item row ───────────────────────────────────────────────
 
-  if (isLoading) return (<><TopBar title="Financial Health" /><PageSkeleton /></>);
+function LineItemRow({
+  item,
+  onSave,
+  onDelete,
+  isSaving,
+  isDeleting,
+}: {
+  item: FinancialLineItem;
+  onSave: (id: string, label: string, amount_usd: number) => void;
+  onDelete: (id: string) => void;
+  isSaving: boolean;
+  isDeleting: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(item.label);
+  const [amount, setAmount] = useState(String(item.amount_usd));
 
-  if (isError || !r) return (
-    <>
-      <TopBar title="Financial Health" />
-      <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center">
-        <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-          <span className="text-destructive text-xl">!</span>
-        </div>
-        <div>
-          <p className="font-semibold text-[15px] mb-1">Unable to load financial data</p>
-          <p className="text-[13px] text-muted-foreground max-w-sm">
-            {error instanceof Error ? error.message : 'The analytics engine could not be reached. Make sure the backend is running on port 8000.'}
-          </p>
-        </div>
+  function startEdit() {
+    setLabel(item.label);
+    setAmount(String(item.amount_usd));
+    setEditing(true);
+  }
+
+  function handleSave() {
+    const parsed = parseFloat(amount);
+    if (!label.trim() || isNaN(parsed)) return;
+    onSave(item.id, label.trim(), parsed);
+    setEditing(false);
+  }
+
+  function handleCancel() {
+    setLabel(item.label);
+    setAmount(String(item.amount_usd));
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 py-1.5">
+        <Input
+          className="h-7 text-[12px] flex-1"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Label"
+          autoFocus
+        />
+        <Input
+          className="h-7 text-[12px] w-28 text-right font-mono"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(decimalText(e.target.value))}
+          placeholder="0"
+        />
         <button
-          onClick={() => refetch()}
-          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="h-7 w-7 rounded flex items-center justify-center text-decision-promote hover:bg-accent/50 shrink-0"
+          title="Save"
         >
-          Retry
+          <Check className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={handleCancel}
+          className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent/50 shrink-0"
+          title="Cancel"
+        >
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-2 py-1.5 hover:bg-accent/20 rounded-md px-1 -mx-1">
+      <span className="flex-1 text-[13px] text-foreground truncate">{item.label}</span>
+      <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
+        {fmtUSD(item.amount_usd, { compact: true })}
+      </span>
+      <button
+        onClick={startEdit}
+        className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition shrink-0"
+        title="Edit"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <button
+        onClick={() => onDelete(item.id)}
+        disabled={isDeleting}
+        className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-decision-clear opacity-0 group-hover:opacity-100 transition shrink-0"
+        title="Delete"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Add-item row ─────────────────────────────────────────────────────────────
+
+function AddItemRow({
+  itemType,
+  onAdd,
+  onCancel,
+  isSaving,
+}: {
+  itemType: 'asset' | 'liability';
+  onAdd: (label: string, amount_usd: number) => void;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+
+  function handleAdd() {
+    const parsed = parseFloat(amount);
+    if (!label.trim() || isNaN(parsed)) return;
+    onAdd(label.trim(), parsed);
+    setLabel('');
+    setAmount('');
+  }
+
+  return (
+    <div className="flex items-center gap-2 py-1.5 mt-1 border-t border-dashed border-border">
+      <Input
+        className="h-7 text-[12px] flex-1"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder={`e.g. ${itemType === 'asset' ? 'Cash on hand' : 'Supplier payables'}`}
+        autoFocus
+        onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') onCancel(); }}
+      />
+      <Input
+        className="h-7 text-[12px] w-28 text-right font-mono"
+        inputMode="decimal"
+        value={amount}
+        onChange={(e) => setAmount(decimalText(e.target.value))}
+        placeholder="USD"
+        onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') onCancel(); }}
+      />
+      <button
+        onClick={handleAdd}
+        disabled={isSaving || !label.trim() || !amount.trim()}
+        className="h-7 w-7 rounded flex items-center justify-center text-decision-promote hover:bg-accent/50 disabled:opacity-40 shrink-0"
+        title="Add"
+      >
+        <Check className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={onCancel}
+        className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent/50 shrink-0"
+        title="Cancel"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function Financial() {
+  const { data: report, isLoading } = useReport();
+  const token = useAuth((s) => s.token);
+  const queryClient = useQueryClient();
+
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [form, setForm] = useState<ProfileFormState>(toForm({}));
+  const [addingType, setAddingType] = useState<'asset' | 'liability' | null>(null);
+
+  // Financial profile from DB (user-entered aggregates)
+  const { data: storedProfile } = useQuery({
+    queryKey: ['financial-profile'],
+    queryFn: fetchFinancialProfile,
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+
+  // Financial line items (itemized assets/liabilities)
+  const { data: lineItems = [] } = useQuery({
+    queryKey: ['financial-items'],
+    queryFn: fetchFinancialLineItems,
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const assets = lineItems.filter((i) => i.item_type === 'asset');
+  const liabilities = lineItems.filter((i) => i.item_type === 'liability');
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: FinancialProfileInput) => updateFinancialProfile(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-profile'] });
+      toast.success('Financial profile updated');
+      setProfileOpen(false);
+    },
+    onError: (err: Error) => toast.error('Save failed', { description: err.message }),
+  });
+
+  const createItemMutation = useMutation({
+    mutationFn: (p: { label: string; amount_usd: number; item_type: 'asset' | 'liability' }) =>
+      createFinancialLineItem({ label: p.label, amount_usd: p.amount_usd, item_type: p.item_type }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-items'] });
+      setAddingType(null);
+    },
+    onError: (err: Error) => toast.error('Failed to add item', { description: err.message }),
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: (p: { id: string; label: string; amount_usd: number; item_type: 'asset' | 'liability' }) =>
+      updateFinancialLineItem(p.id, { label: p.label, amount_usd: p.amount_usd, item_type: p.item_type }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-items'] }),
+    onError: (err: Error) => toast.error('Failed to update item', { description: err.message }),
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: string) => deleteFinancialLineItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-items'] }),
+    onError: (err: Error) => toast.error('Failed to delete item', { description: err.message }),
+  });
+
+  function openDialog() {
+    setForm(toForm(storedProfile ?? {}));
+    setProfileOpen(true);
+  }
+
+  function handleSave() {
+    saveMutation.mutate(parseForm(form));
+  }
+
+  const update = (key: keyof ProfileFormState, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+  if (isLoading || !report) {
+    return (
+      <>
+        <TopBar title="Financial Health" subtitle="Loading…" />
+        <PageSkeleton />
+      </>
+    );
+  }
+
+  const { inventory, metadata } = report;
+  const m = inventory.metrics;
+
+  // Prefer stored profile values where available
+  const cashRunway = storedProfile?.cash_runway_months ?? null;
+  const storedAssets = storedProfile?.total_assets_usd ?? null;
+  const storedLiabilities = storedProfile?.total_liabilities_usd ?? null;
+  const monthlyOpex = storedProfile?.monthly_fixed_opex_usd ?? null;
+  const annualRevenue = storedProfile?.annual_revenue_projected_usd ?? null;
+  const currentRatio = (storedProfile as { current_ratio?: number | null } | undefined)?.current_ratio ?? null;
+  const equity = (storedProfile as { total_equity_usd?: number | null } | undefined)?.total_equity_usd ?? null;
+
+  // Balance sheet totals: live inventory + user items
+  const inventoryCostUSD = m.inventory_value_at_cost_usd;
+  const userAssetTotal = assets.reduce((s, i) => s + i.amount_usd, 0);
+  const userLiabilityTotal = liabilities.reduce((s, i) => s + i.amount_usd, 0);
+  const computedTotalAssets = inventoryCostUSD + userAssetTotal;
+  const computedTotalEquity = computedTotalAssets - userLiabilityTotal;
+  const computedCurrentRatio = userLiabilityTotal > 0 ? computedTotalAssets / userLiabilityTotal : null;
+
+  // Use computed values if user has added items, else fall back to stored profile
+  const displayAssets = assets.length > 0 ? computedTotalAssets : (storedAssets ?? inventoryCostUSD);
+  const displayLiabilities = liabilities.length > 0 ? userLiabilityTotal : (storedLiabilities ?? 0);
+  const displayEquity = displayAssets - displayLiabilities;
+  const displayCurrentRatio = liabilities.length > 0 ? computedCurrentRatio : currentRatio;
+
+  const blendedMargin = m.blended_margin_pct;
+  const marginHealth =
+    blendedMargin >= MARGIN_HEALTHY ? 'healthy' : blendedMargin >= MARGIN_FLOOR ? 'warning' : 'critical';
+
+  const grossProfit = m.inventory_value_at_retail_usd - m.inventory_value_at_cost_usd;
+  const deadStockValue = m.inventory_value_at_cost_usd * (m.dead_stock_skus / Math.max(m.total_skus, 1));
+  const capitalUtilisation = m.total_skus > 0
+    ? Math.round(((m.total_skus - m.dead_stock_skus) / m.total_skus) * 100)
+    : 0;
+
+  const runwayStatus = cashRunway == null ? null : cashRunway >= 4 ? 'safe' : cashRunway >= 2.5 ? 'adequate' : 'critical';
+
+  const categoryFinancials = Object.entries(inventory.category_summary)
+    .map(([name, v]) => ({
+      name,
+      margin: Math.max(0, Math.round(v.avg_margin_pct)),
+      value: Math.round(v.value_usd / 1000),
+    }))
+    .filter((c) => c.margin > 0)
+    .sort((a, b) => b.margin - a.margin);
+
+  const radarAssets = displayAssets;
+  const radarLiabilities = displayLiabilities;
+  const healthRadar = [
+    { subject: 'Margin', value: Math.min(100, (blendedMargin / MARGIN_HEALTHY) * 100) },
+    { subject: 'Stock Turnover', value: Math.min(100, capitalUtilisation) },
+    { subject: 'SKU Health', value: Math.min(100, (m.healthy_skus / Math.max(m.total_skus, 1)) * 100) },
+    { subject: 'Dead Stock', value: Math.max(0, 100 - (m.dead_stock_skus / Math.max(m.total_skus, 1)) * 200) },
+    { subject: 'Retail Cover', value: radarAssets > 0 ? Math.min(100, ((radarAssets - radarLiabilities) / radarAssets) * 100) : 50 },
+  ];
+
+  const healthScore = Math.round(healthRadar.reduce((s, d) => s + d.value, 0) / healthRadar.length);
+
+  const alertCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+  inventory.alerts.forEach((a) => {
+    if (a.severity in alertCounts) (alertCounts as Record<string, number>)[a.severity]++;
+  });
+
+  const breakevenRevenue = storedProfile?.breakeven_monthly_revenue_usd ?? null;
+  const opexCoverage = annualRevenue != null && monthlyOpex != null && monthlyOpex > 0
+    ? (annualRevenue * (blendedMargin / 100)) / (monthlyOpex * 12)
+    : null;
+
+  const hasStoredProfile = !!storedProfile && (
+    storedProfile.total_assets_usd != null ||
+    storedProfile.monthly_fixed_opex_usd != null ||
+    storedProfile.cash_runway_months != null
   );
 
-  const f = r.financial;
-  const cashRunway   = f.cashflow_health.cash_runway_months;
-  const ratio        = f.balance_sheet_health.current_ratio;
-  const margin       = f.profitability.blended_margin_pct;
-  const revenue      = f.profitability.annual_revenue_projection_usd;
-  const equity       = f.balance_sheet_health.equity_usd;
-  const fixedTotal   = 3500; // TODO(live-data): derive from fetchDetailedProfitability opex_breakdown
-
-  const alerts = f.alerts ?? [];
-  const highAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high').length;
+  // Profitability formula components
+  const retailTotal = m.inventory_value_at_retail_usd;
+  const costTotal = m.inventory_value_at_cost_usd;
+  const marginPct = retailTotal > 0
+    ? ((retailTotal - costTotal) / retailTotal) * 100
+    : 0;
 
   return (
     <>
       <TopBar
         title="Financial Health"
-        subtitle="Select a section to view detailed analysis"
+        subtitle={`Lebanon · fresh USD · synced ${relativeTime(metadata.generated_at)}`}
         actions={
-          <button
-            onClick={() => navigate('/financial/update')}
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary-glow px-3 text-[13px] font-semibold text-primary-foreground shadow-glow-sm hover:opacity-90"
-          >
-            <Edit3 className="h-4 w-4" /> Update Financials
-          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openDialog}
+              className="hidden md:inline-flex items-center gap-2 text-[12.5px]"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Update Profile
+            </Button>
+            <Link
+              to="/assistant"
+              state={{ initialMessage: FINANCIAL_PROMPT }}
+              className="hidden md:inline-flex items-center gap-2 h-9 px-4 rounded-md bg-foreground text-background text-[12.5px] font-semibold hover:bg-foreground/90 transition"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              Ask Radar AI
+            </Link>
+          </div>
         }
       />
-      <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
-        <DataSourceBanner />
 
-        <div className="relative panel-dark rounded-2xl overflow-hidden shadow-lg-soft">
-          <div className="absolute inset-0 opacity-30" style={{
-            background: 'radial-gradient(760px 300px at 82% -20%, hsl(38 100% 62% / 0.32), transparent), radial-gradient(620px 260px at 8% 115%, hsl(158 65% 36% / 0.24), transparent)',
-          }} />
-          <div className="relative grid gap-6 p-6 lg:grid-cols-[1.25fr_0.9fr] lg:p-7">
+      <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
+
+        {/* No financial profile banner */}
+        {!hasStoredProfile && lineItems.length === 0 && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-dashed border-border bg-accent/20 px-5 py-4">
             <div>
-              <div className="inline-flex items-center gap-2 text-[10.5px] font-mono uppercase tracking-[0.2em] text-panel-muted">
-                <span className="h-1.5 w-1.5 rounded-full bg-decision-promote animate-pulse" /> USD Finance Control
-              </div>
-              <h2 className="font-display text-[28px] lg:text-[34px] leading-[1.05] font-semibold text-panel-foreground mt-3 tracking-tight">
-                Track liquidity, runway, and owner equity from one monthly snapshot.
-              </h2>
-              <p className="text-panel-muted text-[14px] mt-3 max-w-2xl">
-                Current runway is <span className="text-panel-foreground font-semibold">{cashRunway.toFixed(1)} months</span>, with equity at <span className="text-panel-foreground font-semibold">{fmtUSD(equity, { compact: true })}</span>. Keep the numbers current so recommendations reflect the retailer's real cash position.
+              <p className="text-[13px] font-semibold text-foreground">No financial profile set</p>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Add your assets and liabilities below, or enter aggregate figures via Update Profile.
               </p>
-              <div className="flex flex-wrap gap-3 mt-5">
-                <button onClick={() => navigate('/financial/update')} className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow">
-                  <Edit3 className="h-4 w-4" /> Update financials
+            </div>
+            <Button size="sm" variant="outline" onClick={openDialog} className="shrink-0 gap-2">
+              <Settings className="h-3.5 w-3.5" /> Update Profile
+            </Button>
+          </div>
+        )}
+
+        {/* KPI cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard
+            label="Blended Margin"
+            icon={TrendingUp}
+            variant={marginHealth === 'healthy' ? 'success' : marginHealth === 'warning' ? 'warning' : 'danger'}
+            value={fmtPct(blendedMargin)}
+            hint={`Target ≥ ${MARGIN_HEALTHY}% · Lebanon healthy band`}
+            trend={blendedMargin >= MARGIN_HEALTHY ? { value: 'Healthy', direction: 'up' } : { value: 'Below target', direction: 'down' }}
+          />
+          <KpiCard
+            label="Total Assets"
+            icon={DollarSign}
+            variant="data"
+            value={fmtUSD(displayAssets, { compact: true })}
+            hint={
+              displayLiabilities > 0
+                ? `Liabilities ${fmtUSD(displayLiabilities, { compact: true })} · Equity ${fmtUSD(displayEquity, { compact: true })}`
+                : `Inventory at cost + user items`
+            }
+          />
+          <KpiCard
+            label={cashRunway != null ? 'Cash Runway' : 'Capital Utilisation'}
+            icon={Boxes}
+            variant={
+              cashRunway != null
+                ? runwayStatus === 'safe' ? 'success' : runwayStatus === 'adequate' ? 'warning' : 'danger'
+                : capitalUtilisation >= 85 ? 'success' : 'warning'
+            }
+            value={cashRunway != null ? `${cashRunway} mo` : `${capitalUtilisation}%`}
+            hint={
+              cashRunway != null
+                ? `Target ≥ 4 months · Status: ${runwayStatus}`
+                : `${m.total_skus - m.dead_stock_skus} of ${m.total_skus} SKUs actively moving`
+            }
+            trend={
+              cashRunway != null
+                ? runwayStatus === 'safe' ? { value: 'Safe', direction: 'up' } : { value: 'At risk', direction: 'down' }
+                : undefined
+            }
+          />
+          <KpiCard
+            label="Dead Stock Exposure"
+            icon={ShieldAlert}
+            variant={m.dead_stock_skus === 0 ? 'success' : 'danger'}
+            value={fmtNum(m.dead_stock_skus)}
+            hint={`Est. ${fmtUSD(deadStockValue, { compact: true })} tied up in dead stock`}
+          />
+        </div>
+
+        {/* Additional profile KPIs if stored */}
+        {(displayCurrentRatio != null || monthlyOpex != null || annualRevenue != null || breakevenRevenue != null) && (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayCurrentRatio != null && (
+              <KpiCard
+                label="Current Ratio"
+                icon={TrendingUp}
+                variant={displayCurrentRatio >= 2 ? 'success' : displayCurrentRatio >= 1.5 ? 'warning' : 'danger'}
+                value={`${displayCurrentRatio.toFixed(2)}x`}
+                hint="Target ≥ 2.0x for Lebanon · Total Assets / Total Liabilities"
+              />
+            )}
+            {monthlyOpex != null && (
+              <KpiCard
+                label="Monthly Fixed OpEx"
+                icon={DollarSign}
+                variant="default"
+                value={fmtUSD(monthlyOpex, { compact: true })}
+                hint={`Annual ${fmtUSD(monthlyOpex * 12, { compact: true })} fixed cost base`}
+              />
+            )}
+            {annualRevenue != null && (
+              <KpiCard
+                label="Annual Revenue (Proj.)"
+                icon={BarChart2}
+                variant="data"
+                value={fmtUSD(annualRevenue, { compact: true })}
+                hint={monthlyOpex ? `OpEx coverage ${((annualRevenue * (blendedMargin / 100)) / (monthlyOpex * 12)).toFixed(1)}x` : 'Projected annual revenue'}
+              />
+            )}
+            {opexCoverage != null && (
+              <KpiCard
+                label="OpEx Coverage"
+                icon={BarChart2}
+                variant={opexCoverage >= 1.5 ? 'success' : opexCoverage >= 1 ? 'warning' : 'danger'}
+                value={`${opexCoverage.toFixed(1)}x`}
+                hint="Gross profit / annual fixed OpEx · target ≥ 1.5×"
+              />
+            )}
+            {breakevenRevenue != null && (
+              <KpiCard
+                label="Breakeven/Month"
+                icon={TrendingUp}
+                variant={annualRevenue != null ? ((annualRevenue / 12) >= breakevenRevenue ? 'success' : 'danger') : 'default'}
+                value={fmtUSD(breakevenRevenue, { compact: true })}
+                hint={annualRevenue != null
+                  ? `Proj. monthly ${fmtUSD(annualRevenue / 12, { compact: true })} · ${(annualRevenue / 12) >= breakevenRevenue ? 'above target' : 'below target'}`
+                  : 'Minimum monthly revenue to cover costs'
+                }
+                trend={annualRevenue != null
+                  ? (annualRevenue / 12) >= breakevenRevenue
+                    ? { value: 'Above', direction: 'up' }
+                    : { value: 'Below', direction: 'down' }
+                  : undefined
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── Balance Sheet ──────────────────────────────────────────────── */}
+        <Section
+          title="Balance Sheet"
+          subtitle="Itemized assets and liabilities — edit inline, add new rows, or remove"
+          action={
+            <div className="flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground font-mono">Inventory rows are live · cannot edit</span>
+            </div>
+          }
+        >
+          <div className="grid lg:grid-cols-2 gap-6 mt-1">
+
+            {/* Assets column */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] uppercase tracking-wider font-mono text-decision-promote font-semibold">Assets</span>
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  Total: <span className="text-foreground font-semibold">{fmtUSD(displayAssets, { compact: true })}</span>
+                </span>
+              </div>
+
+              {/* Live inventory row — non-editable */}
+              <div className="flex items-center gap-2 py-1.5 px-1 rounded-md bg-accent/10">
+                <span className="flex-1 text-[13px] text-foreground truncate">Inventory at Cost</span>
+                <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">live</span>
+                <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
+                  {fmtUSD(inventoryCostUSD, { compact: true })}
+                </span>
+                <span className="h-6 w-6 shrink-0" />
+                <span className="h-6 w-6 shrink-0" />
+              </div>
+
+              {/* User-added asset rows */}
+              {assets.map((item) => (
+                <LineItemRow
+                  key={item.id}
+                  item={item}
+                  onSave={(id, label, amount_usd) =>
+                    updateItemMutation.mutate({ id, label, amount_usd, item_type: 'asset' })
+                  }
+                  onDelete={(id) => deleteItemMutation.mutate(id)}
+                  isSaving={updateItemMutation.isPending}
+                  isDeleting={deleteItemMutation.isPending}
+                />
+              ))}
+
+              {/* Add asset form */}
+              {addingType === 'asset' ? (
+                <AddItemRow
+                  itemType="asset"
+                  onAdd={(label, amount_usd) =>
+                    createItemMutation.mutate({ label, amount_usd, item_type: 'asset' })
+                  }
+                  onCancel={() => setAddingType(null)}
+                  isSaving={createItemMutation.isPending}
+                />
+              ) : (
+                <button
+                  onClick={() => setAddingType('asset')}
+                  className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add asset
                 </button>
-                <button onClick={() => navigate('/financial/progress')} className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
-                  <LineChart className="h-4 w-4" /> View progress
-                </button>
+              )}
+
+              {/* Formula */}
+              <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono">
+                <span className="text-foreground font-semibold">How calculated: </span>
+                Inventory ({fmtUSD(inventoryCostUSD, { compact: true })}, live)
+                {assets.map((a) => (
+                  <span key={a.id}> + {a.label} ({fmtUSD(a.amount_usd, { compact: true })})</span>
+                ))}
+                {' '}<span className="text-decision-promote">= {fmtUSD(displayAssets, { compact: true })}</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* Liabilities column */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] uppercase tracking-wider font-mono text-decision-clear font-semibold">Liabilities</span>
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  Total: <span className="text-foreground font-semibold">{fmtUSD(displayLiabilities, { compact: true })}</span>
+                </span>
+              </div>
+
+              {/* User-added liability rows */}
+              {liabilities.length === 0 && addingType !== 'liability' && (
+                <p className="text-[12.5px] text-muted-foreground py-2">No liabilities added yet.</p>
+              )}
+              {liabilities.map((item) => (
+                <LineItemRow
+                  key={item.id}
+                  item={item}
+                  onSave={(id, label, amount_usd) =>
+                    updateItemMutation.mutate({ id, label, amount_usd, item_type: 'liability' })
+                  }
+                  onDelete={(id) => deleteItemMutation.mutate(id)}
+                  isSaving={updateItemMutation.isPending}
+                  isDeleting={deleteItemMutation.isPending}
+                />
+              ))}
+
+              {/* Add liability form */}
+              {addingType === 'liability' ? (
+                <AddItemRow
+                  itemType="liability"
+                  onAdd={(label, amount_usd) =>
+                    createItemMutation.mutate({ label, amount_usd, item_type: 'liability' })
+                  }
+                  onCancel={() => setAddingType(null)}
+                  isSaving={createItemMutation.isPending}
+                />
+              ) : (
+                <button
+                  onClick={() => setAddingType('liability')}
+                  className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add liability
+                </button>
+              )}
+
+              {/* Formula + net equity */}
+              <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono space-y-1">
+                {liabilities.length > 0 ? (
+                  <div>
+                    <span className="text-foreground font-semibold">How calculated: </span>
+                    {liabilities.map((l, i) => (
+                      <span key={l.id}>{i > 0 ? ' + ' : ''}{l.label} ({fmtUSD(l.amount_usd, { compact: true })})</span>
+                    ))}
+                    {' '}<span className="text-decision-clear">= {fmtUSD(displayLiabilities, { compact: true })}</span>
+                  </div>
+                ) : (
+                  <div>Add liabilities to see the formula.</div>
+                )}
+                <div className="border-t border-border pt-1.5 text-foreground font-semibold">
+                  Net Equity = {fmtUSD(displayAssets, { compact: true })} − {fmtUSD(displayLiabilities, { compact: true })}{' '}
+                  <span className={displayEquity >= 0 ? 'text-decision-promote' : 'text-decision-clear'}>
+                    = {fmtUSD(displayEquity, { compact: true })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {displayLiabilities > 0 && displayAssets > 0 && (
+            <div className="mt-4 space-y-1.5">
+              <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
+                <span>Equity {fmtPct((displayEquity / displayAssets) * 100, 0)}</span>
+                <span>Liabilities {fmtPct((displayLiabilities / displayAssets) * 100, 0)}</span>
+              </div>
+              <div className="h-2 rounded-full bg-accent overflow-hidden flex">
+                <div
+                  className="h-full bg-decision-promote transition-all"
+                  style={{ width: `${Math.min(100, Math.max(0, (displayEquity / displayAssets) * 100))}%` }}
+                />
+                <div
+                  className="h-full bg-decision-clear"
+                  style={{ width: `${Math.min(100, (displayLiabilities / displayAssets) * 100)}%` }}
+                />
+              </div>
+              <div className="text-[11px] font-mono text-muted-foreground text-center">
+                {displayCurrentRatio != null
+                  ? `${displayCurrentRatio.toFixed(2)}x current ratio · equity/asset leverage`
+                  : 'Add liabilities to compute leverage ratio'}
+              </div>
+            </div>
+          )}
+        </Section>
+
+        {/* ── Profitability Breakdown ───────────────────────────────────── */}
+        <Section
+          title="Profitability Breakdown"
+          subtitle="How gross margin is calculated from your live inventory"
+        >
+          <div className="grid lg:grid-cols-3 gap-4 mt-1">
+            <div className="rounded-lg bg-accent/20 px-4 py-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-mono">Retail Value</div>
+              <div className="text-[22px] font-display font-bold text-foreground">{fmtUSD(retailTotal, { compact: true })}</div>
+              <div className="text-[11.5px] text-muted-foreground font-mono">Sum of all SKU retail prices × units</div>
+            </div>
+            <div className="rounded-lg bg-accent/20 px-4 py-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-mono">Cost Value</div>
+              <div className="text-[22px] font-display font-bold text-foreground">{fmtUSD(costTotal, { compact: true })}</div>
+              <div className="text-[11.5px] text-muted-foreground font-mono">Sum of all SKU cost prices × units (live)</div>
+            </div>
+            <div className="rounded-lg bg-accent/20 px-4 py-3 space-y-1">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-mono">Gross Profit</div>
+              <div className="text-[22px] font-display font-bold text-decision-promote">{fmtUSD(grossProfit, { compact: true })}</div>
+              <div className="text-[11.5px] text-muted-foreground font-mono">Retail − Cost</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-border bg-background px-4 py-3 font-mono text-[12.5px] leading-loose">
+            <div className="text-muted-foreground">
+              Blended Margin = <span className="text-foreground">(Retail − Cost) / Retail × 100</span>
+            </div>
+            <div className="text-muted-foreground">
+              = <span className="text-foreground">
+                ({fmtUSD(retailTotal, { compact: true })} − {fmtUSD(costTotal, { compact: true })}) / {fmtUSD(retailTotal, { compact: true })} × 100
+              </span>
+            </div>
+            <div className="text-muted-foreground">
+              = <span className={cn(
+                'font-bold text-[14px]',
+                marginHealth === 'healthy' ? 'text-decision-promote' : marginHealth === 'warning' ? 'text-decision-markdown' : 'text-decision-clear'
+              )}>
+                {marginPct.toFixed(1)}%
+              </span>
+              <span className={cn('ml-3 text-[11px] inline-flex items-center gap-1', marginHealth === 'healthy' ? 'text-decision-promote' : marginHealth === 'warning' ? 'text-decision-markdown' : 'text-decision-clear')}>
+                {marginHealth === 'healthy'
+                  ? <><CheckCircle2 className="h-3 w-3" /> Above target</>
+                  : marginHealth === 'warning'
+                  ? <><AlertTriangle className="h-3 w-3" /> Below healthy threshold</>
+                  : <><XCircle className="h-3 w-3" /> Below floor</>}
+              </span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-border text-[11px] text-muted-foreground">
+              Target: ≥ {MARGIN_HEALTHY}% healthy · ≥ {MARGIN_FLOOR}% floor · Lebanon sportswear thresholds
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-1.5">
+            <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+              <span>0%</span>
+              <span>Floor {MARGIN_FLOOR}%</span>
+              <span>Target {MARGIN_HEALTHY}%</span>
+              <span>100%</span>
+            </div>
+            <div className="relative h-2.5 rounded-full bg-accent">
+              <div
+                className={cn('h-full rounded-full transition-all', marginHealth === 'healthy' ? 'bg-decision-promote' : marginHealth === 'warning' ? 'bg-decision-markdown' : 'bg-decision-clear')}
+                style={{ width: `${Math.min(100, Math.max(0, marginPct))}%` }}
+              />
+              <div className="absolute top-0 h-full w-0.5 bg-decision-markdown/70 rounded-full" style={{ left: `${MARGIN_FLOOR}%` }} />
+              <div className="absolute top-0 h-full w-0.5 bg-decision-promote/70 rounded-full" style={{ left: `${MARGIN_HEALTHY}%` }} />
+            </div>
+          </div>
+
+          {/* Per-category breakdown hint */}
+          <p className="text-[12px] text-muted-foreground mt-3 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 shrink-0" />
+            See Margin by Category below for per-category breakdown. Categories below {MARGIN_FLOOR}% may be pulling the blended rate down.
+          </p>
+        </Section>
+
+        {/* Health radar + Alerts */}
+        <div className="grid lg:grid-cols-[1fr_1.4fr] gap-6">
+          <Section
+            title="Financial Health Radar"
+            subtitle="Composite score across key financial dimensions"
+            action={
+              <span className={cn(
+                'text-[13px] font-bold font-mono px-2.5 py-1 rounded-lg',
+                healthScore >= 70 ? 'bg-decision-promote-bg text-decision-promote' :
+                healthScore >= 50 ? 'bg-decision-markdown-bg text-decision-markdown' :
+                'bg-decision-clear-bg text-decision-clear'
+              )}>
+                {healthScore}/100
+              </span>
+            }
+          >
+            <div className="h-64">
+              <ResponsiveContainer>
+                <RadarChart data={healthRadar}>
+                  <PolarGrid stroke="hsl(var(--border))" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                  <Radar
+                    name="Health"
+                    dataKey="value"
+                    stroke="hsl(var(--primary))"
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.2}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {[
-                ['Liquidity', `${ratio.toFixed(2)}x`],
-                ['Margin', fmtPct(margin)],
-                ['Revenue', fmtUSD(revenue, { compact: true })],
-                ['Alerts', String(alerts.length)],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-lg border border-panel-border bg-white/5 p-4">
-                  <div className="text-[10.5px] font-mono uppercase tracking-wider text-panel-muted">{label}</div>
-                  <div className="text-data text-[26px] text-panel-foreground mt-1.5">{value}</div>
+                { label: 'Margin health', value: marginHealth, color: marginHealth === 'healthy' ? 'text-decision-promote' : marginHealth === 'warning' ? 'text-decision-markdown' : 'text-decision-clear' },
+                { label: 'Dead stock SKUs', value: fmtNum(m.dead_stock_skus), color: m.dead_stock_skus === 0 ? 'text-decision-promote' : 'text-decision-clear' },
+                { label: 'Healthy SKUs', value: fmtNum(m.healthy_skus), color: 'text-decision-promote' },
+                { label: 'Excess SKUs', value: fmtNum(m.excess_stock_skus), color: 'text-decision-markdown' },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/30 text-[12px]">
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span className={`font-semibold font-mono ${row.color}`}>{row.value}</span>
                 </div>
               ))}
             </div>
+          </Section>
+
+          <Section
+            title="Financial Alerts"
+            subtitle="Signals from the analytics engine"
+            action={<span className="text-[11px] font-mono text-muted-foreground">{inventory.alerts.length} total</span>}
+          >
+            {inventory.alerts.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground py-4 text-center">No active financial alerts.</p>
+            ) : (
+              <>
+                {(alertCounts.critical > 0 || alertCounts.high > 0 || alertCounts.medium > 0 || alertCounts.low > 0) && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {alertCounts.critical > 0 && <span className="text-[10px] font-mono bg-decision-clear-bg text-decision-clear px-2 py-0.5 rounded-full">{alertCounts.critical} critical</span>}
+                    {alertCounts.high > 0 && <span className="text-[10px] font-mono bg-decision-markdown-bg text-decision-markdown px-2 py-0.5 rounded-full">{alertCounts.high} high</span>}
+                    {alertCounts.medium > 0 && <span className="text-[10px] font-mono bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{alertCounts.medium} medium</span>}
+                    {alertCounts.low > 0 && <span className="text-[10px] font-mono bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">{alertCounts.low} low</span>}
+                  </div>
+                )}
+                <ul className="divide-y divide-border -my-2">
+                  {inventory.alerts.slice(0, 7).map((a) => (
+                    <li key={a.id} className="flex items-start gap-3 py-3">
+                      <div className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${
+                        a.severity === 'critical' ? 'bg-decision-clear-bg text-decision-clear' :
+                        a.severity === 'high' ? 'bg-decision-markdown-bg text-decision-markdown' :
+                        a.severity === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-secondary text-secondary-foreground'
+                      }`}>
+                        {a.severity === 'critical' ? <ShieldAlert className="h-3.5 w-3.5" /> :
+                         a.severity === 'high' ? <AlertTriangle className="h-3.5 w-3.5" /> :
+                         a.severity === 'medium' ? <Info className="h-3.5 w-3.5" /> :
+                         <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-semibold text-foreground">{a.title}</div>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">{a.detail}</p>
+                      </div>
+                      <div className={`text-[10px] font-mono uppercase shrink-0 ${
+                        a.severity === 'critical' || a.severity === 'high' ? 'text-decision-clear' :
+                        a.severity === 'medium' ? 'text-decision-markdown' : 'text-muted-foreground'
+                      }`}>
+                        {a.severity}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Section>
+        </div>
+
+        {/* Category margins */}
+        <Section title="Margin by Category" subtitle="Gross margin % across product categories">
+          <div className="h-56 -mx-2">
+            <ResponsiveContainer>
+              <BarChart data={categoryFinancials} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false}
+                  tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number, _name: string, props: { payload?: { value?: number } }) => [
+                    [`${v}%`, 'Margin'],
+                    [fmtUSD((props.payload?.value ?? 0) * 1000, { compact: true }), 'Inventory'],
+                  ]}
+                />
+                <ReferenceLine y={MARGIN_HEALTHY} stroke="hsl(var(--decision-promote))" strokeDasharray="4 3" strokeWidth={1.5} />
+                <ReferenceLine y={MARGIN_FLOOR} stroke="hsl(var(--decision-markdown))" strokeDasharray="4 3" strokeWidth={1.5} />
+                <Bar dataKey="margin" radius={[6, 6, 0, 0]}>
+                  {categoryFinancials.map((entry) => (
+                    <Cell
+                      key={entry.name}
+                      fill={
+                        entry.margin >= MARGIN_HEALTHY
+                          ? 'hsl(var(--decision-promote))'
+                          : entry.margin >= MARGIN_FLOOR
+                          ? 'hsl(var(--decision-markdown))'
+                          : 'hsl(var(--decision-clear))'
+                      }
+                    />
+                  ))}
+                  <LabelList dataKey="margin" position="top" formatter={(v: number) => `${v}%`} style={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-full bg-decision-promote inline-block" /> Healthy ≥{MARGIN_HEALTHY}%
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-full bg-decision-markdown inline-block" /> Floor ≥{MARGIN_FLOOR}%
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-full bg-decision-clear inline-block" /> Below floor
+            </span>
+          </div>
+        </Section>
+
+        {/* Radar Assistant CTA */}
+        <div className="relative panel-dark rounded-2xl overflow-hidden shadow-lg-soft">
+          <div className="absolute inset-0 opacity-25" style={{
+            background: 'radial-gradient(600px 200px at 90% 50%, hsl(218 92% 60% / 0.5), transparent)',
+          }} />
+          <div className="relative p-6 lg:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-6">
+            <div className="h-12 w-12 rounded-xl bg-primary-glow/20 border border-primary/30 flex items-center justify-center shrink-0">
+              <Bot className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-mono uppercase tracking-[0.16em] text-panel-muted mb-1">Radar Assistant</div>
+              <h3 className="font-display text-[18px] font-semibold text-panel-foreground">
+                Ask financial questions in plain language
+              </h3>
+              <p className="text-panel-muted text-[13.5px] mt-1 max-w-xl">
+                "What's dragging my margin down?", "Which categories are most profitable?",
+                "How much cash is locked in dead stock?" — Radar AI answers from live data.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <Link
+                to="/assistant"
+                state={{ initialMessage: FINANCIAL_PROMPT }}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow"
+              >
+                Open Radar Assistant <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                to="/queue"
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition"
+              >
+                <BarChart2 className="h-3.5 w-3.5" />
+                Review recommendations
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Hub cards grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <HubCard
-            to="/financial/balance-sheet"
-            icon={Wallet}
-            title="Balance Sheet"
-            metric={fmtUSD(equity, { compact: true })}
-            metricLabel="Your Net Worth"
-            status={ratio >= 1.5 ? 'ok' : 'warn'}
-            statusText={ratio >= 1.5 ? `Liquidity ${ratio.toFixed(2)}x` : `Liquidity ${ratio.toFixed(2)}x watch`}
-            description="What you own, what you owe, and what's truly yours. Asset breakdown with health ratios."
-          />
-          <HubCard
-            to="/financial/profitability"
-            icon={TrendingUp}
-            title="Profitability"
-            metric={fmtPct(margin)}
-            metricLabel="Blended Margin"
-            status={margin >= 45 ? 'ok' : margin >= 35 ? 'warn' : 'bad'}
-            statusText={margin >= 45 ? 'Above 45% floor' : margin >= 35 ? 'Watch margin floor' : 'Below floor'}
-            description="Margin per category, breakeven formula, and where every $100 in revenue goes."
-          />
-          <HubCard
-            to="/financial/cashflow"
-            icon={BarChart3}
-            title="Cashflow"
-            metric={`${cashRunway.toFixed(1)} mo`}
-            metricLabel="Cash Runway"
-            status={cashRunway >= 4 ? 'ok' : cashRunway >= 2 ? 'warn' : 'bad'}
-            statusText={cashRunway >= 4 ? 'Runway healthy' : 'Below 4mo threshold'}
-            description="Monthly inflow vs outflow, net position trend, and 6-month projection."
-          />
-          <HubCard
-            to="/financial/progress"
-            icon={LineChart}
-            title="Progress"
-            metric={fmtUSD(equity, { compact: true })}
-            metricLabel="Latest Equity"
-            status="data"
-            statusText="Monthly USD snapshots"
-            description="Track assets, liabilities, equity, cash runway, and sales versus expenses over time."
-          />
-          <HubCard
-            to="/financial/costs"
-            icon={Activity}
-            title="Cost Breakdown"
-            metric={fmtUSD(fixedTotal, { compact: true })}
-            metricLabel="Fixed costs / mo"
-            status="data"
-            statusText="Fixed + variable"
-            description="Full OpEx breakdown: fixed monthly costs and variable rates by category."
-          />
-          <HubCard
-            to="/financial/alerts"
-            icon={AlertTriangle}
-            title="Alerts & Risks"
-            metric={String(alerts.length)}
-            metricLabel={alerts.length === 1 ? 'active alert' : 'active alerts'}
-            status={highAlerts > 0 ? 'bad' : alerts.length > 0 ? 'warn' : 'ok'}
-            statusText={highAlerts > 0 ? `${highAlerts} high severity` : alerts.length > 0 ? 'Review recommended' : 'All clear'}
-            description="Financial risk flags, threshold breaches, and recommended actions."
-          />
-          <HubCard
-            to="/financial/outcomes"
-            icon={Target}
-            title="Decision Outcomes"
-            metric="Track"
-            metricLabel="7d · 14d results"
-            status="data"
-            statusText="Closed-loop tracking"
-            description="See whether approved AI recommendations actually moved the needle — velocity lift, revenue delta, model accuracy."
-          />
-        </div>
-
-        {/* Quick-view KPIs */}
-        <div className="panel-dark rounded-xl border border-panel-border p-5">
-          <h3 className="text-[12px] font-mono font-semibold text-panel-muted uppercase tracking-[0.16em] mb-4">Quick Snapshot</h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <Metric label="Annual Revenue" value={fmtUSD(revenue, { compact: true })} />
-            <Metric label="Breakeven / mo" value={fmtUSD(f.profitability.breakeven_revenue_usd, { compact: true })} />
-            <Metric label="OPEX Coverage" value={`${f.profitability.opex_coverage_ratio.toFixed(2)}x`} warn={f.profitability.opex_coverage_ratio < 1.2} />
-            <Metric label="Top-5 Concentration" value={fmtPct(f.balance_sheet_health.inventory_concentration_top5_pct)} warn />
-          </div>
-        </div>
       </main>
-    </>
-  );
-}
 
-function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div>
-      <div className="text-[11px] text-panel-muted uppercase tracking-wide mb-1">{label}</div>
-      <div className={cn('text-[20px] font-bold font-display', warn ? 'text-decision-markdown' : 'text-panel-foreground')}>{value}</div>
-    </div>
+      {/* Financial Profile Dialog */}
+      <Dialog open={profileOpen} onOpenChange={(next) => !next && setProfileOpen(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Update Financial Profile</DialogTitle>
+          </DialogHeader>
+          <p className="text-[12.5px] text-muted-foreground -mt-2">
+            Enter aggregate balance sheet and cashflow figures. For itemized assets and liabilities, use the Balance Sheet section on the page.
+          </p>
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            <Field label="Total Assets (USD)">
+              <Input inputMode="decimal" placeholder="e.g. 300000"
+                value={form.total_assets_usd} onChange={(e) => update('total_assets_usd', decimalText(e.target.value))} />
+            </Field>
+            <Field label="Total Liabilities (USD)">
+              <Input inputMode="decimal" placeholder="e.g. 45000"
+                value={form.total_liabilities_usd} onChange={(e) => update('total_liabilities_usd', decimalText(e.target.value))} />
+            </Field>
+            <Field label="Monthly Fixed OpEx (USD)">
+              <Input inputMode="decimal" placeholder="e.g. 3500"
+                value={form.monthly_fixed_opex_usd} onChange={(e) => update('monthly_fixed_opex_usd', decimalText(e.target.value))} />
+            </Field>
+            <Field label="Annual Revenue Projected (USD)">
+              <Input inputMode="decimal" placeholder="e.g. 2000000"
+                value={form.annual_revenue_projected_usd} onChange={(e) => update('annual_revenue_projected_usd', decimalText(e.target.value))} />
+            </Field>
+            <Field label="Cash Runway (months)">
+              <Input inputMode="decimal" placeholder="e.g. 6"
+                value={form.cash_runway_months} onChange={(e) => update('cash_runway_months', decimalText(e.target.value))} />
+            </Field>
+            <Field label="Breakeven Monthly Revenue (USD)" className="col-span-2 md:col-span-1">
+              <Input inputMode="decimal" placeholder="optional"
+                value={form.breakeven_monthly_revenue_usd} onChange={(e) => update('breakeven_monthly_revenue_usd', decimalText(e.target.value))} />
+            </Field>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setProfileOpen(false)}>Cancel</Button>
+            <Button disabled={saveMutation.isPending} onClick={handleSave} className="gap-2">
+              <Save className="h-3.5 w-3.5" />
+              {saveMutation.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

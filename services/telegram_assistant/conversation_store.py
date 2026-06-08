@@ -138,6 +138,17 @@ async def ensure_conversation_tables(db_url: str) -> None:
                     ON telegram.processed_messages (processed_at)
                 """
             )
+            # Migration 003: explainability columns on marketing.recommendations
+            for col_sql in [
+                "ALTER TABLE marketing.recommendations ADD COLUMN IF NOT EXISTS shap_features_json JSONB DEFAULT '[]'::jsonb",
+                "ALTER TABLE marketing.recommendations ADD COLUMN IF NOT EXISTS rule_override_json JSONB DEFAULT NULL",
+                "ALTER TABLE marketing.recommendations ADD COLUMN IF NOT EXISTS fallback_used BOOLEAN DEFAULT FALSE NOT NULL",
+                "ALTER TABLE marketing.recommendations ADD COLUMN IF NOT EXISTS model_version TEXT DEFAULT 'unknown'",
+            ]:
+                try:
+                    await cur.execute(col_sql)
+                except Exception:
+                    pass  # table may not exist yet in fresh setups
         await conn.commit()
     except Exception as exc:
         logger.warning("ensure_conversation_tables failed (may be a migration ordering issue): %s", exc)

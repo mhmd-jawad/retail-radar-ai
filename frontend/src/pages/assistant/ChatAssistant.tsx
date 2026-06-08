@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { TopBar } from '@/components/layout/TopBar';
 import {
   Bot, Send, Zap, Loader2, RefreshCw, ChevronRight,
-  AlertTriangle, Boxes, ListChecks, DollarSign, TrendingUp, Users, Target,
+  AlertTriangle, Boxes, ListChecks, TrendingUp, Users, Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/store/auth';
@@ -54,8 +55,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_reorder_suggestions: 'Reorder',
   get_sku_velocity_trend: 'Velocity',
   get_category_performance: 'Categories',
-  get_financials: 'Financials',
-  get_revenue_trend: 'Revenue',
   get_competitor_prices: 'Competitors',
   get_pending_recommendations: 'Recommendations',
   approve_recommendation: 'Approved ✓',
@@ -69,9 +68,8 @@ const QUICK_PROMPTS: { label: string; prompt: string; icon: React.ElementType }[
   { label: 'Inventory status', prompt: 'How is my inventory right now?', icon: Boxes },
   { label: 'Pending decisions', prompt: 'Show me pending recommendations', icon: ListChecks },
   { label: "Today's focus", prompt: 'What should I focus on today?', icon: Target },
-  { label: 'Sales trend', prompt: 'Are sales up this week?', icon: TrendingUp },
   { label: 'Competitor prices', prompt: 'What are competitors charging?', icon: Users },
-  { label: 'Cash position', prompt: 'How much cash do I have?', icon: DollarSign },
+  { label: 'Sales trend', prompt: 'Are sales up this week?', icon: TrendingUp },
 ];
 
 // ── Markdown renderer — handles Telegram *bold* syntax ────────────────────────
@@ -240,6 +238,7 @@ export default function ChatAssistant() {
   const user = useAuth((s) => s.user);
   const token = useAuth((s) => s.token);
   const tenantId = user?.tenant_id ?? '';
+  const location = useLocation();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -248,6 +247,7 @@ export default function ChatAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionIdRef = useRef<string>('');
+  const initialMessageFiredRef = useRef(false);
 
   // Stable session ID per tenant, persisted in sessionStorage
   useEffect(() => {
@@ -259,6 +259,17 @@ export default function ChatAssistant() {
       sessionStorage.setItem(key, sid);
     }
     sessionIdRef.current = sid;
+  }, [tenantId]);
+
+  // Fire an initial message passed via Link state (e.g. from Financial page)
+  useEffect(() => {
+    const initialMessage = (location.state as { initialMessage?: string } | null)?.initialMessage;
+    if (!initialMessage || initialMessageFiredRef.current || !tenantId) return;
+    initialMessageFiredRef.current = true;
+    // Clear navigation state so a page refresh doesn't re-fire
+    window.history.replaceState({}, '');
+    sendMessage(initialMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   // Auto-scroll to bottom on new messages

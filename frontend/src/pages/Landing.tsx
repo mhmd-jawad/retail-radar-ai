@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 import {
-  Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone, Wallet,
+  Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone,
   ListChecks, ChevronLeft, ChevronRight, Database,
   CircleDot, Pause, TrendingUp, Tag, Flame,
 } from 'lucide-react';
@@ -23,11 +23,10 @@ const MODULES = [
   { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.', status: 'live' },
   { to: '/competitive', icon: Radar, title: 'Competitive Intelligence', desc: 'Price gaps across 7 Lebanese sportswear shops.', status: 'live' },
   { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
-  { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, liquidity, working capital.', status: 'live' },
 ];
 
 const SERVICES = [
-  { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Financial · Promotions JSON' },
+  { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Promotions JSON' },
   { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend' },
   { name: 'IE1 — Forecasting', status: 'planned', desc: 'Demand & seasonality forecasts (in design)' },
   { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy, IG/FB/WhatsApp variants' },
@@ -36,7 +35,7 @@ const SERVICES = [
 ];
 
 const SHOP_SERVICES = [
-  { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, financial, and promotion signals in one workspace.' },
+  { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, and promotion signals in one workspace.' },
   { name: 'Decision Recommendations', status: 'live', desc: 'SKU-level hold, markdown, promote, and clearance guidance.' },
   { name: 'Demand Forecasting', status: 'planned', desc: 'Demand and seasonality forecasts for future planning.' },
   { name: 'Campaign Creative', status: 'planned', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
@@ -58,8 +57,6 @@ const KPIS = [
   { label: 'Promote', value: '106', tone: 'promote' },
   { label: 'Markdown', value: '156', tone: 'markdown' },
   { label: 'Clearance', value: '2', tone: 'clear' },
-  { label: 'Cash runway', value: '3.0 mo' },
-  { label: 'Inventory % of assets', value: '82.6%' },
   { label: 'Overpriced SKUs', value: '52' },
   { label: 'Underpriced SKUs', value: '44' },
   { label: 'Critical stockouts', value: '0' },
@@ -156,7 +153,7 @@ export default function Landing() {
           </h1>
 
           <p className="mt-7 text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed animate-fade-in-up animation-delay-400">
-            Retail Radar AI continuously analyzes inventory health, competitor moves, seasonality and cash position
+            Retail Radar AI continuously analyzes inventory health, competitor moves, and seasonality
             for Lebanese multi-brand sportswear retailers — and tells you exactly which SKUs to{' '}
             <span className="text-decision-hold font-semibold">hold</span>,{' '}
             <span className="text-decision-markdown font-semibold">mark down</span>,{' '}
@@ -188,7 +185,7 @@ export default function Landing() {
             <div>
               <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-amber-400/80 mb-3">// Module overview</div>
               <h2 className="font-display text-3xl md:text-5xl font-bold tracking-tight max-w-2xl">
-                Five command surfaces.<br />
+                Four command surfaces.<br />
                 <span className="text-gradient-warm">One retail brain.</span>
               </h2>
             </div>
@@ -234,7 +231,7 @@ export default function Landing() {
             Real today. <span className="text-gradient-warm">Ready for tomorrow.</span>
           </h2>
           <p className="text-muted-foreground max-w-2xl mb-12">
-            The core retail workspace runs today: inventory, competitor signals, recommendations, and financial context.
+            The core retail workspace runs today: inventory, competitor signals, recommendations, and promotion workflows.
             Forecasting and campaign creative are prepared for controlled rollout.
           </p>
 
@@ -378,7 +375,6 @@ export default function Landing() {
               { to: '/overview', icon: Radar, title: 'Executive Overview', desc: 'KPI snapshot, alerts and seasonal calendar.' },
               { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze 350 SKU decisions.' },
               { to: '/competitive', icon: Database, title: 'Competitive Intelligence', desc: 'Live price-gap analysis across 7 shops.' },
-              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
               { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
             ].map((m, i) => (
               <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
@@ -414,3 +410,4 @@ export default function Landing() {
     </div>
   );
 }
+

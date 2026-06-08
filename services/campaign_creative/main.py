@@ -666,12 +666,12 @@ async def _call_anthropic_text(brief: PromotionBrief, retry: bool = False) -> di
     system = _TEXT_SYSTEM_PROMPT + (_TEXT_RETRY_SUFFIX if retry else "")
     response = await asyncio.wait_for(
         _anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1200,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
             system=system,
             messages=[{"role": "user", "content": _text_user_message(brief)}],
         ),
-        timeout=15.0,
+        timeout=8.0,
     )
     block = next((b for b in response.content if b.type == "text"), None)
     raw = block.text.strip() if block else ""
@@ -688,12 +688,12 @@ async def _call_anthropic_image_prompt(brief: PromotionBrief) -> str:
     """Generate a DALL-E 3 image prompt using Anthropic Claude directly."""
     response = await asyncio.wait_for(
         _anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=400,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
             system=_IMAGE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": _image_user_message(brief)}],
         ),
-        timeout=10.0,
+        timeout=5.0,
     )
     block = next((b for b in response.content if b.type == "text"), None)
     return block.text.strip() if block else ""
@@ -758,7 +758,7 @@ async def _generate_image_replicate(image_prompt: str) -> str:
             "height": 1024,
             "num_outputs": 1,
             "guidance_scale": 7.5,
-            "num_inference_steps": 50,
+            "num_inference_steps": 20,
         },
     }
 
@@ -1160,7 +1160,11 @@ async def generate_campaign(
 
     fallback_used = False
 
-    # ── Steps 2 & 3 in parallel: text copy + image prompt ────────────────────
+    # ── Steps 2–4: text copy, image prompt, image generation ─────────────────
+    # Image prompt finishes fast (Haiku ~1s) → image generation starts
+    # immediately, overlapping with the text copy call.
+    # Total wall time = max(text_copy, image_prompt + image_gen)
+    # instead of     = max(text_copy, image_prompt) + image_gen
 
     async def _get_text_copy() -> tuple[dict[str, str], bool]:
         """Returns (copy_dict, used_fallback)."""
@@ -1197,27 +1201,44 @@ async def generate_campaign(
             disc = int(brief.suggested_discount_pct or 0)
             return f"{brand} {brief.product_name} sports ad, {disc}% off sale"
 
-    (text_copy, copy_fallback), image_prompt = await asyncio.gather(
-        _get_text_copy(),
-        _get_image_prompt(),
-    )
-    if copy_fallback:
-        fallback_used = True
+    # Fire text copy in the background immediately
+    text_task = asyncio.create_task(_get_text_copy())
 
-    # ── Step 4: generate image + upload to ImgBB ──────────────────────────────
-    try:
-        image_url, img_fallback = await asyncio.wait_for(
+    # Await image prompt (fast), then kick off image generation right away
+    image_prompt = await _get_image_prompt()
+    image_gen_task = asyncio.create_task(
+        asyncio.wait_for(
             _generate_image_full(image_prompt, brief),
             timeout=float(os.environ.get("IE3_IMAGE_TIMEOUT_SECONDS", "90")),
         )
-    except Exception as exc:
+    )
+
+    # Collect both results (text copy may already be done by now)
+    (text_copy, copy_fallback), image_gen_result = await asyncio.gather(
+        text_task,
+        image_gen_task,
+        return_exceptions=True,
+    )
+
+    # Handle text copy result
+    if isinstance(text_copy, BaseException):
+        logger.error("Text copy task raised: %s", text_copy)
+        text_copy, copy_fallback = _build_fallback_copy(brief), True
+
+    if copy_fallback:
+        fallback_used = True
+
+    # Handle image generation result
+    if isinstance(image_gen_result, BaseException):
         logger.error(
             "Image generation failed for sku=%s: %s - using placeholder image",
-            recommendation.sku_id,
-            exc,
+            recommendation.sku_id, image_gen_result,
         )
         image_url = FALLBACK_IMAGE_URL
         img_fallback = True
+    else:
+        image_url, img_fallback = image_gen_result
+
     if img_fallback:
         fallback_used = True
 

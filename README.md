@@ -1,4 +1,4 @@
-# StylePulse AI
+﻿# StylePulse AI
 
 > **AI-Powered Pricing & Promotion Intelligence for Adidas Single-Brand Retailers**
 
@@ -7,13 +7,13 @@
 [![Python](https://img.shields.io/badge/python-3.11-blue)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green)]()
 
-StylePulse AI is a multi-service decision-support system that monitors competitor prices daily, tracks inventory performance, understands Adidas seasonal patterns, and recommends exactly what to do with each product every week — **HOLD**, **MARKDOWN**, **PROMOTE**, or **CLEAR** — with every decision explained in plain English and requiring explicit human approval.
+StylePulse AI is a multi-service decision-support system that monitors competitor prices daily, tracks inventory performance, understands Adidas seasonal patterns, and recommends exactly what to do with each product every week â€” **HOLD**, **MARKDOWN**, **PROMOTE**, or **CLEAR** â€” with every decision explained in plain English and requiring explicit human approval.
 
 ---
 
 ## The Problem
 
-A small Adidas retailer manages 150–500 products. Every week they must decide: Is this product priced correctly? Should I discount it? They have no idea what competitors are charging for the same item today. They don't know Black Friday is 3 weeks away and they should HOLD prices. They spend 4–6 hours per week on these decisions and get them wrong 40% of the time. Wrong decisions cost **$15,000–60,000 per year**.
+A small Adidas retailer manages 150â€“500 products. Every week they must decide: Is this product priced correctly? Should I discount it? They have no idea what competitors are charging for the same item today. They don't know Black Friday is 3 weeks away and they should HOLD prices. They spend 4â€“6 hours per week on these decisions and get them wrong 40% of the time. Wrong decisions cost **$15,000â€“60,000 per year**.
 
 ## The Solution
 
@@ -21,7 +21,7 @@ StylePulse AI replaces manual guesswork with an automated weekly intelligence sy
 
 | What it does | How |
 |---|---|
-| Track competitor prices daily | Nightly scraper → `competitor_prices` table |
+| Track competitor prices daily | Nightly scraper â†’ `competitor_prices` table |
 | Understand seasonal patterns | Adidas calendar engine with category-specific scores |
 | Recommend the right action | CatBoost ML model + 5 hard business rules |
 | Write campaign copy automatically | Claude API generates Instagram/Facebook/WhatsApp copy |
@@ -33,38 +33,38 @@ StylePulse AI replaces manual guesswork with an automated weekly intelligence sy
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MERCHANT                                  │
-│                    (Dashboard / API)                              │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │
-                       ▼
-              ┌────────────────┐
-              │  EEP (port 8000) │  ← Orchestrator: auth, rate limit,
-              │  External        │     circuit breakers, confidence decay
-              │  Endpoint        │
-              └───┬────┬────┬──┘
-                  │    │    │
-          ┌───────┘    │    └────────┐
-          ▼            ▼             ▼
-   ┌────────────┐ ┌─────────────┐ ┌────────────────┐
-   │ IE1 (8001) │ │ IE2 (8002)  │ │  IE3 (8003)    │
-   │ Market     │ │ Decision    │ │  Campaign       │
-   │ Intelligence│ │ Intelligence│ │  Creative       │
-   │            │ │             │ │  (only if       │
-   │ Competitor │ │ Hard Rules  │ │   PROMOTE)      │
-   │ signals,   │ │ + CatBoost  │ │                 │
-   │ seasonality│ │ + SHAP      │ │  Claude API     │
-   └──────┬─────┘ └──────┬──────┘ └────────────────┘
-          │              │
-          ▼              ▼
-   ┌─────────────────────────────┐
-   │       PostgreSQL             │
-   │  8 tables: products,        │
-   │  inventory, sales, traffic, │
-   │  competitor_prices, features,│
-   │  recommendations, campaigns │
-   └─────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                        MERCHANT                                  â”‚
+â”‚                    (Dashboard / API)                              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                       â”‚
+                       â–¼
+              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+              â”‚  EEP (port 8000) â”‚  â† Orchestrator: auth, rate limit,
+              â”‚  External        â”‚     circuit breakers, confidence decay
+              â”‚  Endpoint        â”‚
+              â””â”€â”€â”€â”¬â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”¬â”€â”€â”˜
+                  â”‚    â”‚    â”‚
+          â”Œâ”€â”€â”€â”€â”€â”€â”€â”˜    â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â–¼            â–¼             â–¼
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ IE1 (8001) â”‚ â”‚ IE2 (8002)  â”‚ â”‚  IE3 (8003)    â”‚
+   â”‚ Market     â”‚ â”‚ Decision    â”‚ â”‚  Campaign       â”‚
+   â”‚ Intelligenceâ”‚ â”‚ Intelligenceâ”‚ â”‚  Creative       â”‚
+   â”‚            â”‚ â”‚             â”‚ â”‚  (only if       â”‚
+   â”‚ Competitor â”‚ â”‚ Hard Rules  â”‚ â”‚   PROMOTE)      â”‚
+   â”‚ signals,   â”‚ â”‚ + CatBoost  â”‚ â”‚                 â”‚
+   â”‚ seasonalityâ”‚ â”‚ + SHAP      â”‚ â”‚  Claude API     â”‚
+   â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”˜ â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜ â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          â”‚              â”‚
+          â–¼              â–¼
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚       PostgreSQL             â”‚
+   â”‚  8 tables: products,        â”‚
+   â”‚  inventory, sales, traffic, â”‚
+   â”‚  competitor_prices, features,â”‚
+   â”‚  recommendations, campaigns â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -73,21 +73,21 @@ StylePulse AI replaces manual guesswork with an automated weekly intelligence sy
 
 | Decision | Badge | Meaning | When It Fires |
 |---|---|---|---|
-| **HOLD** | 🔘 Grey | Keep current price | Selling well, stock healthy, competitively priced |
-| **MARKDOWN** | 🟠 Orange | Reduce price | Competitor cheaper, product aging, season ending |
-| **PROMOTE** | 🟢 Green | Run marketing campaign | Season perfect, stock healthy, demand rising |
-| **CLEAR** | 🔴 Red | Sell at any price | 90+ days unsold, season over, dead stock |
+| **HOLD** | ðŸ”˜ Grey | Keep current price | Selling well, stock healthy, competitively priced |
+| **MARKDOWN** | ðŸŸ  Orange | Reduce price | Competitor cheaper, product aging, season ending |
+| **PROMOTE** | ðŸŸ¢ Green | Run marketing campaign | Season perfect, stock healthy, demand rising |
+| **CLEAR** | ðŸ”´ Red | Sell at any price | 90+ days unsold, season over, dead stock |
 
 ---
 
 ## Local Development (How to Run)
 
-This section documents the **current local dev setup** — three processes run side-by-side without Docker.
+This section documents the **current local dev setup** â€” three processes run side-by-side without Docker.
 
 ### Prerequisites
 
 - Python 3.11+ with a virtual env at `../.venv` (one level above the repo root)
-- Node.js 18+ **or** Bun — use `npx vite` if Bun is not installed
+- Node.js 18+ **or** Bun â€” use `npx vite` if Bun is not installed
 - AWS RDS reachable (credentials in `.env` at repo root and `services/campaign_creative/.env`)
 
 ### Required environment files
@@ -116,7 +116,7 @@ IG_ACCESS_TOKEN=<token>
 IMGBB_API_KEY=<key>
 ```
 
-### Terminal 1 — EEP backend (port 8000)
+### Terminal 1 â€” EEP backend (port 8000)
 
 ```powershell
 cd "c:\path\to\Radar Ai"
@@ -127,7 +127,7 @@ uvicorn eep.main:app --host 0.0.0.0 --port 8000 --reload
 
 Verify: `curl http://localhost:8000/health`
 
-### Terminal 2 — IE3 Campaign Creative service (port 8003)
+### Terminal 2 â€” IE3 Campaign Creative service (port 8003)
 
 ```powershell
 cd "c:\path\to\Radar Ai"
@@ -138,7 +138,7 @@ uvicorn services.campaign_creative.main:app --host 0.0.0.0 --port 8003 --reload
 
 Verify: `curl http://localhost:8003/health`
 
-### Terminal 3 — React frontend (port 8082)
+### Terminal 3 â€” React frontend (port 8082)
 
 ```powershell
 cd "c:\path\to\Radar Ai\retail-radar-ai\frontend"
@@ -155,9 +155,8 @@ Open: http://localhost:8082
 |---|---|
 | `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
 | `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
-| `http://localhost:8082/financial` | Financial hub — Balance Sheet, Profitability, Cashflow, Progress |
 | `http://localhost:8000/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
-| `http://localhost:8000/report` | Static report JSON (financial pages) |
+| `http://localhost:8000/report` | Static report JSON |
 | `http://localhost:8000/docs` | FastAPI Swagger UI |
 | `http://localhost:8003/docs` | IE3 campaign service Swagger UI |
 
@@ -292,36 +291,36 @@ Response:
 
 ```
 stylepulse-ai/
-├── services/
-│   ├── eep/                    # Orchestrator (port 8000)
-│   ├── market_intelligence/    # IE1 — Competitor signals (port 8001)
-│   ├── decision_intelligence/  # IE2 — ML + Rules (port 8002)
-│   ├── campaign_creative/      # IE3 — LLM copy gen (port 8003)
-│   └── shared/                 # Database models, metrics
-├── ml_pipeline/
-│   ├── features/               # Feature engineering + validation
-│   ├── training/               # CatBoost + baseline training
-│   └── evaluation/             # Model comparison + promotion
-├── dashboard/                  # React frontend
-├── data/
-│   ├── synthetic/              # Generated training data
-│   └── scripts/                # Data gen + DB seeding
-├── infra/
-│   ├── k8s/                    # Kubernetes manifests
-│   └── monitoring/             # Prometheus + Grafana configs
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   │   └── golden/             # 6 mandatory golden scenarios
-│   └── e2e/
-├── docs/
-│   ├── technical/
-│   ├── business/
-│   └── mlops/
-├── docker-compose.yml
-├── Makefile
-├── PLAN.md
-└── CHANGELOG.md
+â”œâ”€â”€ services/
+â”‚   â”œâ”€â”€ eep/                    # Orchestrator (port 8000)
+â”‚   â”œâ”€â”€ market_intelligence/    # IE1 â€” Competitor signals (port 8001)
+â”‚   â”œâ”€â”€ decision_intelligence/  # IE2 â€” ML + Rules (port 8002)
+â”‚   â”œâ”€â”€ campaign_creative/      # IE3 â€” LLM copy gen (port 8003)
+â”‚   â””â”€â”€ shared/                 # Database models, metrics
+â”œâ”€â”€ ml_pipeline/
+â”‚   â”œâ”€â”€ features/               # Feature engineering + validation
+â”‚   â”œâ”€â”€ training/               # CatBoost + baseline training
+â”‚   â””â”€â”€ evaluation/             # Model comparison + promotion
+â”œâ”€â”€ dashboard/                  # React frontend
+â”œâ”€â”€ data/
+â”‚   â”œâ”€â”€ synthetic/              # Generated training data
+â”‚   â””â”€â”€ scripts/                # Data gen + DB seeding
+â”œâ”€â”€ infra/
+â”‚   â”œâ”€â”€ k8s/                    # Kubernetes manifests
+â”‚   â””â”€â”€ monitoring/             # Prometheus + Grafana configs
+â”œâ”€â”€ tests/
+â”‚   â”œâ”€â”€ unit/
+â”‚   â”œâ”€â”€ integration/
+â”‚   â”‚   â””â”€â”€ golden/             # 6 mandatory golden scenarios
+â”‚   â””â”€â”€ e2e/
+â”œâ”€â”€ docs/
+â”‚   â”œâ”€â”€ technical/
+â”‚   â”œâ”€â”€ business/
+â”‚   â””â”€â”€ mlops/
+â”œâ”€â”€ docker-compose.yml
+â”œâ”€â”€ Makefile
+â”œâ”€â”€ PLAN.md
+â””â”€â”€ CHANGELOG.md
 ```
 
 ---
@@ -346,11 +345,11 @@ stylepulse-ai/
 
 | Phase | Days | What Gets Done |
 |---|---|---|
-| **1. Foundation** | 1–3 | Repo, DB schema, synthetic data, all services return `/health` |
-| **2. Core Services** | 4–8 | IE1 + IE2 + IE3 fully working, ML model trained in MLflow |
-| **3. Integration + Dashboard** | 9–11 | EEP orchestration, 6 golden tests, React dashboard |
-| **4. Infra + Polish** | 12–13 | Docker Compose full stack, K8s manifests, Prometheus + Grafana, CI/CD |
-| **5. Docs + Deploy + Demo** | 14–15 | Cloud deploy, all docs, demo rehearsal, submission |
+| **1. Foundation** | 1â€“3 | Repo, DB schema, synthetic data, all services return `/health` |
+| **2. Core Services** | 4â€“8 | IE1 + IE2 + IE3 fully working, ML model trained in MLflow |
+| **3. Integration + Dashboard** | 9â€“11 | EEP orchestration, 6 golden tests, React dashboard |
+| **4. Infra + Polish** | 12â€“13 | Docker Compose full stack, K8s manifests, Prometheus + Grafana, CI/CD |
+| **5. Docs + Deploy + Demo** | 14â€“15 | Cloud deploy, all docs, demo rehearsal, submission |
 
 > See [PLAN.md](./PLAN.md) for the full breakdown with daily task checklists.
 
@@ -372,12 +371,12 @@ stylepulse-ai/
 
 | # | Scenario | Expected |
 |---|---|---|
-| 1 | Dead stock (150 days, 8% sell-through) | → CLEAR |
-| 2 | Low margin (12%, below 15% floor) | → NOT MARKDOWN |
-| 3 | Low stock (8 units) | → HOLD only |
-| 4 | Recent discount (14 days ago) | → NOT MARKDOWN |
-| 5 | PROMOTE decision | → Campaign creative generated |
-| 6 | Stale competitor data (36h old) | → Confidence degraded |
+| 1 | Dead stock (150 days, 8% sell-through) | â†’ CLEAR |
+| 2 | Low margin (12%, below 15% floor) | â†’ NOT MARKDOWN |
+| 3 | Low stock (8 units) | â†’ HOLD only |
+| 4 | Recent discount (14 days ago) | â†’ NOT MARKDOWN |
+| 5 | PROMOTE decision | â†’ Campaign creative generated |
+| 6 | Stale competitor data (36h old) | â†’ Confidence degraded |
 
 ### Test Counts
 
@@ -393,9 +392,9 @@ stylepulse-ai/
 
 ## Monitoring
 
-- **Prometheus:** http://localhost:9090 — service metrics
-- **Grafana:** http://localhost:3001 — observability dashboard
-- **MLflow:** http://localhost:5000 — experiment tracking, model registry
+- **Prometheus:** http://localhost:9090 â€” service metrics
+- **Grafana:** http://localhost:3001 â€” observability dashboard
+- **MLflow:** http://localhost:5000 â€” experiment tracking, model registry
 
 See [Prometheus and Grafana Monitoring](./docs/monitoring-prometheus-grafana.md) for the current EEP monitoring setup.
 
@@ -407,7 +406,7 @@ See [Prometheus and Grafana Monitoring](./docs/monitoring-prometheus-grafana.md)
 # Database
 DATABASE_URL=postgresql+asyncpg://stylepulse:stylepulse@localhost:5432/stylepulse
 
-# Service URLs (for EEP → IE1/IE2/IE3 communication)
+# Service URLs (for EEP â†’ IE1/IE2/IE3 communication)
 IE1_URL=http://localhost:8001
 IE2_URL=http://localhost:8002
 IE3_URL=http://localhost:8003
@@ -429,4 +428,4 @@ MIT
 
 ---
 
-*StylePulse AI — Team: Hassan Fouani · Mohammad Jawad · Mohammad Farhat*
+*StylePulse AI â€” Team: Hassan Fouani Â· Mohammad Jawad Â· Mohammad Farhat*

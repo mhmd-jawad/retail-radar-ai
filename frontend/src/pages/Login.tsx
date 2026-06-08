@@ -50,12 +50,11 @@ export default function Login() {
               <span className="block text-gradient-warm">Control Center</span>
             </h1>
             <p className="mt-5 max-w-md text-sm leading-6 text-muted-foreground">
-              Live retail intelligence for inventory, competitors, finance, and promotions.
+              Live retail intelligence for inventory, competitors, pricing, and promotions.
             </p>
-            <div className="mt-12 grid grid-cols-3 gap-3">
+            <div className="mt-12 grid grid-cols-2 gap-3">
               <Signal label="Inventory" tone="bg-primary" />
               <Signal label="Competitors" tone="bg-decision-promote" />
-              <Signal label="Finance" tone="bg-decision-clear" />
             </div>
           </div>
         </section>

@@ -203,179 +203,6 @@ def admin_trigger_measurement(snapshot_id: int, window_days: int) -> dict[str, A
         raise DatabaseUnavailable(str(exc)) from exc
 
 
-# ─── Client Financial Health ──────────────────────────────────────────────────
-
-def get_financial_overview() -> dict[str, Any]:
-    """
-    Cross-tenant financial health aggregate.
-    Returns derived health signals only — no individual P&L line items.
-    """
-    try:
-        with _connect() as conn:
-            with conn.cursor() as cur:
-                now = datetime.now(timezone.utc).date()
-                current_month = now.replace(day=1)
-                prev_month = (current_month - timedelta(days=1)).replace(day=1)
-
-                # Active shops count
-                cur.execute("""
-                    select count(*) as active_shops
-                    from core.tenants t
-                    join core.stores s on s.tenant_id = t.id and s.is_active = true
-                """)
-                active_shops = int(cur.fetchone()["active_shops"])
-
-                # Per-tenant latest financial snapshot
-                cur.execute("""
-                    with latest as (
-                        select distinct on (tenant_id)
-                            tenant_id,
-                            period_month,
-                            cash_on_hand + coalesce(bank_balance, 0)            as cash_total,
-                            coalesce(monthly_expenses, 0)                       as monthly_burn,
-                            coalesce(monthly_sales, 0)                          as monthly_sales,
-                            supplier_payables + coalesce(rent_payable,0)
-                              + coalesce(salary_payable,0) + coalesce(loan_balance,0)
-                              + coalesce(tax_vat_payable,0) + coalesce(other_liabilities,0)
-                                                                                 as total_liabilities,
-                            cash_on_hand + coalesce(bank_balance,0)
-                              + coalesce(receivables,0) + coalesce(equipment_fixtures,0)
-                              + coalesce(other_assets,0)                         as liquid_assets
-                        from core.tenant_financial_snapshots
-                        where period_month <= %s
-                        order by tenant_id, period_month desc
-                    )
-                    select
-                        t.id        as tenant_id,
-                        t.name      as tenant_name,
-                        l.period_month,
-                        l.cash_total,
-                        l.monthly_burn,
-                        l.monthly_sales,
-                        l.total_liabilities,
-                        l.liquid_assets,
-                        -- cash runway: cash / burn rate (avoid divide-by-zero)
-                        case when l.monthly_burn > 0
-                            then l.cash_total / l.monthly_burn
-                            else 12.0
-                        end          as cash_runway_months,
-                        -- current ratio: liquid assets / liabilities
-                        case when l.total_liabilities > 0
-                            then l.liquid_assets / l.total_liabilities
-                            else 2.0
-                        end          as current_ratio
-                    from core.tenants t
-                    left join latest l on l.tenant_id = t.id
-                    order by cash_runway_months asc nulls last
-                """, (current_month,))
-                rows = cur.fetchall()
-
-                # Blended margin from report-level data (approximate from financial snapshots)
-                # We derive margin from monthly_sales - monthly_burn relative
-                health_scores = []
-                at_risk = []
-                for r in rows:
-                    runway = float(r["cash_runway_months"] or 6.0)
-                    ratio = float(r["current_ratio"] or 1.0)
-                    # We don't have margin directly from snapshots; derive from sales/burn
-                    sales = float(r["monthly_sales"] or 0)
-                    burn = float(r["monthly_burn"] or 0)
-                    margin = ((sales - burn) / sales * 100) if sales > 0 else 0.0
-
-                    runway_score = min(100.0, runway * 16.7)
-                    ratio_score = min(100.0, ratio * 50.0)
-                    margin_score = min(100.0, max(0, margin) * 1.67)
-                    score = round(runway_score * 0.4 + ratio_score * 0.3 + margin_score * 0.3, 1)
-
-                    status = "healthy" if score >= 65 else ("watch" if score >= 40 else "at_risk")
-                    entry = {
-                        "tenant_id": str(r["tenant_id"]),
-                        "tenant_name": r["tenant_name"],
-                        "score": score,
-                        "cash_runway_months": round(runway, 1),
-                        "current_ratio": round(ratio, 2),
-                        "margin_pct": round(margin, 1),
-                        "last_snapshot": r["period_month"].isoformat() if r["period_month"] else None,
-                        "status": status,
-                    }
-                    health_scores.append(entry)
-                    if runway < 2.0 and r["period_month"] is not None:
-                        at_risk.append(entry)
-
-                shops_at_risk = len(at_risk)
-                avg_margin = (
-                    round(sum(e["margin_pct"] for e in health_scores) / len(health_scores), 1)
-                    if health_scores else 0.0
-                )
-
-                # Missing snapshots this month
-                cur.execute("""
-                    select count(*) as missing
-                    from core.tenants t
-                    where not exists (
-                        select 1 from core.tenant_financial_snapshots s
-                        where s.tenant_id = t.id and s.period_month = %s
-                    )
-                """, (current_month,))
-                missing_this_month = int(cur.fetchone()["missing"])
-
-                # Platform margin trend (6 months — avg monthly_sales - burn / sales)
-                cur.execute("""
-                    select
-                        period_month,
-                        avg(
-                            case when monthly_sales > 0
-                                then (monthly_sales - monthly_expenses) / monthly_sales * 100
-                                else null
-                            end
-                        ) as avg_margin_pct
-                    from core.tenant_financial_snapshots
-                    where period_month >= date_trunc('month', now() - interval '5 months')
-                    group by period_month
-                    order by period_month asc
-                """)
-                margin_trend = [
-                    {"month": str(r["period_month"]), "avg_margin_pct": round(float(r["avg_margin_pct"] or 0), 1)}
-                    for r in cur.fetchall()
-                ]
-
-                # Snapshot coverage: last 3 months per tenant
-                cur.execute("""
-                    select
-                        t.id        as tenant_id,
-                        t.name      as tenant_name,
-                        array_agg(s.period_month order by s.period_month desc) as submitted_months
-                    from core.tenants t
-                    left join core.tenant_financial_snapshots s
-                        on s.tenant_id = t.id
-                       and s.period_month >= date_trunc('month', now() - interval '2 months')
-                    group by t.id, t.name
-                    order by t.name
-                """)
-                coverage = [
-                    {
-                        "tenant_id": str(r["tenant_id"]),
-                        "tenant_name": r["tenant_name"],
-                        "submitted_months": [str(m) for m in (r["submitted_months"] or [])],
-                    }
-                    for r in cur.fetchall()
-                ]
-
-                return {
-                    "active_shops": active_shops,
-                    "shops_at_risk": shops_at_risk,
-                    "avg_margin_pct": avg_margin,
-                    "missing_snapshots_this_month": missing_this_month,
-                    "at_risk_shops": at_risk,
-                    "health_scores": health_scores,
-                    "margin_trend": margin_trend,
-                    "snapshot_coverage": coverage,
-                }
-    except Exception as exc:
-        if isinstance(exc, DatabaseUnavailable):
-            raise
-        raise DatabaseUnavailable(str(exc)) from exc
-
 
 # ─── Content Operations (Campaigns) ──────────────────────────────────────────
 
@@ -605,23 +432,13 @@ def get_admin_assistant_context() -> dict[str, Any]:
                 """)
                 pending_measurements = int(cur.fetchone()["n"])
 
-                cur.execute("""
-                    select count(*) as n from core.tenants t
-                    where not exists (
-                        select 1 from core.tenant_financial_snapshots s
-                        where s.tenant_id = t.id
-                          and s.period_month = date_trunc('month', now())::date
-                    )
-                """)
-                missing_financials = int(cur.fetchone()["n"])
-
                 return {
                     "tenant_count": tenant_count,
                     "pending_competitor_requests": pending_requests,
                     "pending_outcome_measurements": pending_measurements,
-                    "tenants_missing_financials_this_month": missing_financials,
                 }
     except Exception as exc:
         if isinstance(exc, DatabaseUnavailable):
             raise
         raise DatabaseUnavailable(str(exc)) from exc
+

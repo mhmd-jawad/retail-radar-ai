@@ -27,10 +27,6 @@ import type {
   CampaignCreative,
   CompetitorRequest,
   CompetitorOption,
-  DetailedBalanceSheet,
-  DetailedProfitability,
-  FinancialProgressPoint,
-  FinancialSnapshot,
   OutcomeSnapshot,
   DailySalesPoint,
   PortfolioAccuracy,
@@ -38,7 +34,6 @@ import type {
   ShopProfileInput,
   ShopSignupInput,
   AdminOutcomesAggregate,
-  AdminFinancialOverview,
   AdminCampaignsOverview,
   AdminAssistantMessage,
 } from '@/types/domain';
@@ -810,69 +805,7 @@ export async function measureAllDue(): Promise<{ measured: number; skipped: numb
   return r.json();
 }
 
-// ─── Financial detail fetchers ────────────────────────────────────────────────
-
-export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/balance-sheet`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/balance-sheet'));
-  return r.json();
-}
-
-export async function fetchDetailedProfitability(): Promise<DetailedProfitability> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/profitability`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/profitability'));
-  return r.json();
-}
-
-export interface CashflowMonth { month: string; in: number; out: number; net: number }
-
-export async function fetchCashflow(): Promise<CashflowMonth[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/cashflow`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/cashflow'));
-  const json = await r.json();
-  // backend wraps series in { series: [...] }, unwrap if needed
-  return Array.isArray(json) ? json : (json.series ?? []);
-}
-
-export async function fetchFinancialSnapshots(): Promise<FinancialSnapshot[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
-  const json = await r.json();
-  return json.snapshots ?? [];
-}
-
-export async function fetchCurrentFinancialSnapshot(): Promise<{ period_month: string; missing_snapshot: boolean; snapshot: FinancialSnapshot | null }> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots/current`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots/current'));
-  return r.json();
-}
-
-export async function saveFinancialSnapshot(periodMonth: string, payload: Partial<FinancialSnapshot>): Promise<FinancialSnapshot> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots/${encodeURIComponent(periodMonth)}`, {
-    method: 'PUT',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
-  const json = await r.json();
-  return json.snapshot;
-}
-
-export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/progress?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/progress'));
-  const json = await r.json();
-  return json.series ?? [];
-}
-
-// ─── Admin Platform Operations ────────────────────────────────────────────────
+// Admin Platform Operations ────────────────────────────────────────────────
 
 export async function fetchAdminOutcomes(): Promise<AdminOutcomesAggregate> {
   const { base } = settings();
@@ -892,12 +825,6 @@ export async function triggerAdminMeasurement(snapshotId: number, windowDays: 7 
   return r.json();
 }
 
-export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
-  const { base } = settings();
-  const r = await fetch(`${base}/admin/financial/overview`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/admin/financial/overview ${r.status}`);
-  return r.json();
-}
 
 export async function fetchAdminCampaignsOverview(): Promise<AdminCampaignsOverview> {
   const { base } = settings();
@@ -928,18 +855,47 @@ export async function persistCampaign(input: PersistCampaignInput): Promise<{ ca
   return r.json();
 }
 
-export async function adminAssistantChat(
-  message: string,
-  sessionId?: string,
-): Promise<{ reply: string; tools_used: string[]; session_id: string }> {
+
+export interface RetailerSocialAccount {
+  id: string;
+  platform: string;
+  account_name: string | null;
+  page_id: string | null;
+  user_id: string | null;
+  is_active: boolean;
+  token_expires_at: string | null;
+  created_at: string;
+}
+
+export async function fetchSocialAccounts(): Promise<RetailerSocialAccount[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/admin/assistant/chat`, {
-    method: 'POST',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ message, session_id: sessionId ?? '' }),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'admin assistant'));
+  const r = await fetch(`${base}/social/accounts`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'social accounts'));
   return r.json();
+}
+
+export async function updateSocialDisplayName(
+  platform: string,
+  accountName: string,
+): Promise<{ platform: string; account_name: string; is_active: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/social/accounts/${platform}`, {
+    method: 'PATCH',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ account_name: accountName }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'update social display name'));
+  return r.json();
+}
+
+
+function asArray<T = any>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 // Supabase-ready stubs (future)
@@ -957,3 +913,4 @@ export const supabaseRepo = {
 export function modeLabel(m: DataMode) {
   return ({ 'mock-report': 'Mock Report', 'ie2-live': 'IE2 Live', 'eep-live': 'EEP Live', 'supabase-ready': 'Supabase' } as const)[m];
 }
+

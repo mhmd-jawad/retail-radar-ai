@@ -255,7 +255,7 @@ function TimelineRow({ row }: { row: OutcomeRow }) {
 type FilterDecision = 'ALL' | Decision;
 type FilterStatus = 'ALL' | 'tracking' | 'measured_7d' | 'completed' | 'insufficient_data';
 
-export default function FinancialOutcomes() {
+export default function ClosedLoopOutcomes() {
   const qc = useQueryClient();
   const [filterDecision, setFilterDecision] = useState<FilterDecision>('ALL');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('ALL');

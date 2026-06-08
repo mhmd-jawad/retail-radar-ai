@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
+  LayoutDashboard, ListChecks, Boxes, Radar, Megaphone,
   Activity, Bot, Target,
   User, LogOut,
   type LucideIcon,
@@ -26,7 +26,6 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
       { to: '/inventory', label: 'Inventory & Stock', icon: Boxes },
       { to: '/competitive', label: 'Competitive', icon: Radar },
       { to: '/promotions', label: 'Promotions', icon: Megaphone },
-      { to: '/financial', label: 'Financial', icon: Wallet },
     ],
   },
   {

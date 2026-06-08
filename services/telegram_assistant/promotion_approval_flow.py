@@ -84,11 +84,13 @@ class PromoteFlow:
         ie3_base_url: str,
         telegram_client: "TelegramClient",
         conversation_manager: "ConversationManager",
+        business_data_service: "Any | None" = None,
     ) -> None:
         self._db_url = db_url
         self._ie3 = ie3_base_url.rstrip("/")
         self._telegram = telegram_client
         self._conv = conversation_manager
+        self._bds = business_data_service  # reuse app-level warmed instance
 
     # ── Poller ────────────────────────────────────────────────────────────────
 
@@ -236,15 +238,17 @@ class PromoteFlow:
         # Fetch live signals so generate_rich_context reasons from real data
         live_signals: dict = {}
         try:
-            from services.telegram_assistant.business_data_service import BusinessDataService as _BDS
-            import os as _os
-            _db_url = self._db_url
-            _bds = _BDS(db_url=_db_url, financial_data_path="", eep_base_url="")
-            # Resolve tenant_id to string for query
             _tid = str(tenant_id)
-            live_signals = await _bds._fetch_live_signals_for_recommendation(
-                _tid, sku_id, suggested_discount
-            )
+            if self._bds is not None:
+                live_signals = await self._bds._fetch_live_signals_for_recommendation(
+                    _tid, sku_id, suggested_discount
+                )
+            else:
+                from services.telegram_assistant.business_data_service import BusinessDataService as _BDS
+                _bds = _BDS(db_url=self._db_url, eep_base_url="")
+                live_signals = await _bds._fetch_live_signals_for_recommendation(
+                    _tid, sku_id, suggested_discount
+                )
         except Exception as sig_exc:
             logger.warning("Live signal fetch skipped for %s: %s", sku_id, sig_exc)
 
