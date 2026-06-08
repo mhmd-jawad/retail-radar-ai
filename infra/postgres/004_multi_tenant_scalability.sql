@@ -76,9 +76,16 @@ BEGIN
             DROP CONSTRAINT IF EXISTS closed_loop_notifications_chat_id_snapshot_id_window_days_noti_key;
 
         -- Add new constraint that includes tenant_id
-        ALTER TABLE telegram.closed_loop_notifications
-            ADD CONSTRAINT closed_loop_notifications_tenant_unique
-            UNIQUE (tenant_id, chat_id, snapshot_id, window_days, notification_type);
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'closed_loop_notifications_tenant_unique'
+              AND conrelid = 'telegram.closed_loop_notifications'::regclass
+        ) THEN
+            ALTER TABLE telegram.closed_loop_notifications
+                ADD CONSTRAINT closed_loop_notifications_tenant_unique
+                UNIQUE (tenant_id, chat_id, snapshot_id, window_days, notification_type);
+        END IF;
     END IF;
 END $$;
 

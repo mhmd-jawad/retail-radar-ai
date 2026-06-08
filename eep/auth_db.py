@@ -1349,3 +1349,119 @@ def _b64(raw: bytes) -> str:
 def _unb64(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
+
+
+# ── Admin Social Account Management ──────────────────────────────────────────
+
+
+def admin_list_social_accounts(ctx: AuthContext, tenant_id: str) -> list[dict[str, Any]]:
+    """Return all social accounts for a tenant (admin only).
+
+    Tokens are masked for display — only the first/last 6 chars are shown.
+    """
+    _require_admin(ctx)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select platform, account_name, page_id, user_id,
+                       is_active, webhook_registered_at, created_at,
+                       left(access_token, 6) || '…' || right(access_token, 6) as token_preview
+                from marketing.tenant_social_accounts
+                where tenant_id = %s
+                order by platform
+                """,
+                (tenant_id,),
+            )
+            return [_row(r) for r in cur.fetchall()]
+
+
+def admin_upsert_social_account(
+    ctx: AuthContext,
+    tenant_id: str,
+    platform: str,
+    access_token: str,
+    page_id: str | None = None,
+    user_id: str | None = None,
+    account_name: str | None = None,
+    webhook_registered_at: Any = None,
+) -> dict[str, Any]:
+    """Insert or update a social account credential for a tenant (admin only).
+
+    Uses ON CONFLICT upsert so re-saving a token is safe.
+    Returns the saved row (with masked token).
+    """
+    _require_admin(ctx)
+    allowed = {"facebook", "instagram", "tiktok", "telegram"}
+    if platform not in allowed:
+        raise ValueError(f"platform must be one of {allowed}")
+    if not access_token or not access_token.strip():
+        raise ValueError("access_token must not be empty")
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into marketing.tenant_social_accounts
+                    (tenant_id, platform, access_token, page_id, user_id,
+                     account_name, is_active, webhook_registered_at)
+                values (%s, %s, %s, %s, %s, %s, true, %s)
+                on conflict (tenant_id, platform) do update
+                set access_token          = excluded.access_token,
+                    page_id               = excluded.page_id,
+                    user_id               = excluded.user_id,
+                    account_name          = excluded.account_name,
+                    is_active             = true,
+                    webhook_registered_at = excluded.webhook_registered_at
+                returning platform, account_name, page_id, user_id,
+                          is_active, webhook_registered_at, created_at,
+                          left(access_token, 6) || '…' || right(access_token, 6) as token_preview
+                """,
+                (
+                    tenant_id, platform, access_token.strip(),
+                    page_id or None, user_id or None, account_name or None,
+                    webhook_registered_at,
+                ),
+            )
+            return _row(cur.fetchone())
+
+
+def admin_remove_social_account(
+    ctx: AuthContext, tenant_id: str, platform: str
+) -> None:
+    """Deactivate (soft-delete) a social account for a tenant (admin only)."""
+    _require_admin(ctx)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update marketing.tenant_social_accounts
+                set is_active = false
+                where tenant_id = %s and platform = %s
+                """,
+                (tenant_id, platform),
+            )
+
+
+def get_tenants_with_telegram_credentials() -> list[dict[str, Any]]:
+    """Return all tenants that have an active Telegram bot token AND a registered chat.
+
+    Used by alert_dispatcher to route notifications to the right bot + chat.
+    Returns rows with: tenant_id, bot_token, chat_id.
+    """
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select tsa.tenant_id::text,
+                       tsa.access_token   as bot_token,
+                       tc.chat_id
+                from marketing.tenant_social_accounts tsa
+                join telegram.conversations tc on tc.tenant_id = tsa.tenant_id
+                where tsa.platform = 'telegram'
+                  and tsa.is_active = true
+                  and tc.is_active  = true
+                order by tsa.tenant_id
+                """
+            )
+            return [_row(r) for r in cur.fetchall()]

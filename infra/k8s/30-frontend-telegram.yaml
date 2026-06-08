@@ -36,7 +36,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: telegram, namespace: retail-radar }
 spec:
-  replicas: 0
+  replicas: 1
   strategy: { type: Recreate }      # never run two at once during a rollout
   selector: { matchLabels: { app: telegram } }
   template:
@@ -50,6 +50,13 @@ spec:
           envFrom:
             - configMapRef: { name: retail-config }
             - secretRef:    { name: retail-secrets }
+          env:
+            - { name: TELEGRAM_POLLING_ENABLED, value: "false" }
+            - { name: TELEGRAM_DIRECT_ALERTS_ENABLED, value: "false" }
+            - { name: TELEGRAM_PROMOTION_NOTIFICATIONS_ENABLED, value: "false" }
+            - { name: TELEGRAM_CLOSED_LOOP_NOTIFICATIONS_ENABLED, value: "false" }
+            - { name: TELEGRAM_BUSINESS_ALERTS_ENABLED, value: "false" }
+            - { name: TELEGRAM_ROADMAP_FOLLOWUPS_ENABLED, value: "false" }
           readinessProbe: { httpGet: { path: /health, port: 8004 }, initialDelaySeconds: 15, periodSeconds: 15 }
           livenessProbe:  { httpGet: { path: /health, port: 8004 }, initialDelaySeconds: 45, periodSeconds: 30 }
           resources:

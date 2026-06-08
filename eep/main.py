@@ -30,6 +30,7 @@ except ImportError:
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from psycopg import errors as psycopg_errors
 
 from eep.auth_db import (
     AuthContext,
@@ -42,6 +43,9 @@ from eep.auth_db import (
     admin_list_notifications,
     admin_list_tenants,
     admin_impersonate_shop,
+    admin_list_social_accounts,
+    admin_upsert_social_account,
+    admin_remove_social_account,
     admin_review_competitor_request,
     admin_update_shop_status,
     authenticate_token,
@@ -2122,6 +2126,8 @@ _DEFAULT_FINANCIAL_CONFIG = {
 def _load_financial_config(cur, tenant_id: str) -> dict[str, Any]:
     """Load per-tenant financial config from DB, falling back to system defaults."""
     import json as _json
+    if not _table_exists(cur, "core.tenant_financial_config"):
+        return dict(_DEFAULT_FINANCIAL_CONFIG)
     cur.execute(
         """
         SELECT currency, opex_categories, monthly_fixed_opex_usd, blended_margin_pct,
@@ -2149,6 +2155,11 @@ def _load_financial_config(cur, tenant_id: str) -> dict[str, Any]:
         "logistics_pct": float(row.get("logistics_pct") or 2.0),
         "shrinkage_pct": float(row.get("shrinkage_pct") or 0.8),
     }
+
+
+def _table_exists(cur, table_name: str) -> bool:
+    cur.execute("SELECT to_regclass(%s) AS table_name", (table_name,))
+    return bool((cur.fetchone() or {}).get("table_name"))
 
 
 _DATA_REAL = Path(__file__).resolve().parents[1] / "data" / "real"
@@ -2227,29 +2238,43 @@ def _snapshot_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _load_latest_financial_snapshot(cur, tenant_id: str) -> dict[str, Any] | None:
-    cur.execute(
-        """
-        SELECT *
-        FROM core.tenant_financial_snapshots
-        WHERE tenant_id = %s
-        ORDER BY period_month DESC
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    return cur.fetchone()
+    if not _financial_snapshot_table_exists(cur):
+        return None
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s
+            ORDER BY period_month DESC
+            LIMIT 1
+            """,
+            (tenant_id,),
+        )
+        return cur.fetchone()
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return None
+        raise
 
 
 def _load_financial_snapshot_for_period(cur, tenant_id: str, period_month: str) -> dict[str, Any] | None:
-    cur.execute(
-        """
-        SELECT *
-        FROM core.tenant_financial_snapshots
-        WHERE tenant_id = %s AND period_month = %s
-        """,
-        (tenant_id, period_month),
-    )
-    return cur.fetchone()
+    if not _financial_snapshot_table_exists(cur):
+        return None
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s AND period_month = %s
+            """,
+            (tenant_id, period_month),
+        )
+        return cur.fetchone()
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return None
+        raise
 
 
 def _current_inventory_at_cost(cur, tenant_id: str) -> float:
@@ -2266,17 +2291,35 @@ def _current_inventory_at_cost(cur, tenant_id: str) -> float:
 
 
 def _list_financial_snapshots(cur, tenant_id: str, limit: int = 12) -> list[dict[str, Any]]:
-    cur.execute(
-        """
-        SELECT *
-        FROM core.tenant_financial_snapshots
-        WHERE tenant_id = %s
-        ORDER BY period_month DESC
-        LIMIT %s
-        """,
-        (tenant_id, min(max(limit, 1), 36)),
-    )
-    return cur.fetchall() or []
+    if not _financial_snapshot_table_exists(cur):
+        return []
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s
+            ORDER BY period_month DESC
+            LIMIT %s
+            """,
+            (tenant_id, min(max(limit, 1), 36)),
+        )
+        return cur.fetchall() or []
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return []
+        raise
+
+
+def _financial_snapshot_table_missing(exc: Exception) -> bool:
+    if isinstance(exc, psycopg_errors.UndefinedTable):
+        return True
+    return "tenant_financial_snapshots" in str(exc) and "does not exist" in str(exc).lower()
+
+
+def _financial_snapshot_table_exists(cur) -> bool:
+    cur.execute("SELECT to_regclass('core.tenant_financial_snapshots') AS table_name")
+    return bool((cur.fetchone() or {}).get("table_name"))
 
 
 # ── Financial config endpoints ────────────────────────────────────────────────
@@ -2317,6 +2360,11 @@ def financial_snapshot_put(period_month: str, request: Request, body: dict[str, 
         with _connect() as conn:
             with conn.cursor() as cur:
                 ctx = _context(cur, tenant_id=request_tenant_id)
+                if not _financial_snapshot_table_exists(cur):
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Financial snapshot schema is missing. Apply infra/postgres/005_financial_snapshots.sql.",
+                    )
                 values["inventory_at_cost_usd"] = _current_inventory_at_cost(cur, ctx["tenant_id"])
                 cur.execute(
                     """
@@ -2645,6 +2693,104 @@ def generate_registration_code(tenant_id: str, request: Request) -> dict[str, An
                 )
             conn.commit()
         return {"code": code, "expires_in": "7 days", "usage": f"/register {code}"}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ── Admin: Social Account Credentials per Tenant ─────────────────────────────
+
+
+class SocialAccountPayload(BaseModel):
+    platform: str
+    access_token: str
+    page_id: str | None = None
+    user_id: str | None = None
+    account_name: str | None = None
+
+
+@app.get("/admin/tenants/{tenant_id}/social-accounts")
+def admin_get_social_accounts(tenant_id: str, request: Request) -> list[dict[str, Any]]:
+    """List all connected social accounts for a tenant (admin only). Tokens are masked."""
+    ctx = _required_admin(request)
+    try:
+        return admin_list_social_accounts(ctx, tenant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/tenants/{tenant_id}/social-accounts")
+async def admin_save_social_account(
+    tenant_id: str, payload: SocialAccountPayload, request: Request
+) -> dict[str, Any]:
+    """Save (upsert) a social account credential for a tenant.
+
+    For platform='telegram', the EEP service automatically calls Telegram's
+    setWebhook API to register a per-tenant webhook at
+    {TELEGRAM_WEBHOOK_BASE_URL}/webhook/telegram/{tenant_id}.
+    """
+    ctx = _required_admin(request)
+    webhook_registered_at = None
+
+    if payload.platform == "telegram":
+        webhook_base = os.environ.get("TELEGRAM_WEBHOOK_BASE_URL", "").rstrip("/")
+        if webhook_base:
+            webhook_url = f"{webhook_base}/webhook/telegram/{tenant_id}"
+            try:
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(
+                        f"https://api.telegram.org/bot{payload.access_token}/setWebhook",
+                        json={"url": webhook_url},
+                    )
+                    result = resp.json()
+                    if result.get("ok"):
+                        from datetime import datetime, timezone
+                        webhook_registered_at = datetime.now(timezone.utc)
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Telegram setWebhook failed: {result.get('description', 'unknown error')}. "
+                                   "Check the bot token and try again.",
+                        )
+            except _httpx.RequestError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Could not reach Telegram API: {exc}",
+                ) from exc
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="TELEGRAM_WEBHOOK_BASE_URL is not configured on the server. "
+                       "Set it to your public server URL (e.g. https://api.yourdomain.com).",
+            )
+
+    try:
+        saved = admin_upsert_social_account(
+            ctx,
+            tenant_id=tenant_id,
+            platform=payload.platform,
+            access_token=payload.access_token,
+            page_id=payload.page_id,
+            user_id=payload.user_id,
+            account_name=payload.account_name,
+            webhook_registered_at=webhook_registered_at,
+        )
+        return {**saved, "webhook_registered": webhook_registered_at is not None}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/admin/tenants/{tenant_id}/social-accounts/{platform}")
+def admin_delete_social_account(
+    tenant_id: str, platform: str, request: Request
+) -> dict[str, Any]:
+    """Deactivate a social account for a tenant (admin only). Reversible via re-save."""
+    ctx = _required_admin(request)
+    try:
+        admin_remove_social_account(ctx, tenant_id, platform)
+        return {"ok": True, "platform": platform}
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

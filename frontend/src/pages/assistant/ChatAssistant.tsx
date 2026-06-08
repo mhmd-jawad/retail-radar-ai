@@ -28,6 +28,26 @@ const ASSISTANT_BASE =
   (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ??
   (import.meta.env.PROD ? '/assistant-api' : 'http://localhost:8004');
 
+async function assistantErrorMessage(res: Response): Promise<string> {
+  let detail = '';
+  try {
+    const payload = await res.json();
+    detail = typeof payload?.detail === 'string' ? payload.detail : JSON.stringify(payload);
+  } catch {
+    detail = await res.text().catch(() => '');
+  }
+  if (res.status === 401 || res.status === 403) {
+    return 'Your dashboard session is not authorized for Radar Assistant. Log in again.';
+  }
+  if (res.status === 503) {
+    return `Radar Assistant service is not ready${detail ? `: ${detail}` : ''}`;
+  }
+  if (res.status >= 500) {
+    return `Radar Assistant backend failed${detail ? `: ${detail}` : ''}`;
+  }
+  return detail || `Radar Assistant request failed with HTTP ${res.status}`;
+}
+
 const TOOL_LABELS: Record<string, string> = {
   get_inventory_overview: 'Inventory',
   get_stockout_days: 'Stockouts',
@@ -282,11 +302,7 @@ export default function ChatAssistant() {
         });
 
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Your dashboard session is not authorized for Radar Assistant. Log in again.');
-          }
-          const errText = await res.text().catch(() => '');
-          throw new Error(errText || `HTTP ${res.status}`);
+          throw new Error(await assistantErrorMessage(res));
         }
 
         const data = (await res.json()) as { reply: string; tools_used: string[] };
@@ -303,6 +319,8 @@ export default function ChatAssistant() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         const authError = msg.includes('not authorized') || msg.includes('Log in again');
+        const serviceError = msg.includes('service is not ready');
+        const backendError = msg.includes('backend failed');
         setMessages((prev) => [
           ...prev,
           {
@@ -311,7 +329,11 @@ export default function ChatAssistant() {
             content:
               authError
                 ? 'Your session is not authorized for Radar Assistant. Please log in again.'
-                : 'Something went wrong — please try again in a moment. If the issue persists, check that the assistant service is running.',
+                : serviceError
+                  ? 'Radar Assistant is starting or not wired in this deployment yet. Try again after the assistant service is healthy.'
+                  : backendError
+                    ? 'Radar Assistant reached the backend, but the backend failed while answering. Please try again in a moment.'
+                    : 'Something went wrong. Please try again in a moment.',
             timestamp: new Date(),
             error: true,
           },

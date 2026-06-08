@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextvars
 import json as _json
 import logging
 import os
@@ -64,7 +65,6 @@ def _env_enabled(name: str, default: bool = False) -> bool:
 
 # ── Required env vars ─────────────────────────────────────────────────────────
 _REQUIRED_ENV_VARS: list[tuple[str, str]] = [
-    ("TELEGRAM_BOT_TOKEN",  "Telegram Bot token from @BotFather"),
     ("ANTHROPIC_API_KEY",   "Anthropic API key for the LLM agent"),
     ("DATABASE_URL",        "PostgreSQL connection string"),
 ]
@@ -82,15 +82,13 @@ def _validate_env_vars() -> None:
     _polling_enabled = os.environ.get("TELEGRAM_POLLING_ENABLED", "true").strip().lower()
     _polling_on = _polling_enabled in {"1", "true", "yes", "on"}
     _webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    _bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if _polling_on and not _bot_token:
+        logger.warning("TELEGRAM_BOT_TOKEN is not set - Telegram polling will stay disabled.")
     if not _webhook_secret:
-        if not _polling_on:
-            raise RuntimeError(
-                "TELEGRAM_WEBHOOK_SECRET must be set when TELEGRAM_POLLING_ENABLED=false. "
-                "Set it to secure your public webhook endpoint."
-            )
         logger.warning(
             "TELEGRAM_WEBHOOK_SECRET is not set — webhook secret verification is DISABLED. "
-            "This is acceptable for local dev (polling mode) but must be set in production."
+            "Set it before enabling the public Telegram webhook."
         )
 
 
@@ -139,6 +137,10 @@ radar_inventory_value_usd = Gauge(
 
 # ── Module-level singletons ───────────────────────────────────────────────────
 _telegram_client: TelegramClient | None = None
+# Per-request override so per-tenant webhook responses use the right bot token
+_active_telegram_client: contextvars.ContextVar[TelegramClient | None] = contextvars.ContextVar(
+    "_active_telegram_client", default=None
+)
 _conv_manager: ConversationManager | None = None
 _ai_engine: AIEngine | None = None
 _business_data_service: BusinessDataService | None = None
@@ -452,10 +454,11 @@ async def _mark_processed(db_url: str, tenant_id: UUID, message_id: str) -> None
 # ── Send helper ───────────────────────────────────────────────────────────────
 
 async def _send_and_count(chat_id: str, reply: str) -> None:
-    if _telegram_client is None:
+    client = _active_telegram_client.get() or _telegram_client
+    if client is None:
         raise RuntimeError("Telegram client not ready")
     try:
-        await _telegram_client.send_text_message(chat_id, reply)
+        await client.send_text_message(chat_id, reply)
         telegram_outbound_messages_total.inc()
     except Exception:
         telegram_send_errors_total.inc()
@@ -689,6 +692,9 @@ async def _telegram_polling_loop() -> None:
             "Set TELEGRAM_POLLING_ENABLED=false to suppress this warning."
         )
         return
+    if not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
+        logger.info("Telegram polling disabled because TELEGRAM_BOT_TOKEN is not configured.")
+        return
 
     while _telegram_client is None:
         await asyncio.sleep(1)
@@ -714,22 +720,56 @@ async def _telegram_polling_loop() -> None:
             await asyncio.sleep(5)
 
 
+async def _get_tenant_bot_token(tenant_id: str) -> str | None:
+    """Return the Telegram bot token stored for this tenant, or None if not configured."""
+    conn = await psycopg.AsyncConnection.connect(_db_url, row_factory=dict_row)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT access_token AS bot_token
+                FROM marketing.tenant_social_accounts
+                WHERE tenant_id = %s AND platform = 'telegram' AND is_active = true
+                LIMIT 1
+                """,
+                (tenant_id,),
+            )
+            row = await cur.fetchone()
+        return row["bot_token"] if row else None
+    except Exception as exc:
+        logger.warning("Could not look up bot token for tenant %s: %s", tenant_id, exc)
+        return None
+    finally:
+        await conn.close()
+
+
 async def _multi_tenant_alert_loop(
     db_url: str,
     telegram_client: "TelegramClient",
     financial_data_path: str,
     interval_seconds: int = 1800,
 ) -> None:
-    """Run all alert checks for every registered tenant every `interval_seconds`."""
+    """Run all alert checks for every registered tenant every `interval_seconds`.
+
+    Each tenant uses its own bot token if one is stored in marketing.tenant_social_accounts.
+    Tenants with no custom token fall back to the shared demo client.
+    """
     await asyncio.sleep(60)  # Initial delay so service fully starts
     while True:
         try:
             tenant_chats = await _get_all_active_tenant_chats()
             for tc in tenant_chats:
                 try:
+                    # Use the tenant's own bot token when available; fall back to demo client.
+                    custom_token = await _get_tenant_bot_token(str(tc["tenant_id"]))
+                    if custom_token:
+                        from services.telegram_assistant.telegram_client import TelegramClient as _TC
+                        tenant_tg_client = _TC(custom_token)
+                    else:
+                        tenant_tg_client = telegram_client
                     dispatcher = AlertDispatcher(
                         db_url=db_url,
-                        telegram_client=telegram_client,
+                        telegram_client=tenant_tg_client,
                         retailer_chat_id=tc["chat_id"],
                         tenant_id=tc["tenant_id"],
                         financial_data_path=financial_data_path,
@@ -821,6 +861,77 @@ async def receive_webhook(request: Request):
     _verify_telegram_secret(request)
     body = _json.loads(await request.body())
     return await _process_telegram_update(body)
+
+
+@app.post("/webhook/telegram/{tenant_id}")
+async def receive_webhook_for_tenant(tenant_id: str, request: Request):
+    """Receive inbound Telegram updates for a per-tenant bot (registered via admin panel).
+
+    Each retailer's bot is configured with its own webhook URL:
+      POST /webhook/telegram/{tenant_id}
+    This allows per-retailer bot isolation while sharing one service instance.
+    The demo bot continues using the static /webhook/telegram route above.
+    """
+    if _ai_engine is None or _business_data_service is None:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    # Look up the bot token for this tenant to build a per-tenant TelegramClient
+    try:
+        conn = await psycopg.AsyncConnection.connect(_db_url, row_factory=dict_row)
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    select access_token as bot_token
+                    from marketing.tenant_social_accounts
+                    where tenant_id = %s and platform = 'telegram' and is_active = true
+                    limit 1
+                    """,
+                    (tenant_id,),
+                )
+                row = await cur.fetchone()
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.error("DB lookup failed for tenant webhook %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"No active Telegram bot for tenant {tenant_id}")
+
+    # Build a per-tenant TelegramClient and pin it to this request via ContextVar so
+    # _send_and_count (and everything it calls) uses the right bot token throughout.
+    from services.telegram_assistant.telegram_client import TelegramClient as _TC
+    tenant_client = _TC(row["bot_token"])
+    ctx_token = _active_telegram_client.set(tenant_client)
+    try:
+        body = _json.loads(await request.body())
+
+        inbound = tenant_client.parse_incoming_update(body)
+        if inbound is None:
+            telegram_ignored_webhooks_total.inc()
+            return {"ok": True}
+
+        telegram_inbound_messages_total.inc()
+        chat_id = inbound.chat_id
+        cmd_text = inbound.text.strip()
+
+        if cmd_text.startswith("/register"):
+            parts = cmd_text.split(maxsplit=1)
+            code = parts[1].strip() if len(parts) > 1 else ""
+            if not code:
+                await _send_and_count(chat_id, "Usage: /register <your-registration-code>")
+            else:
+                await _handle_register_command(chat_id, code)
+            return {"ok": True}
+
+        if cmd_text == "/help":
+            await _handle_help_command(chat_id)
+            return {"ok": True}
+
+        return await _process_telegram_update(body)
+    finally:
+        _active_telegram_client.reset(ctx_token)
 
 
 async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:

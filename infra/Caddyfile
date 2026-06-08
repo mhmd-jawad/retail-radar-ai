@@ -23,6 +23,10 @@
 		reverse_proxy ie3_campaign_creative:8003
 	}
 
+	handle_path /assistant-api/* {
+		reverse_proxy telegram_assistant:8004
+	}
+
 	handle {
 		reverse_proxy frontend:80
 	}

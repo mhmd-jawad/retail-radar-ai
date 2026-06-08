@@ -123,9 +123,9 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
           {/* Social publish status chips */}
           {(creative.social_posts?.length ?? 0) > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">Live on:</span>
+              <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">Channels:</span>
               {creative.social_posts!.map(sp => {
-                const icons: Record<string, string> = { facebook: '👥', instagram: '📸', whatsapp: '💬', tiktok: '🎵' };
+                const icons: Record<string, string> = { facebook: '👥', instagram: '📸', telegram: '✈️', tiktok: '🎵' };
                 const icon = icons[sp.platform.toLowerCase()] ?? '🔗';
                 if (sp.success && sp.post_url) {
                   return (
@@ -137,8 +137,13 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
                 }
                 return (
                   <span key={sp.platform} title={sp.error ?? 'publish failed'}
-                    className="h-7 px-3 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/70 text-[11px] inline-flex items-center gap-1 cursor-default">
+                    className="h-7 px-3 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/70 text-[11px] inline-flex items-center gap-1 cursor-default max-w-[220px]">
                     {icon} {sp.platform} ✗
+                    {sp.error && (
+                      <span className="truncate text-[9px] text-red-400/50 ml-1 hidden sm:inline">
+                        — {sp.error.replace(/^[A-Za-z0-9_]+Error:\s*/i, '').slice(0, 60)}
+                      </span>
+                    )}
                   </span>
                 );
               })}
@@ -147,12 +152,12 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
         </div>
       </div>
 
-      {/* Copy grid: Instagram · Facebook · TikTok · WhatsApp */}
+      {/* Copy grid: Instagram · Facebook · Telegram */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
         {[
           { l: 'Instagram', v: creative.instagram_post,    emoji: '📸' },
           { l: 'Facebook',  v: creative.facebook_post,     emoji: '👥' },
-          { l: 'WhatsApp',  v: creative.whatsapp_broadcast, emoji: '💬' },
+          { l: 'Telegram',  v: creative.telegram_broadcast, emoji: '✈️' },
         ].filter(c => c.v).map(c => (
           <div key={c.l} className="rounded-lg bg-card border border-border/60 p-3">
             <div className="flex items-center justify-between mb-1.5">
@@ -176,7 +181,7 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
 // Promote accordion row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
+function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: number; onGenerated?: () => void }) {
   const { campaignCache, setCampaign, whatsappNumber, mode } = useSettings();
   const tenantScope = useTenantScopeKey();
   const campaignKey = scopedSkuKey(item.sku_id, tenantScope);
@@ -209,9 +214,10 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
       setCreative(data);
       setCampaign(item.sku_id, data);
       setExpanded(true);
+      onGenerated?.();
       const failed = (data.social_posts ?? []).filter(p => !p.success);
       if (failed.length) {
-        toast.error(`Partial failure: ${failed.map(p => p.platform).join(', ')}`);
+        toast.warning(`Draft ready; publish failed for ${failed.map(p => p.platform).join(', ')}`);
       } else {
         toast.success(`Campaign live for ${item.product_name}`);
       }
@@ -271,7 +277,7 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
           >
             {mutation.isPending
               ? <><Loader2 className="h-3 w-3 animate-spin" />Generating…</>
-              : <><Sparkles className="h-3 w-3" />Generate & Post</>
+              : <><Sparkles className="h-3 w-3" />Generate</>
             }
           </button>
         )}
@@ -279,7 +285,7 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
       {mutation.isPending && (
         <div className="px-12 py-2.5 bg-emerald-500/5 border-t border-border flex items-center gap-2.5 text-[11px] text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin text-emerald-500" />
-          <span className="animate-pulse">Writing copy → Creating image → Publishing to social…</span>
+          <span className="animate-pulse">Writing copy and trying social publishing...</span>
         </div>
       )}
       {expanded && creative && (
@@ -293,7 +299,7 @@ function PromoteRow({ item, index }: { item: PromoteItem; index: number }) {
 // Markdown interactive row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MarkdownRow({ item }: { item: MarkdownItem }) {
+function MarkdownRow({ item, onActioned }: { item: MarkdownItem; onActioned?: () => void }) {
   const [customPct, setCustomPct] = useState(item.suggested_discount_pct);
   const [applied, setApplied] = useState(false);
   const newPrice = item.current_price_usd * (1 - customPct / 100);
@@ -304,6 +310,7 @@ function MarkdownRow({ item }: { item: MarkdownItem }) {
       `Markdown ${customPct}% applied — ${item.product_name}`),
     onSuccess: ({ db_connected }) => {
       setApplied(true);
+      onActioned?.();
       if (db_connected) {
         toast.success(`Markdown saved — ${item.product_name} → ${fmtUSD(newPrice)}`);
       } else {
@@ -366,7 +373,7 @@ function MarkdownRow({ item }: { item: MarkdownItem }) {
 // Clearance card with confirm action
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ClearanceCard({ item }: { item: ClearanceItem }) {
+function ClearanceCard({ item, onActioned }: { item: ClearanceItem; onActioned?: () => void }) {
   const [confirmed, setConfirmed] = useState(false);
   const [customPrice, setCustomPrice] = useState(item.suggested_price_usd.toFixed(2));
   const parsedPrice = Number(customPrice);
@@ -383,8 +390,9 @@ function ClearanceCard({ item }: { item: ClearanceItem }) {
     ),
     onSuccess: ({ db_connected }) => {
       setConfirmed(true);
+      onActioned?.();
       if (db_connected) {
-        toast.success(`Clearance saved — ${item.product_name} at ${fmtUSD(parsedPrice)}`);
+        toast.success(`Clearance saved — ${item.product_name} at ${fmtUSD(parsedPrice, { decimals: 2 })}`);
       } else {
         toast.warning(`Clearance applied locally — SKU not synced to DB yet`);
       }
@@ -424,7 +432,7 @@ function ClearanceCard({ item }: { item: ClearanceItem }) {
         )}>
           <span className="text-[11px] px-2 text-muted-foreground bg-muted/40">$</span>
           <input
-            type="number" min={0.01} step={0.5} value={customPrice}
+            type="number" min={0.01} step={0.01} value={customPrice}
             onChange={e => setCustomPrice(e.target.value)}
             disabled={confirmed || mutation.isPending}
             className="w-20 h-7 text-[12px] font-mono px-1 bg-background focus:outline-none disabled:opacity-50"
@@ -437,7 +445,7 @@ function ClearanceCard({ item }: { item: ClearanceItem }) {
       </div>
       {confirmed
         ? <div className="h-8 flex items-center gap-1.5 text-[12px] text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" />Clearance confirmed at {fmtUSD(parsedPrice)}
+            <CheckCircle2 className="h-4 w-4" />Clearance confirmed at {fmtUSD(parsedPrice, { decimals: 2 })}
           </div>
         : <button
             onClick={() => mutation.mutate()}
@@ -460,7 +468,7 @@ function ClearanceCard({ item }: { item: ClearanceItem }) {
 // Hold Pricing row with acknowledge
 // ─────────────────────────────────────────────────────────────────────────────
 
-function HoldRow({ item }: { item: HoldPricingItem }) {
+function HoldRow({ item, onActioned }: { item: HoldPricingItem; onActioned?: () => void }) {
   const [acked, setAcked] = useState(false);
 
   const mutation = useMutation({
@@ -468,6 +476,7 @@ function HoldRow({ item }: { item: HoldPricingItem }) {
       `Hold pricing reviewed — ${item.product_name} (margin ${fmtPct(item.margin_pct, 0)}, velocity ${item.velocity}/d)`),
     onSuccess: ({ db_connected }) => {
       setAcked(true);
+      onActioned?.();
       if (db_connected) {
         toast.success(`${item.product_name} — hold acknowledged & logged`);
       } else {
@@ -514,6 +523,8 @@ export default function Promotions() {
   const { campaignCache } = useSettings();
   const tenantScope = useTenantScopeKey();
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [actioned, setActioned] = useState({ promote: 0, markdown: 0, clearance: 0, hold: 0 });
+  const inc = (key: keyof typeof actioned) => setActioned(a => ({ ...a, [key]: a[key] + 1 }));
 
   if (isLoading) return (<><TopBar title="Promotions & Campaigns" /><PageSkeleton /></>);
 
@@ -546,6 +557,9 @@ export default function Promotions() {
   async function handleGenerateAll() {
     setGeneratingAll(true);
     const { setCampaign } = useSettings.getState();
+    let generated = 0;
+    let partial = 0;
+    let failedCount = 0;
     for (const item of p.promote) {
       if (campaignCache[scopedSkuKey(item.sku_id, tenantScope)]) continue;
       try {
@@ -556,28 +570,37 @@ export default function Promotions() {
         });
         setCampaign(item.sku_id, creative);
         const failed = creative.social_posts.filter(sp => !sp.success);
-        if (failed.length) toast.error(`${item.product_name}: partial — ${failed.map(sp => sp.platform).join(', ')}`);
+        generated += 1;
+        if (failed.length) {
+          partial += 1;
+          toast.warning(`${item.product_name}: draft ready; publish failed for ${failed.map(sp => sp.platform).join(', ')}`);
+        }
       } catch (err: unknown) {
+        failedCount += 1;
         toast.error(`${item.product_name}: ${err instanceof Error ? err.message : 'failed'}`);
       }
     }
     setGeneratingAll(false);
-    toast.success('All campaigns generated');
+    if (failedCount) {
+      toast.warning(`Campaign batch finished: ${generated} generated, ${partial} partial, ${failedCount} failed`);
+    } else {
+      toast.success(`Campaign batch finished: ${generated} generated${partial ? `, ${partial} partial` : ''}`);
+    }
   }
 
   return (
     <>
       <TopBar
         title="Promotions & Campaigns"
-        subtitle={`${p.summary.promote_count} promote · ${p.summary.markdown_count} markdown · ${p.summary.clearance_count} clearance · ${p.summary.hold_count} hold`}
+        subtitle={`${p.promote.length - actioned.promote} promote · ${p.markdown.length - actioned.markdown} markdown · ${p.clearance.length - actioned.clearance} clearance · ${p.hold_pricing.length - actioned.hold} hold`}
       />
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
         <Tabs defaultValue="promote">
           <TabsList className="bg-surface-raised border border-border">
-            <TabsTrigger value="promote">Promote ({p.promote.length})</TabsTrigger>
-            <TabsTrigger value="markdown">Markdown ({p.markdown.length})</TabsTrigger>
-            <TabsTrigger value="clearance">Clearance ({p.clearance.length})</TabsTrigger>
-            <TabsTrigger value="hold">Hold Pricing ({p.hold_pricing.length})</TabsTrigger>
+            <TabsTrigger value="promote">Promote ({p.promote.length - actioned.promote})</TabsTrigger>
+            <TabsTrigger value="markdown">Markdown ({p.markdown.length - actioned.markdown})</TabsTrigger>
+            <TabsTrigger value="clearance">Clearance ({p.clearance.length - actioned.clearance})</TabsTrigger>
+            <TabsTrigger value="hold">Hold Pricing ({p.hold_pricing.length - actioned.hold})</TabsTrigger>
             <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
           </TabsList>
 
@@ -593,7 +616,7 @@ export default function Promotions() {
                 <span>{generatedCount} of {p.promote.length} campaigns generated</span>
                 {generatedCount > 0 && (
                   <span className="inline-flex items-center gap-1 text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />{generatedCount} live
+                    <CheckCircle2 className="h-3 w-3" />{generatedCount} ready
                   </span>
                 )}
               </div>
@@ -616,7 +639,7 @@ export default function Promotions() {
                 <span className="text-right">Action</span>
               </div>
               {p.promote.map((item, i) => (
-                <PromoteRow key={item.sku_id} item={item} index={i} />
+                <PromoteRow key={item.sku_id} item={item} index={i} onGenerated={() => inc('promote')} />
               ))}
             </div>
           </TabsContent>
@@ -643,7 +666,7 @@ export default function Promotions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {p.markdown.map(m => <MarkdownRow key={m.sku_id} item={m} />)}
+                  {p.markdown.map(m => <MarkdownRow key={m.sku_id} item={m} onActioned={() => inc('markdown')} />)}
                 </tbody>
               </table>
             </div>
@@ -657,7 +680,7 @@ export default function Promotions() {
               detail="Items sitting far beyond their expected days of supply with very low velocity. Clearing them now recovers cash and shelf space before they become a write-off. Override the AI-suggested price if needed, then confirm."
             />
             <div className="grid md:grid-cols-2 gap-4">
-              {p.clearance.map(c => <ClearanceCard key={c.sku_id} item={c} />)}
+              {p.clearance.map(c => <ClearanceCard key={c.sku_id} item={c} onActioned={() => inc('clearance')} />)}
             </div>
           </TabsContent>
 
@@ -680,7 +703,7 @@ export default function Promotions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {p.hold_pricing.map(h => <HoldRow key={h.sku_id} item={h} />)}
+                  {p.hold_pricing.map(h => <HoldRow key={h.sku_id} item={h} onActioned={() => inc('hold')} />)}
                 </tbody>
               </table>
             </div>

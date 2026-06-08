@@ -272,7 +272,7 @@ export interface CampaignCreative {
   ad_copy_long: string;
   instagram_post: string;
   facebook_post: string;
-  whatsapp_broadcast: string;
+  telegram_broadcast: string;
   cta_primary: string;
   cta_secondary: string;
   image_url: string;
