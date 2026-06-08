@@ -855,6 +855,9 @@ def _ensure_auth_tables(conn) -> None:
     global _AUTH_TABLES_READY
     if _AUTH_TABLES_READY:
         return
+    if os.environ.get("AUTH_ENSURE_RUNTIME_SCHEMA", "false").lower() not in {"1", "true", "yes"}:
+        _AUTH_TABLES_READY = True
+        return
     with _AUTH_TABLES_LOCK:
         if _AUTH_TABLES_READY:
             return

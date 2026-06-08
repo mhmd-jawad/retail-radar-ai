@@ -24,6 +24,8 @@ _SCHEMA_READY = False
 _SCHEMA_LOCK = threading.Lock()
 _DETAIL_COLUMNS_READY = False
 _DETAIL_COLUMNS_LOCK = threading.Lock()
+_SYSTEM_DECISION_TABLES_READY = False
+_SYSTEM_DECISION_TABLES_LOCK = threading.Lock()
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -172,7 +174,9 @@ def _connect():
 
     try:
         _ensure_schema(conn)
-        _ensure_inventory_detail_columns(conn)
+        if os.environ.get("RETAIL_ENSURE_RUNTIME_SCHEMA", "false").lower() in {"1", "true", "yes"}:
+            _ensure_inventory_detail_columns(conn)
+            _ensure_system_decision_tables(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -224,6 +228,94 @@ def _ensure_inventory_detail_columns(conn) -> None:
             )
         conn.commit()
         _DETAIL_COLUMNS_READY = True
+
+
+def _ensure_system_decision_tables(conn) -> None:
+    """Apply backend-owned recommendation sync tables on existing databases."""
+    global _SYSTEM_DECISION_TABLES_READY
+    if _SYSTEM_DECISION_TABLES_READY:
+        return
+    with _SYSTEM_DECISION_TABLES_LOCK:
+        if _SYSTEM_DECISION_TABLES_READY:
+            return
+        with conn.cursor() as cur:
+            cur.execute("create schema if not exists marketing")
+            cur.execute(
+                """
+                create table if not exists marketing.system_decision_runs (
+                    id uuid primary key default gen_random_uuid(),
+                    tenant_id uuid not null references core.tenants(id) on delete cascade,
+                    trigger text not null,
+                    status text not null default 'queued'
+                        check (status in ('queued', 'running', 'completed', 'partial', 'failed')),
+                    total_count integer not null default 0,
+                    completed_count integer not null default 0,
+                    failed_count integer not null default 0,
+                    summary_error text,
+                    started_at timestamptz not null default now(),
+                    finished_at timestamptz,
+                    updated_at timestamptz not null default now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_system_decision_runs_tenant_started
+                    on marketing.system_decision_runs (tenant_id, started_at desc)
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_system_decision_runs_active
+                    on marketing.system_decision_runs (tenant_id, status, started_at desc)
+                    where status in ('queued', 'running')
+                """
+            )
+            cur.execute(
+                """
+                create table if not exists marketing.system_decision_latest (
+                    tenant_id uuid not null references core.tenants(id) on delete cascade,
+                    sku_id text not null,
+                    variant_id uuid references core.sku_variants(id) on delete set null,
+                    run_id uuid references marketing.system_decision_runs(id) on delete set null,
+                    status text not null default 'pending'
+                        check (status in ('pending', 'syncing', 'live', 'error')),
+                    recommendation text check (recommendation in ('HOLD', 'MARKDOWN', 'PROMOTE', 'CLEAR')),
+                    confidence numeric(6,4),
+                    model_version text,
+                    rule_override text,
+                    fallback_used boolean not null default false,
+                    requires_human_approval boolean not null default false,
+                    suggested_price_usd numeric(12,2),
+                    suggested_discount_pct numeric(6,2),
+                    decision_payload jsonb,
+                    input_context jsonb,
+                    competitor_signals jsonb,
+                    error_stage text,
+                    error_code text,
+                    error_detail text,
+                    sync_trigger text,
+                    synced_at timestamptz,
+                    created_at timestamptz not null default now(),
+                    updated_at timestamptz not null default now(),
+                    primary key (tenant_id, sku_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_system_decision_latest_tenant_status
+                    on marketing.system_decision_latest (tenant_id, status, updated_at desc)
+                """
+            )
+            cur.execute(
+                """
+                create index if not exists idx_system_decision_latest_tenant_decision
+                    on marketing.system_decision_latest (tenant_id, recommendation, updated_at desc)
+                """
+            )
+        conn.commit()
+        _SYSTEM_DECISION_TABLES_READY = True
 
 
 def _context(cur, tenant_id: Any | None = None, store_code_override: str | None = None) -> dict[str, Any]:
@@ -350,6 +442,527 @@ def list_inventory_items(search: str | None = None, limit: int = 500, tenant_id:
             )
             items = [_serialize_item(row) for row in cur.fetchall()]
     return {"items": items, "summary": _summary(items)}
+
+
+def list_active_inventory_sku_ids(tenant_id: Any | None = None) -> list[str]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select v.sku_id
+                from core.sku_variants v
+                join core.products p on p.id = v.product_id
+                left join core.inventory_balances b
+                    on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
+                left join marketing.system_decision_latest sdl
+                    on sdl.tenant_id = v.tenant_id and sdl.sku_id = v.sku_id
+                where v.tenant_id = %s and v.status = 'active'
+                order by
+                    case
+                        when sdl.sku_id is null or sdl.status = 'error' then 0
+                        when sdl.status = 'syncing' then 1
+                        else 2
+                    end,
+                    lower(p.brand),
+                    lower(p.name),
+                    v.sku_id
+                """,
+                (ctx["store_id"], ctx["tenant_id"]),
+            )
+            return [str(row["sku_id"]) for row in cur.fetchall()]
+
+
+def list_unsynced_inventory_sku_ids(tenant_id: Any | None = None) -> list[str]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select v.sku_id
+                from core.sku_variants v
+                join core.products p on p.id = v.product_id
+                left join core.inventory_balances b
+                    on b.variant_id = v.id and b.store_id = %s and b.tenant_id = v.tenant_id
+                left join marketing.system_decision_latest sdl
+                    on sdl.tenant_id = v.tenant_id and sdl.sku_id = v.sku_id
+                where v.tenant_id = %s
+                  and v.status = 'active'
+                  and (sdl.sku_id is null or sdl.status = 'error')
+                order by lower(p.brand), lower(p.name), v.sku_id
+                """,
+                (ctx["store_id"], ctx["tenant_id"]),
+            )
+            return [str(row["sku_id"]) for row in cur.fetchall()]
+
+
+def list_tenant_ids() -> list[str]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select id from core.tenants order by created_at asc")
+            return [str(row["id"]) for row in cur.fetchall()]
+
+
+def list_system_decision_latest(tenant_id: Any | None = None) -> dict[str, Any]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select count(*) as active_skus
+                from core.sku_variants
+                where tenant_id = %s and status = 'active'
+                """,
+                (ctx["tenant_id"],),
+            )
+            active_skus = int(cur.fetchone()["active_skus"] or 0)
+            cur.execute(
+                """
+                select
+                    sdl.*,
+                    p.name as product_name,
+                    p.brand,
+                    p.category
+                from marketing.system_decision_latest sdl
+                left join core.sku_variants v
+                    on v.tenant_id = sdl.tenant_id and v.sku_id = sdl.sku_id
+                left join core.products p on p.id = v.product_id
+                where sdl.tenant_id = %s
+                order by lower(coalesce(p.brand, '')), lower(coalesce(p.name, '')), sdl.sku_id
+                """,
+                (ctx["tenant_id"],),
+            )
+            items = [_serialize_system_decision_latest(row) for row in cur.fetchall()]
+            cur.execute(
+                """
+                select *
+                from marketing.system_decision_runs
+                where tenant_id = %s
+                order by started_at desc
+                limit 1
+                """,
+                (ctx["tenant_id"],),
+            )
+            latest_run_row = cur.fetchone()
+    status_counts: dict[str, int] = {}
+    for item in items:
+        status_counts[item["status"]] = status_counts.get(item["status"], 0) + 1
+    synced_skus = {item["sku_id"] for item in items if item["status"] in {"live", "syncing", "error"}}
+    return {
+        "items": items,
+        "summary": {
+            "active_skus": active_skus,
+            "tracked_skus": len(synced_skus),
+            "live_count": status_counts.get("live", 0),
+            "error_count": status_counts.get("error", 0),
+            "syncing_count": status_counts.get("syncing", 0),
+            "unsynced_count": max(0, active_skus - len(synced_skus)),
+            "status_counts": status_counts,
+        },
+        "latest_run": _serialize_system_decision_run(latest_run_row) if latest_run_row else None,
+    }
+
+
+def get_active_system_decision_run(tenant_id: Any | None = None) -> dict[str, Any] | None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select *
+                from marketing.system_decision_runs
+                where tenant_id = %s and status in ('queued', 'running')
+                order by started_at desc
+                limit 1
+                """,
+                (ctx["tenant_id"],),
+            )
+            row = cur.fetchone()
+            return _serialize_system_decision_run(row) if row else None
+
+
+def fail_stale_system_decision_runs(stale_minutes: int, reason: str) -> dict[str, int]:
+    """Recover runs abandoned by a process restart or a stuck downstream call."""
+    stale_minutes = max(1, int(stale_minutes))
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                with stale_runs as (
+                    update marketing.system_decision_runs
+                    set status = 'failed',
+                        summary_error = %s,
+                        finished_at = coalesce(finished_at, now()),
+                        updated_at = now()
+                    where status in ('queued', 'running')
+                      and updated_at < now() - make_interval(mins => %s)
+                    returning id
+                ),
+                stale_latest as (
+                    update marketing.system_decision_latest latest
+                    set status = 'error',
+                        recommendation = null,
+                        confidence = 0,
+                        model_version = 'error',
+                        fallback_used = true,
+                        requires_human_approval = true,
+                        decision_payload = jsonb_build_object(
+                            'recommendation', 'HOLD',
+                            'confidence', 0,
+                            'model_version', 'error',
+                            'fallback_used', true,
+                            'requires_human_approval', true,
+                            'error', %s::text,
+                            'error_stage', 'SYNC',
+                            'error_code', 'STALE_SYNC'
+                        ),
+                        input_context = null,
+                        competitor_signals = null,
+                        error_stage = 'SYNC',
+                        error_code = 'STALE_SYNC',
+                        error_detail = %s,
+                        synced_at = now(),
+                        updated_at = now()
+                    where latest.status = 'syncing'
+                      and (
+                        latest.run_id in (select id from stale_runs)
+                        or latest.updated_at < now() - make_interval(mins => %s)
+                      )
+                    returning sku_id
+                )
+                select
+                    (select count(*) from stale_runs) as stale_runs,
+                    (select count(*) from stale_latest) as stale_items
+                """,
+                (reason, stale_minutes, reason, reason[:2000], stale_minutes),
+            )
+            row = cur.fetchone() or {}
+            return {
+                "stale_runs": int(row.get("stale_runs") or 0),
+                "stale_items": int(row.get("stale_items") or 0),
+            }
+
+
+def create_system_decision_run(trigger: str, total_count: int, tenant_id: Any | None = None) -> dict[str, Any]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                insert into marketing.system_decision_runs (tenant_id, trigger, status, total_count)
+                values (%s, %s, 'queued', %s)
+                returning *
+                """,
+                (ctx["tenant_id"], trigger, total_count),
+            )
+            return _serialize_system_decision_run(cur.fetchone())
+
+
+def get_system_decision_run(run_id: str, tenant_id: Any | None = None) -> dict[str, Any] | None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            ctx = _context(cur, tenant_id=tenant_id)
+            cur.execute(
+                """
+                select *
+                from marketing.system_decision_runs
+                where id = %s and tenant_id = %s
+                """,
+                (run_id, ctx["tenant_id"]),
+            )
+            row = cur.fetchone()
+            return _serialize_system_decision_run(row) if row else None
+
+
+def update_system_decision_run(
+    run_id: str,
+    *,
+    tenant_id: Any,
+    status: str | None = None,
+    completed_count: int | None = None,
+    failed_count: int | None = None,
+    summary_error: str | None = None,
+    finished: bool = False,
+) -> dict[str, Any] | None:
+    assignments = ["updated_at = now()"]
+    params: list[Any] = []
+    if status is not None:
+        assignments.append("status = %s")
+        params.append(status)
+    if completed_count is not None:
+        assignments.append("completed_count = %s")
+        params.append(completed_count)
+    if failed_count is not None:
+        assignments.append("failed_count = %s")
+        params.append(failed_count)
+    if summary_error is not None:
+        assignments.append("summary_error = %s")
+        params.append(summary_error)
+    if finished:
+        assignments.append("finished_at = now()")
+    params.extend([run_id, tenant_id])
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                update marketing.system_decision_runs
+                set {", ".join(assignments)}
+                where id = %s and tenant_id = %s
+                returning *
+                """,
+                params,
+            )
+            row = cur.fetchone()
+            return _serialize_system_decision_run(row) if row else None
+
+
+def system_decision_run_exists_today(
+    tenant_id: Any,
+    trigger: str,
+    timezone_name: str = "Asia/Beirut",
+) -> bool:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select 1
+                from marketing.system_decision_runs
+                where tenant_id = %s
+                  and trigger = %s
+                  and (started_at at time zone %s)::date = (now() at time zone %s)::date
+                limit 1
+                """,
+                (tenant_id, trigger, timezone_name, timezone_name),
+            )
+            return cur.fetchone() is not None
+
+
+def mark_system_decisions_syncing(
+    sku_ids: list[str],
+    *,
+    tenant_id: Any,
+    run_id: str,
+    trigger: str,
+) -> None:
+    if not sku_ids:
+        return
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            for sku_id in sku_ids:
+                cur.execute(
+                    """
+                    insert into marketing.system_decision_latest (
+                        tenant_id, sku_id, variant_id, run_id, status, sync_trigger, updated_at
+                    )
+                    values (
+                        %s,
+                        %s,
+                        (
+                            select id
+                            from core.sku_variants
+                            where tenant_id = %s and sku_id = %s
+                            order by updated_at desc
+                            limit 1
+                        ),
+                        %s,
+                        'syncing',
+                        %s,
+                        now()
+                    )
+                    on conflict (tenant_id, sku_id) do update set
+                        variant_id = excluded.variant_id,
+                        run_id = excluded.run_id,
+                        status = 'syncing',
+                        sync_trigger = excluded.sync_trigger,
+                        error_stage = null,
+                        error_code = null,
+                        error_detail = null,
+                        updated_at = now()
+                    """,
+                    (tenant_id, sku_id, tenant_id, sku_id, run_id, trigger),
+                )
+
+
+def upsert_system_decision_success(
+    sku_id: str,
+    result: dict[str, Any],
+    *,
+    tenant_id: Any,
+    run_id: str,
+    trigger: str,
+) -> None:
+    recommendation = result.get("recommendation")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into marketing.system_decision_latest (
+                    tenant_id, sku_id, variant_id, run_id, status, recommendation, confidence,
+                    model_version, rule_override, fallback_used, requires_human_approval,
+                    suggested_price_usd, suggested_discount_pct, decision_payload, input_context,
+                    competitor_signals, sync_trigger, synced_at, updated_at
+                )
+                values (
+                    %s,
+                    %s,
+                    (
+                        select id
+                        from core.sku_variants
+                        where tenant_id = %s and sku_id = %s
+                        order by updated_at desc
+                        limit 1
+                    ),
+                    %s,
+                    'live',
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s::jsonb,
+                    %s::jsonb,
+                    %s::jsonb,
+                    %s,
+                    now(),
+                    now()
+                )
+                on conflict (tenant_id, sku_id) do update set
+                    variant_id = excluded.variant_id,
+                    run_id = excluded.run_id,
+                    status = 'live',
+                    recommendation = excluded.recommendation,
+                    confidence = excluded.confidence,
+                    model_version = excluded.model_version,
+                    rule_override = excluded.rule_override,
+                    fallback_used = excluded.fallback_used,
+                    requires_human_approval = excluded.requires_human_approval,
+                    suggested_price_usd = excluded.suggested_price_usd,
+                    suggested_discount_pct = excluded.suggested_discount_pct,
+                    decision_payload = excluded.decision_payload,
+                    input_context = excluded.input_context,
+                    competitor_signals = excluded.competitor_signals,
+                    error_stage = null,
+                    error_code = null,
+                    error_detail = null,
+                    sync_trigger = excluded.sync_trigger,
+                    synced_at = excluded.synced_at,
+                    updated_at = now()
+                """,
+                (
+                    tenant_id,
+                    sku_id,
+                    tenant_id,
+                    sku_id,
+                    run_id,
+                    recommendation,
+                    _optional_float(result.get("confidence")),
+                    result.get("model_version"),
+                    result.get("rule_override"),
+                    bool(result.get("fallback_used")),
+                    bool(result.get("requires_human_approval")),
+                    _optional_float(result.get("suggested_price_usd")),
+                    _optional_float(result.get("suggested_discount_pct")),
+                    json.dumps(_json_dumpable(result)),
+                    json.dumps(_json_dumpable(result.get("input_context"))),
+                    json.dumps(_json_dumpable(result.get("competitor_signals_used"))),
+                    trigger,
+                ),
+            )
+
+
+def upsert_system_decision_error(
+    sku_id: str,
+    *,
+    tenant_id: Any,
+    run_id: str,
+    trigger: str,
+    error_stage: str,
+    error_code: str,
+    error_detail: str,
+) -> None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into marketing.system_decision_latest (
+                    tenant_id, sku_id, variant_id, run_id, status, recommendation, confidence,
+                    model_version, fallback_used, requires_human_approval, decision_payload,
+                    error_stage, error_code, error_detail, sync_trigger, synced_at, updated_at
+                )
+                values (
+                    %s,
+                    %s,
+                    (
+                        select id
+                        from core.sku_variants
+                        where tenant_id = %s and sku_id = %s
+                        order by updated_at desc
+                        limit 1
+                    ),
+                    %s,
+                    'error',
+                    null,
+                    0,
+                    'error',
+                    true,
+                    true,
+                    %s::jsonb,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    now(),
+                    now()
+                )
+                on conflict (tenant_id, sku_id) do update set
+                    variant_id = excluded.variant_id,
+                    run_id = excluded.run_id,
+                    status = 'error',
+                    recommendation = null,
+                    confidence = 0,
+                    model_version = 'error',
+                    fallback_used = true,
+                    requires_human_approval = true,
+                    decision_payload = excluded.decision_payload,
+                    input_context = null,
+                    competitor_signals = null,
+                    error_stage = excluded.error_stage,
+                    error_code = excluded.error_code,
+                    error_detail = excluded.error_detail,
+                    sync_trigger = excluded.sync_trigger,
+                    synced_at = excluded.synced_at,
+                    updated_at = now()
+                """,
+                (
+                    tenant_id,
+                    sku_id,
+                    tenant_id,
+                    sku_id,
+                    run_id,
+                    json.dumps(
+                        _json_dumpable(
+                            {
+                                "sku_id": sku_id,
+                                "recommendation": "HOLD",
+                                "confidence": 0,
+                                "model_version": "error",
+                                "fallback_used": True,
+                                "requires_human_approval": True,
+                                "error": error_detail,
+                                "error_stage": error_stage,
+                                "error_code": error_code,
+                            }
+                        )
+                    ),
+                    error_stage,
+                    error_code,
+                    error_detail[:2000],
+                    trigger,
+                ),
+            )
 
 
 def create_inventory_item(payload: InventoryItemPayload, tenant_id: Any | None = None) -> dict[str, Any]:
@@ -978,6 +1591,54 @@ def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _serialize_system_decision_latest(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row.get("decision_payload") if isinstance(row.get("decision_payload"), dict) else {}
+    return {
+        "tenant_id": str(row.get("tenant_id")),
+        "sku_id": str(row.get("sku_id")),
+        "variant_id": str(row["variant_id"]) if row.get("variant_id") else None,
+        "run_id": str(row["run_id"]) if row.get("run_id") else None,
+        "status": row.get("status"),
+        "recommendation": row.get("recommendation"),
+        "confidence": _optional_float(row.get("confidence")),
+        "model_version": row.get("model_version"),
+        "rule_override": row.get("rule_override"),
+        "fallback_used": bool(row.get("fallback_used")),
+        "requires_human_approval": bool(row.get("requires_human_approval")),
+        "suggested_price_usd": _optional_float(row.get("suggested_price_usd")),
+        "suggested_discount_pct": _optional_float(row.get("suggested_discount_pct")),
+        "decision_payload": _jsonable(row.get("decision_payload")),
+        "input_context": _jsonable(row.get("input_context")),
+        "competitor_signals": _jsonable(row.get("competitor_signals")),
+        "error_stage": row.get("error_stage"),
+        "error_code": row.get("error_code"),
+        "error_detail": row.get("error_detail"),
+        "sync_trigger": row.get("sync_trigger"),
+        "synced_at": _jsonable(row.get("synced_at")),
+        "created_at": _jsonable(row.get("created_at")),
+        "updated_at": _jsonable(row.get("updated_at")),
+        "product_name": row.get("product_name") or payload.get("product_name"),
+        "brand": row.get("brand"),
+        "category": row.get("category"),
+    }
+
+
+def _serialize_system_decision_run(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(row.get("id")),
+        "tenant_id": str(row.get("tenant_id")),
+        "trigger": row.get("trigger"),
+        "status": row.get("status"),
+        "total_count": int(row.get("total_count") or 0),
+        "completed_count": int(row.get("completed_count") or 0),
+        "failed_count": int(row.get("failed_count") or 0),
+        "summary_error": row.get("summary_error"),
+        "started_at": _jsonable(row.get("started_at")),
+        "finished_at": _jsonable(row.get("finished_at")),
+        "updated_at": _jsonable(row.get("updated_at")),
+    }
+
+
 def _audit(
     cur,
     tenant_id: Any,
@@ -1027,6 +1688,15 @@ def _number(value: Any) -> float:
     if value is None:
         return 0.0
     return round(float(value), 2)
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_database_url() -> str:
