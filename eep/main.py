@@ -234,13 +234,9 @@ def _startup_accounts() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    overview = report_overview()
     return {
         "status": "healthy",
         "service": "eep",
-        "report_ready": True,
-        "sku_count": overview["sku_count"],
-        "shops_covered": overview["shop_count"],
     }
 
 
