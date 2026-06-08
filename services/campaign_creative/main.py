@@ -524,6 +524,8 @@ def _truncate_copy_fields(copy: dict) -> dict:
         "ad_copy_long": 400,
     }
     result = dict(copy)
+    if "telegram_message" not in result and "whatsapp_message" in result:
+        result["telegram_message"] = result["whatsapp_message"]
     for key, limit in limits.items():
         if key in result and isinstance(result[key], str):
             result[key] = result[key][:limit]
@@ -532,13 +534,17 @@ def _truncate_copy_fields(copy: dict) -> dict:
 
 def _validate_copy_keys(copy: dict) -> bool:
     required = {
-        "instagram_caption", "facebook_post", "tiktok_caption", "telegram_message",
+        "instagram_caption", "facebook_post", "tiktok_caption",
         "headline", "ad_copy_short", "ad_copy_long",
         "cta_primary", "cta_secondary",
     }
+    has_message = any(
+        isinstance(copy.get(key), str) and copy[key].strip()
+        for key in ("telegram_message", "whatsapp_message")
+    )
     return required.issubset(copy.keys()) and all(
         isinstance(copy[k], str) and copy[k].strip() for k in required
-    )
+    ) and has_message
 
 
 # ── LLM Prompts ───────────────────────────────────────────────────────────────
