@@ -15,3 +15,6 @@ k8s.env
 pgbouncer.env
 uvicorn.log
 *.log
+
+data/
+temp_data/
