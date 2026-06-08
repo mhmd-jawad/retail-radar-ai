@@ -1483,16 +1483,16 @@ def _set_current_stock(
                 %s,
                 v.cost_price_usd,
                 v.cost_price_usd * %s,
-                pr.amount_usd,
-                pr.amount_usd * %s,
+                pr.amount,
+                pr.amount * %s,
                 case
-                    when pr.amount_usd > 0
-                    then round((pr.amount_usd - v.cost_price_usd) / pr.amount_usd * 100, 2)
+                    when pr.amount > 0
+                    then round((pr.amount - v.cost_price_usd) / pr.amount * 100, 2)
                     else null
                 end
             from core.sku_variants v
             left join lateral (
-                select amount_usd from core.prices
+                select amount from core.prices
                 where variant_id = v.id and price_type = 'retail'
                 order by valid_from desc limit 1
             ) pr on true
