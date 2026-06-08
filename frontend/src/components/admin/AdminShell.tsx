@@ -9,7 +9,6 @@ import {
   Settings,
   Shield,
   Store,
-  Target,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,7 +25,6 @@ const sections: NavSection[] = [
     heading: 'Platform Operations',
     items: [
       { to: '/admin', label: 'Dashboard', icon: Shield, end: true },
-      { to: '/admin/outcomes', label: 'Model Intelligence', icon: Target },
       { to: '/admin/financial', label: 'Client Financial', icon: LineChart },
       { to: '/admin/campaigns', label: 'Content Ops', icon: Megaphone },
     ],
