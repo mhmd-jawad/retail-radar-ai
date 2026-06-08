@@ -23,6 +23,28 @@ logger = logging.getLogger("telegram_assistant.ai_engine")
 
 MAX_TOOL_ITERATIONS = 5
 
+_STAFF_BLOCKED_TOOLS = {"get_financials", "get_revenue_trend"}
+
+
+def _role_system_suffix(role: str) -> str:
+    """Return a role-specific addendum appended to the system prompt."""
+    if role == "staff":
+        return (
+            "\n\n## YOUR ACCESS LEVEL: STAFF\n"
+            "You are speaking with a staff member, not the owner. "
+            "Only answer questions about inventory levels, stock availability, and product queries. "
+            "Do NOT discuss financials, cash runway, margins, revenue trends, or profit figures — "
+            "if asked, politely say that financial data is available to the owner and managers only."
+        )
+    if role == "manager":
+        return (
+            "\n\n## YOUR ACCESS LEVEL: MANAGER\n"
+            "You are speaking with a store manager. "
+            "You can discuss inventory, pricing, decisions, and recommendations in full. "
+            "Avoid sharing owner-level P&L details (cash runway, OPEX) unless directly asked."
+        )
+    return ""  # owner — full access, no restriction
+
 SYSTEM_PROMPT = """\
 You are Radar — a senior inventory and pricing analyst embedded in the owner's Telegram for StylePulse, a multi-brand sportswear retailer in Lebanon.
 
@@ -44,12 +66,24 @@ NEVER present information without anchoring it to what the live data actually sh
 ## HOW TO INTERPRET RECOMMENDATIONS
 When you receive a recommendation (from get_pending_recommendations or get_recommendation_detail), you will see a structured `live_signals` object with the real inventory and competitive data for that SKU. This is what the model worked from.
 
-Your job is to read that data as a senior analyst and explain to the owner:
-- What the data actually shows (the numbers, not category labels)
-- Why this particular moment — not next week, right now
-- What the likely outcome is if they act vs if they wait
-- Where the risk is and how serious it is
-- What an alternative would look like
+*Every recommendation reply must cover all five of these points — no skipping, no reordering:*
+
+*1. WHAT THE SKU IS DOING RIGHT NOW*
+State the exact numbers: units on hand, days of supply and what zone that puts it in (healthy is 30–90 days; below 14 is critical; above 120 is dead stock), daily velocity, and how long the stock has been sitting. Never replace numbers with labels alone.
+
+*2. WHY THE MODEL CHOSE THIS ACTION*
+Translate the top 2–3 `model_signals` SHAP features into one plain-English sentence each. Always state the feature value alongside its meaning. Example: "The strongest push toward MARKDOWN was 94 days of supply — that is 4 days past the dead-stock ceiling of 90. The second was velocity decelerating: you're selling 0.8 units/day now vs 1.4 units/day three weeks ago."
+
+*3. WHAT YOUR TRACKED COMPETITORS ARE DOING RIGHT NOW*
+Name the cheapest competitor and their exact price. Calculate the dollar gap, not just the percentage. State how many of your tracked competitors are currently on sale and how many are out of stock. Example: "KIX is your cheapest tracked competitor at $89 — you are $17 above them (16% gap). 3 of your 5 tracked shops are running sales right now. Mike Sport is out of stock — that is a live demand window you can capture."
+
+*4. WHAT HAPPENS IF YOU ACT (with the suggested numbers)*
+State: the new price after the suggested discount, the margin after discount and whether it clears the 35% floor, the number of units that need to sell to recover any margin given up, and what velocity lift past comparable decisions produced. If outcome data exists, cite it.
+
+*5. WHAT HAPPENS IF YOU WAIT*
+Connect the risk to specific numbers and a time horizon. Example: "If you wait two more weeks you'll be at 108 days of supply — deep in dead-stock territory. KIX's current sale ends in roughly that window, which means you'd be discounting into a normalized market instead of riding the competitive pressure."
+
+End with one concrete ask or action — approve, reject, modify, or get more data.
 
 Do not mechanically map scores to labels. Look at the data and reason from it. A 73% score matters less than the fact that 3 of 5 competitors are actively discounting and the stock has been sitting for 94 days.
 
@@ -60,10 +94,10 @@ When `rule_override` is present, explain in plain language what business protect
 When `model_signals` are present, pick the 2–3 most meaningful ones and explain them in terms the owner understands — not feature names, but what those features mean for their cash, their margin, or their competitive position.
 
 ## HOW TO PRESENT CONFIDENCE
-Never say just a number. Always connect it to what the data shows. Examples:
-- "The model is 73% confident because your stock is 4 days above the healthy ceiling, 3 of 5 competitors are on sale, and your margin has enough room for a clean promotion."
-- "Confidence is only 54% — the stock isn't moving unusually slowly yet, and competitor discounting is limited to 1 shop. This is a cautious signal, not a clear one."
-- "Confidence is high here because a business protection fired: this item hasn't been discounted in 45 days, margin is comfortable, and a competitor just went out of stock — all three align."
+Never say just a number. Always connect it to what the data shows:
+- "The model is 73% confident. Here is why: your stock is 94 days of supply — 4 days above the dead-stock ceiling. Three of your five tracked competitors are on sale right now. Your margin at 52% leaves room for a 20% markdown and still clears the 35% floor. All three signals push in the same direction."
+- "Confidence is 54% — meaning the signals are mixed. Stock is moving slowly but it's only at 68 days, not yet in dead-stock territory. Only one tracked competitor is discounting. This is a watch signal, not an act signal. I'd wait one more week and re-check."
+- "Confidence is high because a business protection fired — not the ML model. The rule triggered because the item hasn't been discounted in 45 days, margin is above 50%, and a competitor just went out of stock. When a protection fires, it overrides the probability score and the logic is: act now while the window is open."
 
 If the data is mixed or the score is below 60%, tell the owner that directly. They need honest advice, not manufactured certainty.
 
@@ -86,8 +120,10 @@ Use get_next_actions to surface what needs the owner's attention.
 
 ## APPROVALS
 The owner won't type formal commands. Understand intent:
-- "sounds good", "yalla", "do it", "go ahead" → approve_recommendation
-- "no", "skip", "not now", "pass" → reject_recommendation
+- "sounds good", "yalla", "do it", "go ahead", "let's do it", "run it", "approved" → approve_recommendation
+- "وافق", "نعم", "تمام", "ما في مشكلة", "اعتمد", "اتفضل" → approve_recommendation
+- "no", "skip", "not now", "pass", "cancel", "nope" → reject_recommendation
+- "لا", "رفض", "مش هلق", "بعدين" → reject_recommendation
 - "let's try 20% instead" → approve_recommendation with modified_discount_pct=20.0
 
 Before approving, confirm product name and discount once if anything is ambiguous.
@@ -139,9 +175,12 @@ class AIEngine:
         message_history: list[dict],
         conversation_summary: str | None,
         tenant_id: UUID,
+        role: str = "owner",
+        shop_name: str = "your store",
     ) -> tuple[str, list[str]]:
         messages = _build_messages(user_text, message_history, conversation_summary)
         tools_used: list[str] = []
+        system_text = SYSTEM_PROMPT.replace("StylePulse", shop_name) + _role_system_suffix(role)
 
         for _ in range(MAX_TOOL_ITERATIONS):
             response = await self._client.messages.create(
@@ -150,7 +189,7 @@ class AIEngine:
                 system=[
                     {
                         "type": "text",
-                        "text": SYSTEM_PROMPT,
+                        "text": system_text,
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
@@ -169,7 +208,7 @@ class AIEngine:
                 # asks for inventory + recommendations + financials in one shot.
                 results = await asyncio.gather(
                     *[
-                        self._execute_tool(b.name, dict(b.input), tenant_id, chat_id)
+                        self._execute_tool(b.name, dict(b.input), tenant_id, chat_id, role)
                         for b in tool_blocks
                     ]
                 )
@@ -213,25 +252,71 @@ class AIEngine:
                     logger.warning("Live signal fetch failed for %s: %s", sku_id_r, live_exc)
                     live = {}
 
+                # Build a data-rich confidence context from live signals so Claude
+                # has the numbers pre-surfaced rather than having to dig through the struct.
+                _inv = live.get("inventory", {})
+                _pri = live.get("pricing", {})
+                _cmp = live.get("competition", {})
+                _dos = _inv.get("days_of_supply")
+                _dos_zone = _inv.get("dos_zone", "unknown")
+                _vel = _inv.get("daily_velocity_30d")
+                _units = _inv.get("units_on_hand")
+                _margin_now = _pri.get("current_margin_pct")
+                _margin_zone = _pri.get("margin_zone", "")
+                _margin_after = _pri.get("margin_after_discount_pct")
+                _price_after = _pri.get("price_after_discount_usd")
+                _retail = _pri.get("retail_price_usd")
+                _gap_pct = _cmp.get("our_price_vs_cheapest_gap_pct")
+                _cheapest_shop = _cmp.get("cheapest_competitor")
+                _cheapest_price = _cmp.get("cheapest_competitor_price_usd")
+                _on_sale = _cmp.get("competitors_on_sale", 0)
+                _total_comp = _cmp.get("competitors_tracked", 0)
+                _oos = _cmp.get("competitors_out_of_stock", 0)
+                _position = _cmp.get("price_position", "unknown")
+
+                def _fmt(v, fmt=".1f", fallback="?"):
+                    return format(v, fmt) if v is not None else fallback
+
+                _inv_summary = (
+                    f"{_units} units on hand, {_fmt(_dos, '.0f')} days of supply ({_dos_zone}), "
+                    f"velocity {_fmt(_vel, '.2f')} units/day"
+                ) if _units is not None else "inventory data unavailable"
+
+                _comp_summary = (
+                    f"{_on_sale} of {_total_comp} tracked competitors on sale"
+                    + (f", cheapest is {_cheapest_shop} at ${_fmt(_cheapest_price, '.2f')} "
+                       f"({_fmt(abs(_gap_pct or 0), '.1f')}% {'above' if (_gap_pct or 0) > 0 else 'below'} market)"
+                       if _cheapest_price else "")
+                    + (f", {_oos} out of stock" if _oos else "")
+                ) if _total_comp else "no competitor data matched"
+
+                _margin_summary = (
+                    f"margin {_fmt(_margin_now)}% ({_margin_zone})"
+                    + (f" → {_fmt(_margin_after)}% after {_fmt(disc, '.0f')}% discount (new price ${_fmt(_price_after, '.2f')})"
+                       if _margin_after is not None else "")
+                ) if _margin_now is not None else "margin data unavailable"
+
                 if fallback:
                     confidence_context = (
-                        "Model confidence was below the minimum threshold — "
-                        "signals are mixed and this defaulted to HOLD. "
+                        "Model confidence was below the minimum threshold — signals are mixed "
+                        f"and this defaulted to HOLD. Live state: {_inv_summary}. "
+                        f"Competitor picture: {_comp_summary}. {_margin_summary}. "
                         "Human judgment is essential here."
                     )
                 elif rule:
                     confidence_context = (
                         f"Score overridden by a hard business protection: "
                         f"{rule.get('rule_id','')} — {rule.get('reason','')}. "
-                        "The ML probability is secondary here."
+                        f"The ML probability is secondary. Live state: {_inv_summary}. "
+                        f"Competitor picture: {_comp_summary}. {_margin_summary}."
                     )
                 else:
                     confidence_context = (
-                        f"The ML model assigned {confidence}% probability to this action "
-                        "based on the live inventory and competitor signals below. "
-                        "Interpret the score relative to what the data actually shows — "
-                        "a high score means the signals strongly converge; a lower score "
-                        "means fewer signals agree and more caution is warranted."
+                        f"The ML model assigned {confidence}% probability to this action. "
+                        f"Live state at scoring time: {_inv_summary}. "
+                        f"Competitor picture: {_comp_summary}. {_margin_summary}. "
+                        "A high score means these signals strongly converge on the action; "
+                        "a lower score means fewer signals agree and more caution is warranted."
                     )
 
                 shap = r.get("shap_features_json") or []
@@ -324,7 +409,13 @@ class AIEngine:
         inp: dict,
         tenant_id: UUID,
         chat_id: str,
+        role: str = "owner",
     ) -> Any:
+        if role == "staff" and name in _STAFF_BLOCKED_TOOLS:
+            return {
+                "error": "Access denied — financial data is restricted to owners and managers.",
+                "tool": name,
+            }
         dispatch = self._get_dispatch(tenant_id, chat_id)
         handler = dispatch.get(name)
         if handler is None:
@@ -450,7 +541,7 @@ class AIEngine:
             logger.warning("Roadmap advance on approve (agent) failed: %s", exc)
 
         from services.telegram_assistant.conversation_store import ConversationManager
-        await ConversationManager(self._db_url).clear_flow(chat_id)
+        await ConversationManager(self._db_url).clear_flow(chat_id, tenant_id=tenant_id)
 
         return {
             "status": "approved",
@@ -500,7 +591,7 @@ class AIEngine:
 
 
         from services.telegram_assistant.conversation_store import ConversationManager
-        await ConversationManager(self._db_url).clear_flow(chat_id)
+        await ConversationManager(self._db_url).clear_flow(chat_id, tenant_id=tenant_id)
 
         return {"status": "rejected", "sku_id": sku_id}
 

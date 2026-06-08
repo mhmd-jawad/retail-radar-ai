@@ -1,20 +1,23 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  Activity,
+  Activity, Bot, Target,
   User, LogOut,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logoutAccount } from '@/lib/adapter';
 import { useAuth } from '@/store/auth';
 import { useReport } from '@/hooks/useReport';
 
-const sections: { label: string; items: { to: string; label: string; icon: any; badge?: string }[] }[] = [
+const sections: { label: string; items: { to: string; label: string; icon: LucideIcon; badge?: string }[] }[] = [
   {
     label: 'Command',
     items: [
       { to: '/overview', label: 'Overview', icon: LayoutDashboard },
+      { to: '/assistant', label: 'Radar Assistant', icon: Bot },
       { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: 'queue' },
+      { to: '/closed-loop', label: 'Closed Loop', icon: Target },
     ],
   },
   {

@@ -1,0 +1,32 @@
+# Non-secret configuration shared by all services (envFrom).
+# Secrets (DATABASE_URL, API keys, passwords) live in the `retail-secrets` Secret,
+# created imperatively from your git-ignored k8s.env — see the deployment guide Part 9.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retail-config
+  namespace: retail-radar
+data:
+  RETAIL_AUTO_INIT_DB: "false"                  # live RDS already has the schema — don't re-run DDL
+  RETAIL_TENANT_SLUG: "default"
+  RETAIL_STORE_CODE: "MAIN"
+  AUTH_TOKEN_TTL_HOURS: "12"
+  RETAIL_ADMIN_EMAIL: "admin@retail-radar.local"
+  RETAIL_ADMIN_NAME: "Retail Radar Admin"
+  # Decision scheduler config (provided). NOTE: no committed code reads these yet — they're
+  # here for when that code lands. If a scheduler runs inside EEP, keep EEP at 1 replica or add
+  # leader-election, else 2 replicas would double-run it (like the Telegram poller).
+  SYSTEM_DECISION_SCHEDULER_ENABLED: "true"
+  SYSTEM_DECISION_SYNC_BATCH_SIZE: "1"
+  # The cluster's public domain (the one on the Lightsail Load Balancer's cert).
+  # The Apify webhook still hits Box A separately; this is for the dashboard/API.
+  WEBHOOK_DOMAIN: "e43c88ab0453c69b919ea0b68ffac616-860150828.eu-central-1.elb.amazonaws.com"              # CHANGE to your LB domain
+  # In-cluster service discovery (k8s DNS = service name). EEP calls these.
+  IE1_BASE_URL: "http://ie1:8001"
+  IE2_BASE_URL: "http://ie2:8002"
+  IE3_BASE_URL: "http://ie3:8003"
+  EEP_BASE_URL: "http://eep:8000"
+  # Telegram → IE3 (used only when telegram is scaled up)
+  DATABASE_TCP_TIMEOUT_SECONDS: "10"
+  DATABASE_CONNECT_RETRIES: "3"
+  DATABASE_CONNECT_RETRY_DELAY_SECONDS: "1"

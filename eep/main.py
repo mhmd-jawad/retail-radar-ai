@@ -35,6 +35,7 @@ except ImportError:
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from psycopg import errors as psycopg_errors
 
 from eep.auth_db import (
     AuthContext,
@@ -47,6 +48,9 @@ from eep.auth_db import (
     admin_list_notifications,
     admin_list_tenants,
     admin_impersonate_shop,
+    admin_list_social_accounts,
+    admin_upsert_social_account,
+    admin_remove_social_account,
     admin_review_competitor_request,
     admin_update_shop_status,
     authenticate_token,
@@ -74,6 +78,7 @@ from eep.frontend_bridge import (
     report_overview,
     serialize_frontend_recommendation,
 )
+from services.common.price_normalization import effective_competitor_price_usd
 from eep.observability import (
     configure_metrics,
     observe_competitor_match,
@@ -430,6 +435,252 @@ def admin_impersonate(tenant_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# ─── Admin Platform Operations Endpoints ─────────────────────────────────────
+
+class AdminTriggerMeasurementPayload(BaseModel):
+    snapshot_id: int
+    window_days: Literal[7, 14] = 7
+
+
+class CampaignPersistPayload(BaseModel):
+    variant_id: str | None = None
+    recommendation_id: str | None = None
+    channel: str
+    headline: str
+    body: str = ""
+    tone: str | None = None
+    generation_confidence: float | None = None
+    fallback_used: bool = False
+
+
+class AdminAssistantPayload(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+@app.get("/admin/outcomes/aggregate")
+def admin_outcomes_aggregate(request: Request) -> dict[str, Any]:
+    """Cross-tenant model accuracy and outcome measurement aggregate."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_outcomes_aggregate
+        return get_outcomes_aggregate()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/outcomes/trigger")
+def admin_outcomes_trigger(payload: AdminTriggerMeasurementPayload, request: Request) -> dict[str, Any]:
+    """Admin triggers a 7d/14d measurement for any tenant's snapshot."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import admin_trigger_measurement
+        return admin_trigger_measurement(payload.snapshot_id, payload.window_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/financial/overview")
+def admin_financial_overview(request: Request) -> dict[str, Any]:
+    """Cross-tenant financial health aggregate — health signals only, no individual P&L."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_financial_overview
+        return get_financial_overview()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/admin/campaigns/overview")
+def admin_campaigns_overview(request: Request) -> dict[str, Any]:
+    """Cross-tenant campaign activity summary."""
+    _required_admin(request)
+    try:
+        from eep.admin_analytics_db import get_campaigns_overview
+        return get_campaigns_overview()
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/campaigns")
+def persist_campaign_route(payload: CampaignPersistPayload, request: Request) -> dict[str, Any]:
+    """Shop persists a generated campaign after IE3 returns successfully."""
+    ctx = _required_shop(request)
+    try:
+        from eep.admin_analytics_db import persist_campaign
+        return persist_campaign(
+            tenant_id=ctx.tenant_id,
+            variant_id=payload.variant_id,
+            recommendation_id=payload.recommendation_id,
+            channel=payload.channel,
+            headline=payload.headline,
+            body=payload.body,
+            tone=payload.tone,
+            generation_confidence=payload.generation_confidence,
+            fallback_used=payload.fallback_used,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/assistant/chat")
+async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request) -> dict[str, Any]:
+    """
+    Platform-level AI assistant for admin operations.
+    Uses Claude with tool use to answer cross-tenant questions.
+    """
+    _required_admin(request)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        raise HTTPException(status_code=503, detail="Anthropic API key not configured.")
+
+    try:
+        from eep.admin_analytics_db import (
+            get_admin_assistant_context,
+            get_outcomes_aggregate,
+            get_financial_overview,
+            get_campaigns_overview,
+        )
+        from eep.auth_db import admin_list_tenants, admin_list_competitor_requests
+        import anthropic as _anthropic
+
+        client = _anthropic.Anthropic(api_key=anthropic_key)
+
+        ctx_summary = get_admin_assistant_context()
+        system_prompt = (
+            "You are the Platform Intelligence Assistant for Retail Radar AI, "
+            "an AI-powered retail analytics platform. You are speaking with a platform admin (operations manager). "
+            "You have access to real-time cross-tenant data. "
+            f"Current platform snapshot: {ctx_summary['tenant_count']} active shops, "
+            f"{ctx_summary['pending_competitor_requests']} pending competitor requests, "
+            f"{ctx_summary['pending_outcome_measurements']} outcome measurements due, "
+            f"{ctx_summary['tenants_missing_financials_this_month']} shops missing this month's financial snapshot. "
+            "Answer concisely and accurately. Use tools to fetch live data before answering data questions."
+        )
+
+        tools = [
+            {
+                "name": "get_platform_outcomes",
+                "description": "Get cross-tenant recommendation accuracy, pending measurements, revenue impact, and accuracy trend.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "get_financial_health",
+                "description": "Get aggregate financial health across all shops — runway, margin, at-risk shops, missing snapshots.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "get_campaigns_activity",
+                "description": "Get campaign generation activity across all shops — volumes, channels, fallback rate, recent campaigns.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "list_tenants",
+                "description": "List all registered shops with their onboarding status, SKU count, and competitor count.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "Filter by status: pending, active, suspended, archived",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "get_pending_items",
+                "description": "Get all pending competitor requests and unread admin notifications.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            },
+        ]
+
+        from eep.auth_db import AuthContext as _AuthContext, _require_admin as _db_require_admin
+        _fake_admin_ctx = type("C", (), {"global_role": "admin", "tenant_id": None, "user_id": "admin"})()
+
+        messages = [{"role": "user", "content": payload.message}]
+
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            tools=tools,
+            messages=messages,
+        )
+
+        tools_used: list[str] = []
+
+        while response.stop_reason == "tool_use":
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                tools_used.append(block.name)
+                try:
+                    if block.name == "get_platform_outcomes":
+                        data = get_outcomes_aggregate()
+                    elif block.name == "get_financial_health":
+                        data = get_financial_overview()
+                    elif block.name == "get_campaigns_activity":
+                        data = get_campaigns_overview()
+                    elif block.name == "list_tenants":
+                        import eep.auth_db as _adb
+                        class _FakeCtx:
+                            global_role = "admin"
+                            tenant_id = None
+                        data = _adb.admin_list_tenants(_FakeCtx())
+                    elif block.name == "get_pending_items":
+                        import eep.auth_db as _adb
+                        class _FakeCtx:
+                            global_role = "admin"
+                            tenant_id = None
+                        pending_requests = _adb.admin_list_competitor_requests(_FakeCtx(), status="pending")
+                        pending_notifications = _adb.admin_list_notifications(_FakeCtx(), status="unread", limit=20)
+                        data = {"pending_requests": pending_requests, "unread_notifications": pending_notifications}
+                    else:
+                        data = {"error": f"Unknown tool: {block.name}"}
+                except Exception as tool_exc:
+                    data = {"error": str(tool_exc)}
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(data, default=str),
+                })
+
+            messages = [
+                {"role": "user", "content": payload.message},
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": tool_results},
+            ]
+
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=system_prompt,
+                tools=tools,
+                messages=messages,
+            )
+
+        reply = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                reply += block.text
+
+        return {
+            "reply": reply,
+            "tools_used": list(dict.fromkeys(tools_used)),
+            "session_id": payload.session_id or "",
+        }
+
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Assistant error: {exc}") from exc
+
+
 @app.post("/webhooks/apify/run-succeeded")
 @app.post("/apify/webhook")
 async def apify_run_succeeded_webhook(
@@ -622,7 +873,7 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
                     """
                     select cpl.shop_code, cpl.product_key, cpl.competitor_product_id,
                            cpl.product_name, cpl.brand_name,
-                           coalesce(cpl.competitor_sale_price, cpl.competitor_price, 0) as price_usd,
+                           cpl.competitor_price, cpl.competitor_sale_price, cpl.currency,
                            cpl.is_on_sale, cpl.availability, cpl.source_url, cpl.last_seen_at
                     from intel.competitor_products_latest cpl
                     join intel.tenant_competitors tc
@@ -644,7 +895,12 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
             "external_id": row["competitor_product_id"] or row["product_key"],
             "product_name": row["product_name"],
             "brand": row["brand_name"] or "Unknown",
-            "price_usd": float(row["price_usd"] or 0),
+            "price_usd": effective_competitor_price_usd(
+                row["competitor_price"],
+                row["competitor_sale_price"],
+                row["currency"],
+                row["is_on_sale"],
+            ) or 0.0,
             "on_sale": bool(row["is_on_sale"]),
             "in_stock": "out" not in str(row["availability"] or "").lower(),
             "url": row["source_url"] or "",
@@ -826,6 +1082,34 @@ def create_outcome_snapshot(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/outcomes")
+def list_all_outcomes(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[dict[str, Any]]:
+    """Return all outcome snapshots for the authenticated tenant with product info joined."""
+    from eep.outcome_tracking import get_all_outcomes
+    try:
+        return get_all_outcomes(
+            tenant_id=_tenant_id_from_request(request),
+            limit=limit,
+            offset=offset,
+        )
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/outcomes/measure-all-due")
+def measure_all_due_route(request: Request) -> dict[str, Any]:
+    """Measure all due snapshots for the authenticated tenant in one call."""
+    from eep.outcome_tracking import measure_all_due
+    try:
+        return measure_all_due(tenant_id=_tenant_id_from_request(request))
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/outcomes/by-sku/{sku_id}")
@@ -1999,7 +2283,6 @@ def report_live(request: Request) -> dict[str, Any]:
                 "monthly_burn_usd": monthly_burn,
                 "monthly_cash_in_usd": 0.0,
                 "cash_on_hand_usd": cash_on_hand,
-                "lollar_exposure_pct": 0.0,
                 "series": [],
             },
             "profitability": {
@@ -2088,15 +2371,27 @@ def financial_balance_sheet(request: Request) -> dict[str, Any]:
                 )
                 top5_row = cur.fetchone() or {}
                 top5_at_cost = float(top5_row.get("top5_at_cost") or 0)
+                snapshot = _load_latest_financial_snapshot(cur, tenant_id)
 
-        cash_usd = round(inventory_at_cost * 0.25, 2) if inventory_at_cost > 0 else 0.0
-        lollar_face = 0.0
-        lollar_real = 0.0
-        other_assets = 0.0
-        total_assets = inventory_at_cost + cash_usd + lollar_real + other_assets
-        total_liabilities = round(total_assets * 0.39, 2) if total_assets > 0 else 0.0
-        supplier_payables = total_liabilities
-        other_liabilities = 0.0
+        missing_snapshot = snapshot is None
+        snapshot = snapshot or {}
+        cash_usd = _money(snapshot.get("cash_on_hand_usd"))
+        bank_balance = _money(snapshot.get("bank_balance_usd"))
+        receivables = _money(snapshot.get("receivables_usd"))
+        equipment_fixtures = _money(snapshot.get("equipment_fixtures_usd"))
+        other_assets = _money(snapshot.get("other_assets_usd"))
+        total_assets = inventory_at_cost + cash_usd + bank_balance + receivables + equipment_fixtures + other_assets
+        supplier_payables = _money(snapshot.get("supplier_payables_usd"))
+        rent_payable = _money(snapshot.get("rent_payable_usd"))
+        salary_payable = _money(snapshot.get("salary_payable_usd"))
+        loan_balance = _money(snapshot.get("loan_balance_usd"))
+        tax_vat_payable = _money(snapshot.get("tax_vat_payable_usd"))
+        customer_deposits = _money(snapshot.get("customer_deposits_usd"))
+        other_liabilities = _money(snapshot.get("other_liabilities_usd"))
+        total_liabilities = (
+            supplier_payables + rent_payable + salary_payable + loan_balance
+            + tax_vat_payable + customer_deposits + other_liabilities
+        )
         equity = total_assets - total_liabilities
         current_ratio = round(total_assets / total_liabilities, 2) if total_liabilities else 0
         inv_pct = round(inventory_at_cost / total_assets * 100, 1) if total_assets else 0
@@ -2106,17 +2401,25 @@ def financial_balance_sheet(request: Request) -> dict[str, Any]:
         return {
             "data_source": "live-db",
             "generated_at": generated_at,
+            "missing_snapshot": missing_snapshot,
+            "period_month": str(snapshot.get("period_month")) if snapshot.get("period_month") else None,
             "assets": {
                 "inventory_at_cost_usd": round(inventory_at_cost, 2),
                 "inventory_at_retail_usd": round(inventory_at_retail, 2),
                 "cash_on_hand_usd": round(cash_usd, 2),
-                "lollar_face_usd": lollar_face,
-                "lollar_real_usd": lollar_real,
+                "bank_balance_usd": round(bank_balance, 2),
+                "receivables_usd": round(receivables, 2),
+                "equipment_fixtures_usd": round(equipment_fixtures, 2),
                 "other_assets_usd": other_assets,
                 "total_usd": round(total_assets, 2),
             },
             "liabilities": {
                 "supplier_payables_usd": round(supplier_payables, 2),
+                "rent_payable_usd": round(rent_payable, 2),
+                "salary_payable_usd": round(salary_payable, 2),
+                "loan_balance_usd": round(loan_balance, 2),
+                "tax_vat_payable_usd": round(tax_vat_payable, 2),
+                "customer_deposits_usd": round(customer_deposits, 2),
                 "other_usd": round(other_liabilities, 2),
                 "total_usd": round(total_liabilities, 2),
             },
@@ -2139,6 +2442,42 @@ def financial_profitability(request: Request) -> dict[str, Any]:
 
     generated_at = datetime.now(timezone.utc).isoformat()
     request_tenant_id = _tenant_id_from_request(request)
+
+    # Load per-tenant financial config from DB (falls back to defaults)
+    fin_cfg: dict[str, Any] = {}
+    try:
+        with _connect() as _cfg_conn:
+            with _cfg_conn.cursor() as _cfg_cur:
+                _cfg_ctx = _context(_cfg_cur, tenant_id=request_tenant_id)
+                fin_cfg = _load_financial_config(_cfg_cur, _cfg_ctx["tenant_id"])
+    except DatabaseUnavailable:
+        fin_cfg = dict(_DEFAULT_FINANCIAL_CONFIG)
+
+    monthly_fixed_opex = fin_cfg["monthly_fixed_opex_usd"]
+    blended_margin_pct = fin_cfg["blended_margin_pct"]
+    pay_pct = fin_cfg["payment_processing_pct"]
+    mkt_pct = fin_cfg["marketing_pct"]
+    log_pct = fin_cfg["logistics_pct"]
+    shr_pct = fin_cfg["shrinkage_pct"]
+    breakeven_usd = round(monthly_fixed_opex / (blended_margin_pct / 100), 2) if blended_margin_pct else 0
+
+    opex_breakdown = list(fin_cfg["opex_categories"]) + [
+        {"label": f"Payment Processing ({pay_pct}% rev)", "amount_usd": 0, "type": "variable", "rate_pct": pay_pct},
+        {"label": f"Marketing ({mkt_pct}% rev)",           "amount_usd": 0, "type": "variable", "rate_pct": mkt_pct},
+        {"label": f"Logistics ({log_pct}% COGS)",          "amount_usd": 0, "type": "variable", "rate_pct": log_pct},
+        {"label": f"Shrinkage ({shr_pct}%/yr inventory)",  "amount_usd": 0, "type": "variable", "rate_pct": shr_pct},
+    ]
+
+    cogs_pct = round(100 - blended_margin_pct, 1)
+    for_every_100 = {
+        "cogs": cogs_pct,
+        "marketing": mkt_pct,
+        "payment_processing": pay_pct,
+        "logistics": round(log_pct / 2, 1),
+        "fixed_opex": 2.0,
+        "net_profit": round(100 - cogs_pct - mkt_pct - pay_pct - round(log_pct / 2, 1) - 2.0, 1),
+    }
+
     # --- Live DB for category breakdown ---
     category_breakdown: list[dict[str, Any]] = []
     total_revenue_at_retail = 0.0
@@ -2148,6 +2487,7 @@ def financial_profitability(request: Request) -> dict[str, Any]:
             with conn.cursor() as cur:
                 ctx = _context(cur, tenant_id=request_tenant_id)
                 tenant_id = ctx["tenant_id"]
+                snapshot = _load_latest_financial_snapshot(cur, tenant_id)
                 cur.execute(
                     """
                     WITH base AS (
@@ -2191,7 +2531,8 @@ def financial_profitability(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     blended_margin_pct = round((total_revenue_at_retail - total_cogs) / total_revenue_at_retail * 100, 1) if total_revenue_at_retail else 0.0
-    monthly_fixed_opex = round(total_cogs / 12, 2) if total_cogs > 0 else 0.0
+    snapshot_monthly_expenses = _money((snapshot or {}).get("monthly_expenses_usd"))
+    monthly_fixed_opex = snapshot_monthly_expenses if snapshot_monthly_expenses > 0 else (round(total_cogs / 12, 2) if total_cogs > 0 else 0.0)
     breakeven_usd = round(monthly_fixed_opex / (blended_margin_pct / 100), 2) if blended_margin_pct else 0
     annual_rev = round(total_revenue_at_retail * 1.1, 2)
     breakeven_pairs = round(breakeven_usd / 60, 0) if breakeven_usd else 0  # assume avg ~$60/pair
@@ -2236,31 +2577,749 @@ def financial_profitability(request: Request) -> dict[str, Any]:
 
 @app.get("/financial/cashflow")
 def financial_cashflow(request: Request) -> dict[str, Any]:
-    """Tenant-scoped cashflow estimate derived from live inventory value."""
-    import calendar
+    """Tenant-scoped cashflow from monthly USD financial snapshots."""
     from datetime import datetime, timezone
 
     generated_at = datetime.now(timezone.utc).isoformat()
-    report_payload = report_live(request)
-    health = report_payload.get("financial", {}).get("cashflow_health", {})
-    monthly_in = float(health.get("monthly_cash_in_usd") or 0)
-    monthly_out = float(health.get("monthly_burn_usd") or 0)
-    series: list[dict[str, Any]] = []
-    now = datetime.now(timezone.utc)
-    for offset in range(6):
-        month_index = ((now.month - 1 + offset) % 12) + 1
-        series.append({
-            "month": calendar.month_abbr[month_index],
-            "in": monthly_in,
-            "out": monthly_out,
-            "net": monthly_in - monthly_out,
-        })
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                snapshots = _list_financial_snapshots(cur, ctx["tenant_id"], limit=12)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    ordered = list(reversed(snapshots))
+    series = [
+        {
+            "month": str(row["period_month"])[:7],
+            "in": _money(row.get("monthly_sales_usd")),
+            "out": _money(row.get("monthly_expenses_usd")) + _money(row.get("owner_draw_usd")),
+            "net": _money(row.get("monthly_sales_usd")) - _money(row.get("monthly_expenses_usd")) - _money(row.get("owner_draw_usd")),
+        }
+        for row in ordered
+    ]
+    latest = snapshots[0] if snapshots else {}
+    cash_like = _money(latest.get("cash_on_hand_usd")) + _money(latest.get("bank_balance_usd"))
+    monthly_out = _money(latest.get("monthly_expenses_usd")) + _money(latest.get("owner_draw_usd"))
+    health = {
+        "cash_runway_months": round(cash_like / monthly_out, 2) if monthly_out else 0,
+        "monthly_burn_usd": monthly_out,
+        "monthly_cash_in_usd": _money(latest.get("monthly_sales_usd")),
+        "cash_on_hand_usd": cash_like,
+        "series": series,
+    }
     return {
         "data_source": "live-db",
         "generated_at": generated_at,
+        "missing_snapshot": not bool(snapshots),
         "series": series,
         "summary": health,
     }
+
+
+def _load_financial_profile() -> dict[str, Any]:
+    path = _DATA_REAL / "financial_profile.json"
+    if path.exists():
+        import json as _json
+        return _json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
+_DEFAULT_OPEX_CATEGORIES = [
+    {"label": "Rent",                  "amount_usd": 1100, "type": "fixed"},
+    {"label": "Owner Salary",          "amount_usd": 800,  "type": "fixed"},
+    {"label": "Staff (2 part-time)",   "amount_usd": 900,  "type": "fixed"},
+    {"label": "Generator Fuel",        "amount_usd": 220,  "type": "fixed"},
+    {"label": "Internet / Phone",      "amount_usd": 150,  "type": "fixed"},
+    {"label": "Water",                 "amount_usd": 40,   "type": "fixed"},
+    {"label": "Insurance",             "amount_usd": 80,   "type": "fixed"},
+    {"label": "Accounting / Legal",    "amount_usd": 100,  "type": "fixed"},
+    {"label": "Miscellaneous",         "amount_usd": 110,  "type": "fixed"},
+]
+_DEFAULT_FINANCIAL_CONFIG = {
+    "currency": "USD",
+    "opex_categories": _DEFAULT_OPEX_CATEGORIES,
+    "monthly_fixed_opex_usd": 3500.0,
+    "blended_margin_pct": 48.6,
+    "payment_processing_pct": 1.5,
+    "marketing_pct": 3.5,
+    "logistics_pct": 2.0,
+    "shrinkage_pct": 0.8,
+}
+
+
+def _load_financial_config(cur, tenant_id: str) -> dict[str, Any]:
+    """Load per-tenant financial config from DB, falling back to system defaults."""
+    import json as _json
+    if not _table_exists(cur, "core.tenant_financial_config"):
+        return dict(_DEFAULT_FINANCIAL_CONFIG)
+    cur.execute(
+        """
+        SELECT currency, opex_categories, monthly_fixed_opex_usd, blended_margin_pct,
+               payment_processing_pct, marketing_pct, logistics_pct, shrinkage_pct
+        FROM core.tenant_financial_config
+        WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return dict(_DEFAULT_FINANCIAL_CONFIG)
+    cats = row.get("opex_categories")
+    if isinstance(cats, str):
+        cats = _json.loads(cats)
+    if not cats:
+        cats = _DEFAULT_OPEX_CATEGORIES
+    return {
+        "currency": row.get("currency") or "USD",
+        "opex_categories": cats,
+        "monthly_fixed_opex_usd": float(row.get("monthly_fixed_opex_usd") or _DEFAULT_FINANCIAL_CONFIG["monthly_fixed_opex_usd"]),
+        "blended_margin_pct": float(row.get("blended_margin_pct") or _DEFAULT_FINANCIAL_CONFIG["blended_margin_pct"]),
+        "payment_processing_pct": float(row.get("payment_processing_pct") or 1.5),
+        "marketing_pct": float(row.get("marketing_pct") or 3.5),
+        "logistics_pct": float(row.get("logistics_pct") or 2.0),
+        "shrinkage_pct": float(row.get("shrinkage_pct") or 0.8),
+    }
+
+
+def _table_exists(cur, table_name: str) -> bool:
+    cur.execute("SELECT to_regclass(%s) AS table_name", (table_name,))
+    return bool((cur.fetchone() or {}).get("table_name"))
+
+
+_DATA_REAL = Path(__file__).resolve().parents[1] / "data" / "real"
+
+
+_FINANCIAL_SNAPSHOT_FIELDS = [
+    "cash_on_hand_usd",
+    "bank_balance_usd",
+    "receivables_usd",
+    "inventory_at_cost_usd",
+    "equipment_fixtures_usd",
+    "other_assets_usd",
+    "supplier_payables_usd",
+    "rent_payable_usd",
+    "salary_payable_usd",
+    "loan_balance_usd",
+    "tax_vat_payable_usd",
+    "customer_deposits_usd",
+    "other_liabilities_usd",
+    "monthly_sales_usd",
+    "monthly_expenses_usd",
+    "owner_draw_usd",
+]
+
+
+def _money(value: Any) -> float:
+    return round(float(value or 0), 2)
+
+
+def _input_money(field: str, value: Any) -> float:
+    import math
+
+    if value in (None, ""):
+        return 0.0
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{field} must be a valid number") from exc
+    if not math.isfinite(parsed):
+        raise HTTPException(status_code=400, detail=f"{field} must be a finite number")
+    if parsed < 0:
+        raise HTTPException(status_code=400, detail=f"{field} cannot be negative")
+    return round(parsed, 2)
+
+
+def _snapshot_period(period_month: str | None) -> str:
+    from datetime import date, datetime
+
+    raw = period_month or date.today().strftime("%Y-%m")
+    try:
+        parsed = datetime.strptime(raw[:7], "%Y-%m")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="period_month must use YYYY-MM format") from exc
+    return parsed.strftime("%Y-%m-01")
+
+
+def _snapshot_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    payload = dict(row)
+    payload["id"] = str(payload.get("id"))
+    payload["period_month"] = str(payload.get("period_month"))
+    for field in _FINANCIAL_SNAPSHOT_FIELDS:
+        payload[field] = _money(payload.get(field))
+    payload["total_cash_usd"] = payload["cash_on_hand_usd"] + payload["bank_balance_usd"]
+    payload["total_entered_assets_usd"] = (
+        payload["cash_on_hand_usd"] + payload["bank_balance_usd"] + payload["receivables_usd"]
+        + payload["inventory_at_cost_usd"] + payload["equipment_fixtures_usd"] + payload["other_assets_usd"]
+    )
+    payload["total_entered_liabilities_usd"] = (
+        payload["supplier_payables_usd"] + payload["rent_payable_usd"] + payload["salary_payable_usd"]
+        + payload["loan_balance_usd"] + payload["tax_vat_payable_usd"] + payload["customer_deposits_usd"]
+        + payload["other_liabilities_usd"]
+    )
+    return payload
+
+
+def _load_latest_financial_snapshot(cur, tenant_id: str) -> dict[str, Any] | None:
+    if not _financial_snapshot_table_exists(cur):
+        return None
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s
+            ORDER BY period_month DESC
+            LIMIT 1
+            """,
+            (tenant_id,),
+        )
+        return cur.fetchone()
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return None
+        raise
+
+
+def _load_financial_snapshot_for_period(cur, tenant_id: str, period_month: str) -> dict[str, Any] | None:
+    if not _financial_snapshot_table_exists(cur):
+        return None
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s AND period_month = %s
+            """,
+            (tenant_id, period_month),
+        )
+        return cur.fetchone()
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return None
+        raise
+
+
+def _current_inventory_at_cost(cur, tenant_id: str) -> float:
+    cur.execute(
+        """
+        SELECT COALESCE(SUM(ib.quantity_on_hand * v.cost_price_usd), 0) AS inventory_at_cost
+        FROM core.inventory_balances ib
+        JOIN core.sku_variants v ON v.id = ib.variant_id
+        WHERE ib.tenant_id = %s AND v.tenant_id = %s
+        """,
+        (tenant_id, tenant_id),
+    )
+    return _money((cur.fetchone() or {}).get("inventory_at_cost"))
+
+
+def _list_financial_snapshots(cur, tenant_id: str, limit: int = 12) -> list[dict[str, Any]]:
+    if not _financial_snapshot_table_exists(cur):
+        return []
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM core.tenant_financial_snapshots
+            WHERE tenant_id = %s
+            ORDER BY period_month DESC
+            LIMIT %s
+            """,
+            (tenant_id, min(max(limit, 1), 36)),
+        )
+        return cur.fetchall() or []
+    except Exception as exc:
+        if _financial_snapshot_table_missing(exc):
+            return []
+        raise
+
+
+def _financial_snapshot_table_missing(exc: Exception) -> bool:
+    if isinstance(exc, psycopg_errors.UndefinedTable):
+        return True
+    return "tenant_financial_snapshots" in str(exc) and "does not exist" in str(exc).lower()
+
+
+def _financial_snapshot_table_exists(cur) -> bool:
+    cur.execute("SELECT to_regclass('core.tenant_financial_snapshots') AS table_name")
+    return bool((cur.fetchone() or {}).get("table_name"))
+
+
+# ── Financial config endpoints ────────────────────────────────────────────────
+
+@app.get("/financial/snapshots")
+def financial_snapshots_list(request: Request, limit: int = 12) -> dict[str, Any]:
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                rows = _list_financial_snapshots(cur, ctx["tenant_id"], limit=limit)
+        return {"snapshots": [_snapshot_payload(row) for row in rows]}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/financial/snapshots/current")
+def financial_snapshot_current(request: Request) -> dict[str, Any]:
+    request_tenant_id = _tenant_id_from_request(request)
+    period = _snapshot_period(None)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                row = _load_financial_snapshot_for_period(cur, ctx["tenant_id"], period)
+        return {"period_month": period, "missing_snapshot": row is None, "snapshot": _snapshot_payload(row)}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/financial/snapshots/{period_month}")
+def financial_snapshot_put(period_month: str, request: Request, body: dict[str, Any]) -> dict[str, Any]:
+    request_tenant_id = _tenant_id_from_request(request)
+    period = _snapshot_period(period_month)
+    values = {field: _input_money(field, body.get(field)) for field in _FINANCIAL_SNAPSHOT_FIELDS if field != "inventory_at_cost_usd"}
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                if not _financial_snapshot_table_exists(cur):
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Financial snapshot schema is missing. Apply infra/postgres/005_financial_snapshots.sql.",
+                    )
+                values["inventory_at_cost_usd"] = _current_inventory_at_cost(cur, ctx["tenant_id"])
+                cur.execute(
+                    """
+                    INSERT INTO core.tenant_financial_snapshots (
+                        tenant_id, period_month, currency,
+                        cash_on_hand_usd, bank_balance_usd, receivables_usd,
+                        inventory_at_cost_usd, equipment_fixtures_usd, other_assets_usd,
+                        supplier_payables_usd, rent_payable_usd, salary_payable_usd,
+                        loan_balance_usd, tax_vat_payable_usd, customer_deposits_usd,
+                        other_liabilities_usd, monthly_sales_usd, monthly_expenses_usd,
+                        owner_draw_usd, notes, updated_at
+                    )
+                    VALUES (
+                        %s, %s, 'USD',
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, now()
+                    )
+                    ON CONFLICT (tenant_id, period_month) DO UPDATE SET
+                        cash_on_hand_usd = EXCLUDED.cash_on_hand_usd,
+                        bank_balance_usd = EXCLUDED.bank_balance_usd,
+                        receivables_usd = EXCLUDED.receivables_usd,
+                        inventory_at_cost_usd = EXCLUDED.inventory_at_cost_usd,
+                        equipment_fixtures_usd = EXCLUDED.equipment_fixtures_usd,
+                        other_assets_usd = EXCLUDED.other_assets_usd,
+                        supplier_payables_usd = EXCLUDED.supplier_payables_usd,
+                        rent_payable_usd = EXCLUDED.rent_payable_usd,
+                        salary_payable_usd = EXCLUDED.salary_payable_usd,
+                        loan_balance_usd = EXCLUDED.loan_balance_usd,
+                        tax_vat_payable_usd = EXCLUDED.tax_vat_payable_usd,
+                        customer_deposits_usd = EXCLUDED.customer_deposits_usd,
+                        other_liabilities_usd = EXCLUDED.other_liabilities_usd,
+                        monthly_sales_usd = EXCLUDED.monthly_sales_usd,
+                        monthly_expenses_usd = EXCLUDED.monthly_expenses_usd,
+                        owner_draw_usd = EXCLUDED.owner_draw_usd,
+                        notes = EXCLUDED.notes,
+                        updated_at = now()
+                    RETURNING *
+                    """,
+                    (
+                        ctx["tenant_id"], period,
+                        values["cash_on_hand_usd"], values["bank_balance_usd"], values["receivables_usd"],
+                        values["inventory_at_cost_usd"], values["equipment_fixtures_usd"], values["other_assets_usd"],
+                        values["supplier_payables_usd"], values["rent_payable_usd"], values["salary_payable_usd"],
+                        values["loan_balance_usd"], values["tax_vat_payable_usd"], values["customer_deposits_usd"],
+                        values["other_liabilities_usd"], values["monthly_sales_usd"], values["monthly_expenses_usd"],
+                        values["owner_draw_usd"], body.get("notes"),
+                    ),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return {"ok": True, "snapshot": _snapshot_payload(row)}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/financial/progress")
+def financial_progress(request: Request, limit: int = 12) -> dict[str, Any]:
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                rows = _list_financial_snapshots(cur, ctx["tenant_id"], limit=limit)
+        series = []
+        for row in reversed(rows):
+            snap = _snapshot_payload(row) or {}
+            inventory_at_cost = snap["inventory_at_cost_usd"]
+            assets = snap["total_entered_assets_usd"]
+            liabilities = snap["total_entered_liabilities_usd"]
+            monthly_out = snap["monthly_expenses_usd"] + snap["owner_draw_usd"]
+            cash_runway = round(snap["total_cash_usd"] / monthly_out, 2) if monthly_out else 0
+            equity = assets - liabilities
+            series.append({
+                "period_month": snap["period_month"],
+                "total_assets_usd": assets,
+                "total_liabilities_usd": liabilities,
+                "equity_usd": round(equity, 2),
+                "cash_runway_months": cash_runway,
+                "inventory_pct_of_assets": round(inventory_at_cost / assets * 100, 1) if assets else 0,
+                "debt_to_equity": round(liabilities / equity, 2) if equity else 0,
+                "monthly_sales_usd": snap["monthly_sales_usd"],
+                "monthly_expenses_usd": snap["monthly_expenses_usd"],
+                "owner_draw_usd": snap["owner_draw_usd"],
+            })
+        return {"data_source": "live-db", "missing_snapshot": not bool(rows), "series": series}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/financial/config")
+def financial_config_get(request: Request) -> dict[str, Any]:
+    """Return the per-tenant financial config (OpEx categories, margin %, etc.)."""
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                return _load_financial_config(cur, ctx["tenant_id"])
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/financial/config")
+def financial_config_put(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+    """Upsert the per-tenant financial config."""
+    import json as _json
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                tenant_id = ctx["tenant_id"]
+                cats = body.get("opex_categories")
+                cur.execute(
+                    """
+                    INSERT INTO core.tenant_financial_config
+                        (tenant_id, currency, opex_categories, monthly_fixed_opex_usd,
+                         blended_margin_pct, payment_processing_pct, marketing_pct,
+                         logistics_pct, shrinkage_pct, updated_at)
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (tenant_id) DO UPDATE SET
+                        currency               = EXCLUDED.currency,
+                        opex_categories        = EXCLUDED.opex_categories,
+                        monthly_fixed_opex_usd = EXCLUDED.monthly_fixed_opex_usd,
+                        blended_margin_pct     = EXCLUDED.blended_margin_pct,
+                        payment_processing_pct = EXCLUDED.payment_processing_pct,
+                        marketing_pct          = EXCLUDED.marketing_pct,
+                        logistics_pct          = EXCLUDED.logistics_pct,
+                        shrinkage_pct          = EXCLUDED.shrinkage_pct,
+                        updated_at             = now()
+                    """,
+                    (
+                        tenant_id,
+                        body.get("currency", "USD"),
+                        _json.dumps(cats if cats is not None else _DEFAULT_OPEX_CATEGORIES),
+                        body.get("monthly_fixed_opex_usd"),
+                        body.get("blended_margin_pct"),
+                        body.get("payment_processing_pct", 1.5),
+                        body.get("marketing_pct", 3.5),
+                        body.get("logistics_pct", 2.0),
+                        body.get("shrinkage_pct", 0.8),
+                    ),
+                )
+            conn.commit()
+        return {"ok": True, "tenant_id": tenant_id}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/financial/inventory-records")
+def financial_inventory_records(
+    request: Request,
+    movement_type: str | None = None,
+    variant_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Immutable financial records generated per inventory movement event."""
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                tenant_id = ctx["tenant_id"]
+
+                filters = ["ifr.tenant_id = %s"]
+                params: list[Any] = [tenant_id]
+
+                if movement_type:
+                    filters.append("ifr.movement_type = %s")
+                    params.append(movement_type)
+                if variant_id:
+                    filters.append("ifr.variant_id = %s")
+                    params.append(variant_id)
+                if from_date:
+                    filters.append("ifr.recorded_at >= %s")
+                    params.append(from_date)
+                if to_date:
+                    filters.append("ifr.recorded_at <= %s")
+                    params.append(to_date)
+
+                where = " AND ".join(filters)
+                cur.execute(
+                    f"""
+                    SELECT
+                        ifr.id, ifr.movement_id, ifr.variant_id, ifr.store_id,
+                        ifr.movement_type, ifr.quantity,
+                        ifr.cost_price_usd, ifr.total_cost_usd,
+                        ifr.retail_price_usd, ifr.expected_revenue_usd,
+                        ifr.expected_margin_pct, ifr.recorded_at,
+                        v.sku_id, p.name AS product_name, p.brand
+                    FROM core.inventory_financial_records ifr
+                    JOIN core.sku_variants v ON v.id = ifr.variant_id
+                    JOIN core.products p ON p.id = v.product_id
+                    WHERE {where}
+                    ORDER BY ifr.recorded_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params + [limit, offset],
+                )
+                rows = cur.fetchall() or []
+
+                cur.execute(
+                    f"SELECT COUNT(*) AS cnt FROM core.inventory_financial_records ifr WHERE {where}",
+                    params,
+                )
+                total = (cur.fetchone() or {}).get("cnt", 0)
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "records": [dict(r) for r in rows],
+        }
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/social/accounts")
+def social_accounts_list(request: Request) -> list[dict[str, Any]]:
+    """List connected social media accounts for the authenticated tenant."""
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                cur.execute(
+                    """
+                    SELECT id, platform, account_name, page_id, user_id,
+                           is_active, token_expires_at, created_at
+                    FROM marketing.tenant_social_accounts
+                    WHERE tenant_id = %s
+                    ORDER BY platform
+                    """,
+                    (ctx["tenant_id"],),
+                )
+                rows = cur.fetchall() or []
+        return [dict(r) for r in rows]
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/social/accounts")
+def social_accounts_add(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+    """Connect a social media account for the authenticated tenant."""
+    request_tenant_id = _tenant_id_from_request(request)
+    platform = body.get("platform", "")
+    access_token = body.get("access_token", "")
+    if not platform or not access_token:
+        raise HTTPException(status_code=400, detail="platform and access_token are required")
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                cur.execute(
+                    """
+                    INSERT INTO marketing.tenant_social_accounts
+                        (tenant_id, platform, account_name, page_id, user_id,
+                         access_token, token_expires_at, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, true)
+                    ON CONFLICT (tenant_id, platform) DO UPDATE SET
+                        account_name     = EXCLUDED.account_name,
+                        page_id          = EXCLUDED.page_id,
+                        user_id          = EXCLUDED.user_id,
+                        access_token     = EXCLUDED.access_token,
+                        token_expires_at = EXCLUDED.token_expires_at,
+                        is_active        = true
+                    RETURNING id
+                    """,
+                    (
+                        ctx["tenant_id"], platform,
+                        body.get("account_name"),
+                        body.get("page_id"),
+                        body.get("user_id"),
+                        access_token,
+                        body.get("token_expires_at"),
+                    ),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return {"ok": True, "id": str(row["id"]) if row else None}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/social/accounts/{platform}")
+def social_accounts_remove(platform: str, request: Request) -> dict[str, Any]:
+    """Disconnect a social media platform for the authenticated tenant."""
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                cur.execute(
+                    "UPDATE marketing.tenant_social_accounts SET is_active = false "
+                    "WHERE tenant_id = %s AND platform = %s",
+                    (ctx["tenant_id"], platform),
+                )
+            conn.commit()
+        return {"ok": True}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/tenants/{tenant_id}/registration-code")
+def generate_registration_code(tenant_id: str, request: Request) -> dict[str, Any]:
+    """Generate a one-time Telegram registration code for a tenant (admin only)."""
+    import secrets
+    request_tenant_id = _tenant_id_from_request(request)
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                # Verify the requesting user has access to this tenant
+                ctx = _context(cur, tenant_id=request_tenant_id)
+                code = secrets.token_urlsafe(12)
+                cur.execute(
+                    """
+                    INSERT INTO telegram.registration_codes
+                        (code, tenant_id, created_by, expires_at)
+                    VALUES (%s, %s, %s, now() + interval '7 days')
+                    """,
+                    (code, tenant_id, ctx.get("user_id")),
+                )
+            conn.commit()
+        return {"code": code, "expires_in": "7 days", "usage": f"/register {code}"}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ── Admin: Social Account Credentials per Tenant ─────────────────────────────
+
+
+class SocialAccountPayload(BaseModel):
+    platform: str
+    access_token: str
+    page_id: str | None = None
+    user_id: str | None = None
+    account_name: str | None = None
+
+
+@app.get("/admin/tenants/{tenant_id}/social-accounts")
+def admin_get_social_accounts(tenant_id: str, request: Request) -> list[dict[str, Any]]:
+    """List all connected social accounts for a tenant (admin only). Tokens are masked."""
+    ctx = _required_admin(request)
+    try:
+        return admin_list_social_accounts(ctx, tenant_id)
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/admin/tenants/{tenant_id}/social-accounts")
+async def admin_save_social_account(
+    tenant_id: str, payload: SocialAccountPayload, request: Request
+) -> dict[str, Any]:
+    """Save (upsert) a social account credential for a tenant.
+
+    For platform='telegram', the EEP service automatically calls Telegram's
+    setWebhook API to register a per-tenant webhook at
+    {TELEGRAM_WEBHOOK_BASE_URL}/webhook/telegram/{tenant_id}.
+    """
+    ctx = _required_admin(request)
+    webhook_registered_at = None
+
+    if payload.platform == "telegram":
+        webhook_base = os.environ.get("TELEGRAM_WEBHOOK_BASE_URL", "").rstrip("/")
+        if webhook_base:
+            webhook_url = f"{webhook_base}/webhook/telegram/{tenant_id}"
+            try:
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(
+                        f"https://api.telegram.org/bot{payload.access_token}/setWebhook",
+                        json={"url": webhook_url},
+                    )
+                    result = resp.json()
+                    if result.get("ok"):
+                        from datetime import datetime, timezone
+                        webhook_registered_at = datetime.now(timezone.utc)
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Telegram setWebhook failed: {result.get('description', 'unknown error')}. "
+                                   "Check the bot token and try again.",
+                        )
+            except _httpx.RequestError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Could not reach Telegram API: {exc}",
+                ) from exc
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="TELEGRAM_WEBHOOK_BASE_URL is not configured on the server. "
+                       "Set it to your public server URL (e.g. https://api.yourdomain.com).",
+            )
+
+    try:
+        saved = admin_upsert_social_account(
+            ctx,
+            tenant_id=tenant_id,
+            platform=payload.platform,
+            access_token=payload.access_token,
+            page_id=payload.page_id,
+            user_id=payload.user_id,
+            account_name=payload.account_name,
+            webhook_registered_at=webhook_registered_at,
+        )
+        return {**saved, "webhook_registered": webhook_registered_at is not None}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/admin/tenants/{tenant_id}/social-accounts/{platform}")
+def admin_delete_social_account(
+    tenant_id: str, platform: str, request: Request
+) -> dict[str, Any]:
+    """Deactivate a social account for a tenant (admin only). Reversible via re-save."""
+    ctx = _required_admin(request)
+    try:
+        admin_remove_social_account(ctx, tenant_id, platform)
+        return {"ok": True, "platform": platform}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/dashboard/summary")

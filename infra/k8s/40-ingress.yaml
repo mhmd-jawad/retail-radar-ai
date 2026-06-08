@@ -1,0 +1,53 @@
+# Traefik (k3s built-in) routes paths to services. Mirrors the frontend's intent:
+#   /api/*            → EEP   (strip /api; the frontend calls the backend under /api)
+#   /apify, /webhooks → EEP   (Apify posts to these bare paths — do NOT strip)
+#   /webhook/telegram → telegram
+#   /ie1, /ie2, /ie3  → the IE services (strip the /ieN prefix)
+#   everything else   → the SPA (so /inventory, /queue … are client-side routes, not EEP)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: { name: strip-api, namespace: retail-radar }
+spec:
+  stripPrefix: { prefixes: ["/api"] }
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: { name: strip-ie, namespace: retail-radar }
+spec:
+  stripPrefixRegex: { regex: ["/ie[0-9]"] }
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: { name: strip-assistant-api, namespace: retail-radar }
+spec:
+  stripPrefix: { prefixes: ["/assistant-api"] }
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: { name: retail-radar, namespace: retail-radar }
+spec:
+  entryPoints: [web]            # Traefik's HTTP :80 entrypoint (exposed as NodePort 30080)
+  routes:
+    # Frontend → backend API calls (VITE_API_BASE_URL=/api). Strip /api → EEP root paths.
+    - kind: Rule
+      match: PathPrefix(`/api`)
+      middlewares: [{ name: strip-api }]
+      services: [{ name: eep, port: 8000 }]
+      priority: 100
+    # Dashboard web chat -> assistant service. Strip /assistant-api -> /chat.
+    - kind: Rule
+      match: PathPrefix(`/assistant-api`)
+      middlewares: [{ name: strip-assistant-api }]
+      services: [{ name: telegram, port: 8004 }]
+      priority: 100
+    # Apify webhook (external) posts to bare paths — keep them, no strip.
+    - { kind: Rule, match: "PathPrefix(`/apify`) || PathPrefix(`/webhooks`)", services: [{ name: eep, port: 8000 }], priority: 100 }
+    # Telegram webhook (distinct from EEP's /webhooks).
+    - { kind: Rule, match: "PathPrefix(`/webhook/telegram`)", services: [{ name: telegram, port: 8004 }], priority: 110 }
+    - { kind: Rule, match: "PathPrefix(`/assistant-api`)", middlewares: [{ name: strip-assistant-api }], services: [{ name: telegram, port: 8004 }], priority: 100 }
+    # Direct IE access (dashboard model-health check hits /ie2/health, etc.).
+    - { kind: Rule, match: "PathPrefix(`/ie1`)", middlewares: [{ name: strip-ie }], services: [{ name: ie1, port: 8001 }], priority: 90 }
+    - { kind: Rule, match: "PathPrefix(`/ie2`)", middlewares: [{ name: strip-ie }], services: [{ name: ie2, port: 8002 }], priority: 90 }
+    - { kind: Rule, match: "PathPrefix(`/ie3`)", middlewares: [{ name: strip-ie }], services: [{ name: ie3, port: 8003 }], priority: 90 }
+    # Everything else → the single-page app.
+    - { kind: Rule, match: "PathPrefix(`/`)", services: [{ name: frontend, port: 80 }], priority: 1 }

@@ -15,11 +15,11 @@
     "brands_carried": 27
   },
   "balance_sheet_summary": {
-    "total_assets_usd": 339587.24,
+    "total_assets_usd": 337787.24,
     "total_liabilities_usd": 45344.59,
-    "total_equity_usd": 294242.65,
-    "current_ratio": 7.49,
-    "inventory_pct_of_assets": 89.0
+    "total_equity_usd": 292442.65,
+    "current_ratio": 7.45,
+    "inventory_pct_of_assets": 89.5
   },
   "cashflow_summary": {
     "annual_revenue_projected_usd": 2116080.68,
@@ -29,17 +29,13 @@
     "cash_runway_months": 3.0,
     "breakeven_monthly_revenue_usd": 6616.26
   },
-  "lebanon_context": {
-    "lollar_balance_usd": 12000,
-    "lollar_haircut": 0.15,
-    "lollar_real_value_usd": 1800.0,
+  "usd_context": {
     "generator_monthly_usd": 220,
     "grid_hours_per_day": 12,
     "payment_mostly_cash": true,
     "import_lead_time_weeks": "3-8",
     "notes": [
-      "All amounts in fresh USD (cash outside banking system).",
-      "Lollar is bank-trapped pre-crisis USD, valued at 15\u00a2/$1 for balance sheet purposes.",
+      "All financial amounts are tracked in USD.",
       "Generator fuel is a fixed cost because grid electricity covers only ~12h/day.",
       "Payment processing rate is low (1.5%) because ~85% of sales are cash.",
       "Import lead times are 3-8 weeks due to port delays and customs."

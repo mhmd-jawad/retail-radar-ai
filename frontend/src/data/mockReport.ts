@@ -159,9 +159,9 @@ const sampleCreative: CampaignCreative = {
   ad_copy_long: 'From morning Corniche miles to AUB intramurals — the new running drop is engineered for Lebanese summer pavement. In-store now across Beirut, Jounieh, and Tripoli. Cash and card welcome.',
   instagram_post: '☀️ Summer pace, secured.\nNew running drop — fresh USD pricing, in stock today.\n#RetailRadar #BeirutRuns',
   facebook_post: 'Your summer running upgrade is here. Visit our Beirut, Jounieh or Tripoli locations — limited stock per size.',
-  whatsapp_broadcast: 'Mar7aba 👋 New running drop just landed — shall we hold a pair in your size? Reply with size + city.',
+  telegram_broadcast: 'Mar7aba 👋 New running drop just landed — shall we hold a pair in your size? Reply with size + city.',
   cta_primary: 'Reserve in store',
-  cta_secondary: 'WhatsApp us',
+  cta_secondary: 'Message us on Telegram',
   generation_confidence: 0.86, fallback_used: false,
 };
 
@@ -169,7 +169,7 @@ const promote: PromoteItem[] = SKUS.filter(s => s.decision === 'PROMOTE').slice(
   sku_id: s.sku_id, product_name: s.product_name, brand: s.brand, category: s.category,
   reason: i % 3 === 0 ? 'Healthy margin + below-market price + seasonal tailwind' : 'Strong velocity, low days-of-supply risk',
   expected_lift_pct: round(8 + rnd() * 22, 1),
-  channels: ['Instagram', 'WhatsApp', 'In-store window'],
+  channels: ['Instagram', 'Telegram', 'In-store window'],
   creative: i < 12 ? { ...sampleCreative, headline: `${s.brand} ${s.category.split(' ')[0]} — built for Lebanese summer`, generation_confidence: round(0.7 + rnd() * 0.25, 2) } : undefined,
 }));
 
@@ -205,7 +205,7 @@ const directives: Directive[] = [
   { owner: 'Marketing', priority: 'high', title: 'Launch Running summer push', detail: '12 PROMOTE SKUs ready with creatives. Schedule Instagram + WhatsApp broadcast for May 1.' },
   { owner: 'Operations', priority: 'medium', title: 'Reallocate Tripoli stock', detail: 'Move 38 units of Football Boots from Tripoli to Jounieh ahead of league season.' },
   { owner: 'Finance', priority: 'high', title: 'Cash runway tight at 3.0 months', detail: 'Inventory = 82.6% of assets. Approve markdown pack to free ~$48k in 30 days.' },
-  { owner: 'Buying', priority: 'medium', title: 'Lock fresh USD pricing on next PO', detail: 'Hedge against lollar re-emergence — request 60-day price lock from 2 suppliers.' },
+  { owner: 'Buying', priority: 'medium', title: 'Lock USD pricing on next PO', detail: 'Request a 60-day price lock from 2 suppliers to protect working capital.' },
 ];
 
 const seasonal_actions: Report['promotions']['seasonal_actions'] = [
@@ -229,7 +229,7 @@ const cashflowSeries = [
 const financialAlerts: Alert[] = [
   { id: 'f1', severity: 'high', title: 'Cash runway at 3.0 months', detail: 'Below 4-month threshold. Inventory liquidation recommended.', created_at: '2026-04-21T09:00:00Z' },
   { id: 'f2', severity: 'medium', title: 'Inventory concentration: top 5 categories = 71%', detail: 'Diversification risk — Running and Football Boots dominate.', created_at: '2026-04-20T14:22:00Z' },
-  { id: 'f3', severity: 'low', title: 'Lollar exposure under control at 4%', detail: 'Fresh USD pricing strategy holding up.', created_at: '2026-04-19T10:15:00Z' },
+  { id: 'f3', severity: 'low', title: 'Working capital stable', detail: 'USD cash and receivables remain within target range.', created_at: '2026-04-19T10:15:00Z' },
 ];
 
 export const MOCK_REPORT: Report = {
@@ -270,7 +270,7 @@ export const MOCK_REPORT: Report = {
     cashflow_health: {
       cash_runway_months: 3.0, monthly_burn_usd: 158000,
       monthly_cash_in_usd: 152000, cash_on_hand_usd: 474000,
-      lollar_exposure_pct: 4, series: cashflowSeries,
+      series: cashflowSeries,
     },
     profitability: {
       blended_margin_pct: blendedMargin, breakeven_revenue_usd: 145000,

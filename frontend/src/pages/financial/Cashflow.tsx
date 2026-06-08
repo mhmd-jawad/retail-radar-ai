@@ -30,7 +30,7 @@ export default function FinancialCashflow() {
   const navigate = useNavigate();
   const tenantScope = useTenantScopeKey();
   const { data: report } = useReport();
-  const { data, isLoading, isFetching, refetch } = useQuery<CashflowMonth[]>({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery<CashflowMonth[]>({
     queryKey: ['financial-cashflow', tenantScope],
     queryFn: fetchCashflow,
     staleTime: 60_000,
@@ -71,6 +71,19 @@ export default function FinancialCashflow() {
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-6 animate-fade-in">
         {isLoading && <PageSkeleton />}
 
+        {isError && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-5 py-4 text-center">
+            <p className="font-semibold text-destructive">Cashflow unavailable</p>
+            <p className="mt-2 text-[12.5px] text-muted-foreground">{(error as Error)?.message ?? 'Could not connect to the database.'}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-3 text-[12px] font-medium text-primary underline underline-offset-4"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Summary KPIs */}
         {health && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -91,7 +104,7 @@ export default function FinancialCashflow() {
           </div>
         )}
 
-        {data && (
+        {!isError && data && (
           <>
             {/* Runway alert */}
             {runway < 4 && (

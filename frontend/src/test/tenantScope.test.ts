@@ -29,7 +29,7 @@ const creative: CampaignCreative = {
   ad_copy_long: 'Long copy',
   instagram_post: 'Instagram',
   facebook_post: 'Facebook',
-  whatsapp_broadcast: 'WhatsApp',
+  telegram_broadcast: 'Telegram',
   cta_primary: 'Shop now',
   cta_secondary: 'Learn more',
   image_url: '',

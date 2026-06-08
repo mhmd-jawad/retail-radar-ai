@@ -1,0 +1,1023 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>eep.admin_analytics_db - StylePulse AI Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=12bf603c" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">StylePulse AI Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
+  
+  <span class="sidebar-brand-text">StylePulse AI Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Overview</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture Overview</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">EEP — Orchestrator (port 8000)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../eep/index.html">EEP — Orchestrator</a><input aria-label="Toggle navigation of EEP — Orchestrator" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/main.html">EEP Main (FastAPI Application)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/auth_db.html">Authentication Database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/retail_db.html">Retail Database Layer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/frontend_bridge.html">Frontend Bridge</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/apify_ingest.html">Apify Ingest</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/observability.html">Observability &amp; Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/outcome_tracking.html">Outcome Tracking</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../eep/admin_analytics_db.html">Admin Analytics Database</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE1 — Market Intelligence (port 8001)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../ie1/index.html">IE1 — Market Intelligence</a><input aria-label="Toggle navigation of IE1 — Market Intelligence" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../ie1/main.html">IE1 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../ie1/competitor_processor.html">Competitor Processor</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE2 — Decision Intelligence (port 8002)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../ie2/index.html">IE2 — Decision Intelligence</a><input aria-label="Toggle navigation of IE2 — Decision Intelligence" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../ie2/main.html">IE2 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../ie2/schemas.html">Schemas &amp; Pydantic Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../ie2/calendar.html">Retail Event Calendar</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../ie2/rules/index.html">Rules Engine</a><input aria-label="Toggle navigation of Rules Engine" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/rules/engine.html">Hard Rules Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../ie2/features/index.html">Feature Engineering</a><input aria-label="Toggle navigation of Feature Engineering" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/features/engineer.html">Feature Engineer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/features/runtime_features.html">Runtime Features</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/features/validate.html">Feature Validation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/features/clean_competitors.html">Competitor Data Cleaning</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../ie2/explainability/index.html">Explainability</a><input aria-label="Toggle navigation of Explainability" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/explainability/shap_engine.html">SHAP Engine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/explainability/templates.html">Explanation Templates</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../ie2/training/index.html">Model Training</a><input aria-label="Toggle navigation of Model Training" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/training/train.html">CatBoost Training</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/training/baseline.html">Baseline Model</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../ie2/evaluation/index.html">Model Evaluation</a><input aria-label="Toggle navigation of Model Evaluation" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/evaluation/promote.html">Model Promotion Pipeline</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../ie2/evaluation/edge_case_benchmark.html">Edge Case Benchmark</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE3 — Campaign Creative (port 8003)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../ie3/index.html">IE3 — Campaign Creative</a><input aria-label="Toggle navigation of IE3 — Campaign Creative" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../ie3/main.html">IE3 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../ie3/publishers.html">Social Media Publishers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../ie3/image_gen.html">Image Generation</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">StylePulse Offline Engine</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../stylepulse/index.html">StylePulse Offline Engine</a><input aria-label="Toggle navigation of StylePulse Offline Engine" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../stylepulse/engine.html">StylePulse Engine</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../stylepulse/analyzers/index.html">Analyzers</a><input aria-label="Toggle navigation of Analyzers" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../stylepulse/analyzers/inventory.html">Inventory Health Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../stylepulse/analyzers/competitor.html">Competitive Intelligence Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../stylepulse/analyzers/financial.html">Financial Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../stylepulse/analyzers/promotions.html">Promotion Directive Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../stylepulse/analyzers/thresholds.html">Lebanon Retail Thresholds</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../stylepulse/report/generator.html">Report Generator</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Data Pipeline</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../data_pipeline/index.html">Data Pipeline</a><input aria-label="Toggle navigation of Data Pipeline" class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../data_pipeline/build_inventory.html">Build Inventory Script</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../data_pipeline/scrapers/index.html">Scrapers</a><input aria-label="Toggle navigation of Scrapers" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../data_pipeline/scrapers/base.html">Base Scraper</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../data_pipeline/scrapers/shopify_scraper.html">Shopify Scraper</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../data_pipeline/scrapers/runner.html">Scraper Runner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../data_pipeline/scrapers/storage.html">Scraper Storage</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Shared Utilities</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../common/index.html">Shared Utilities</a><input aria-label="Toggle navigation of Shared Utilities" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../common/price_normalization.html">Price Normalisation</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for eep.admin_analytics_db</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Admin Analytics DB — cross-tenant aggregate queries for the Platform Operations suite.</span>
+
+<span class="sd">All functions require admin context (enforced in main.py before calling here).</span>
+<span class="sd">No tenant_id filter is applied — these span every tenant.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span><span class="p">,</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">eep.retail_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">_connect</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span>
+
+
+<span class="c1"># ─── Model Intelligence (Outcomes) ───────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="get_outcomes_aggregate">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.get_outcomes_aggregate">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_outcomes_aggregate</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Cross-tenant summary of recommendation accuracy and outcome measurements.</span>
+<span class="sd">    Used by /admin/outcomes/aggregate.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="c1"># Platform-wide totals</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        count(*)                                         as total_decisions,</span>
+<span class="s2">                        count(*) filter (where status in (&#39;measured_7d&#39;,&#39;completed&#39;))</span>
+<span class="s2">                                                                         as measured_count,</span>
+<span class="s2">                        count(*) filter (</span>
+<span class="s2">                            where status = &#39;tracking&#39;</span>
+<span class="s2">                              and (check_7d_at &lt;= now() or check_14d_at &lt;= now())</span>
+<span class="s2">                        )                                                as pending_measurements,</span>
+<span class="s2">                        coalesce(sum(</span>
+<span class="s2">                            case when m.window_days = 14 then m.revenue_delta_usd else 0 end</span>
+<span class="s2">                        ), 0)                                            as total_revenue_impact_usd,</span>
+<span class="s2">                        coalesce(avg(m.accuracy_score), 0)              as avg_accuracy_pct</span>
+<span class="s2">                    from outcome_tracking.decision_snapshots s</span>
+<span class="s2">                    left join outcome_tracking.outcome_measurements m</span>
+<span class="s2">                        on m.snapshot_id = s.id</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="n">totals</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;total_decisions&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;total_decisions&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="s2">&quot;avg_accuracy_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;avg_accuracy_pct&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span> <span class="mi">1</span><span class="p">),</span>
+                    <span class="s2">&quot;pending_measurements&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;pending_measurements&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="s2">&quot;total_revenue_impact_usd&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;total_revenue_impact_usd&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span> <span class="mi">2</span><span class="p">),</span>
+                <span class="p">}</span>
+
+                <span class="c1"># Accuracy by decision type</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        s.decision_type,</span>
+<span class="s2">                        count(distinct s.id)                as decision_count,</span>
+<span class="s2">                        coalesce(avg(m.accuracy_score), 0)  as avg_accuracy</span>
+<span class="s2">                    from outcome_tracking.decision_snapshots s</span>
+<span class="s2">                    left join outcome_tracking.outcome_measurements m on m.snapshot_id = s.id</span>
+<span class="s2">                    group by s.decision_type</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">by_type</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                    <span class="n">by_type</span><span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;decision_type&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;count&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;decision_count&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;avg_accuracy&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;avg_accuracy&quot;</span><span class="p">]),</span> <span class="mi">1</span><span class="p">),</span>
+                    <span class="p">}</span>
+
+                <span class="c1"># Confidence calibration scatter (max 200 points)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        s.ie2_confidence      as confidence,</span>
+<span class="s2">                        m.accuracy_score      as accuracy</span>
+<span class="s2">                    from outcome_tracking.decision_snapshots s</span>
+<span class="s2">                    join outcome_tracking.outcome_measurements m on m.snapshot_id = s.id</span>
+<span class="s2">                    where s.ie2_confidence is not null and m.accuracy_score is not null</span>
+<span class="s2">                    order by m.measured_at desc</span>
+<span class="s2">                    limit 200</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">calibration</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;confidence&quot;</span><span class="p">]),</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;accuracy&quot;</span><span class="p">]),</span> <span class="mi">1</span><span class="p">)}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Per-tenant performance</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.name                              as tenant_name,</span>
+<span class="s2">                        t.id                               as tenant_id,</span>
+<span class="s2">                        count(distinct s.id)               as decisions,</span>
+<span class="s2">                        coalesce(avg(m.accuracy_score), 0) as avg_accuracy,</span>
+<span class="s2">                        coalesce(sum(case when m.window_days=14 then m.revenue_delta_usd else 0 end), 0)</span>
+<span class="s2">                                                           as revenue_delta_usd,</span>
+<span class="s2">                        max(s.approved_at)                 as last_decision_at</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    join outcome_tracking.decision_snapshots s on s.tenant_id = t.id</span>
+<span class="s2">                    left join outcome_tracking.outcome_measurements m on m.snapshot_id = s.id</span>
+<span class="s2">                    group by t.id, t.name</span>
+<span class="s2">                    order by avg(m.accuracy_score) desc nulls last</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">per_tenant</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;decisions&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;decisions&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;avg_accuracy&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;avg_accuracy&quot;</span><span class="p">]),</span> <span class="mi">1</span><span class="p">),</span>
+                        <span class="s2">&quot;revenue_delta_usd&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;revenue_delta_usd&quot;</span><span class="p">]),</span> <span class="mi">2</span><span class="p">),</span>
+                        <span class="s2">&quot;last_decision_at&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;last_decision_at&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;last_decision_at&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Pending measurements (snapshots due for 7d or 14d check)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.name                  as tenant_name,</span>
+<span class="s2">                        t.id                    as tenant_id,</span>
+<span class="s2">                        s.id                    as snapshot_id,</span>
+<span class="s2">                        s.decision_type,</span>
+<span class="s2">                        coalesce(p.name || &#39; &#39; || coalesce(sv.color,&#39;&#39;) || &#39; &#39; || coalesce(sv.size,&#39;&#39;), sv.sku_id)</span>
+<span class="s2">                                                as product_name,</span>
+<span class="s2">                        case</span>
+<span class="s2">                            when s.check_7d_at &lt;= now() and s.status = &#39;tracking&#39; then 7</span>
+<span class="s2">                            else 14</span>
+<span class="s2">                        end                     as window_days,</span>
+<span class="s2">                        least(s.check_7d_at, s.check_14d_at) as check_due_at</span>
+<span class="s2">                    from outcome_tracking.decision_snapshots s</span>
+<span class="s2">                    join core.tenants t on t.id = s.tenant_id</span>
+<span class="s2">                    join core.sku_variants sv on sv.id = s.variant_id</span>
+<span class="s2">                    join core.products p on p.id = sv.product_id</span>
+<span class="s2">                    where s.status in (&#39;tracking&#39;, &#39;measured_7d&#39;)</span>
+<span class="s2">                      and (s.check_7d_at &lt;= now() + interval &#39;1 day&#39;</span>
+<span class="s2">                           or s.check_14d_at &lt;= now() + interval &#39;1 day&#39;)</span>
+<span class="s2">                    order by check_due_at asc</span>
+<span class="s2">                    limit 50</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">pending</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;snapshot_id&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;snapshot_id&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;product_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;product_name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+                        <span class="s2">&quot;decision_type&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;decision_type&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;window_days&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;window_days&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;check_due_at&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;check_due_at&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;check_due_at&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># 30-day accuracy trend (daily avg)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        date_trunc(&#39;day&#39;, m.measured_at)::date  as day,</span>
+<span class="s2">                        avg(m.accuracy_score)                   as avg_accuracy</span>
+<span class="s2">                    from outcome_tracking.outcome_measurements m</span>
+<span class="s2">                    where m.measured_at &gt;= now() - interval &#39;30 days&#39;</span>
+<span class="s2">                    group by 1</span>
+<span class="s2">                    order by 1 asc</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">accuracy_trend</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;day&quot;</span><span class="p">]),</span> <span class="s2">&quot;avg_accuracy&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;avg_accuracy&quot;</span><span class="p">]),</span> <span class="mi">1</span><span class="p">)}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="o">**</span><span class="n">totals</span><span class="p">,</span>
+                    <span class="s2">&quot;by_decision_type&quot;</span><span class="p">:</span> <span class="n">by_type</span><span class="p">,</span>
+                    <span class="s2">&quot;calibration&quot;</span><span class="p">:</span> <span class="n">calibration</span><span class="p">,</span>
+                    <span class="s2">&quot;per_tenant&quot;</span><span class="p">:</span> <span class="n">per_tenant</span><span class="p">,</span>
+                    <span class="s2">&quot;pending&quot;</span><span class="p">:</span> <span class="n">pending</span><span class="p">,</span>
+                    <span class="s2">&quot;accuracy_trend&quot;</span><span class="p">:</span> <span class="n">accuracy_trend</span><span class="p">,</span>
+                <span class="p">}</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span><span class="p">):</span>
+            <span class="k">raise</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<div class="viewcode-block" id="admin_trigger_measurement">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.admin_trigger_measurement">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_trigger_measurement</span><span class="p">(</span><span class="n">snapshot_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">window_days</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Admin can trigger a measurement for any tenant&#39;s snapshot.</span>
+<span class="sd">    Bypasses tenant_id scope check — admin sees all tenants.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">eep.outcome_tracking</span><span class="w"> </span><span class="kn">import</span> <span class="n">measure_outcome</span>
+    <span class="c1"># measure_outcome accepts tenant_id=None to skip the ownership check</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># fetch tenant_id for this snapshot</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                    <span class="s2">&quot;select tenant_id from outcome_tracking.decision_snapshots where id = </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="p">(</span><span class="n">snapshot_id</span><span class="p">,),</span>
+                <span class="p">)</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">row</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Snapshot </span><span class="si">{</span><span class="n">snapshot_id</span><span class="si">}</span><span class="s2"> not found&quot;</span><span class="p">)</span>
+                <span class="n">tenant_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">measure_outcome</span><span class="p">(</span><span class="n">snapshot_id</span><span class="p">,</span> <span class="n">window_days</span><span class="p">,</span> <span class="n">tenant_id</span><span class="o">=</span><span class="n">tenant_id</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<span class="c1"># ─── Client Financial Health ──────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="get_financial_overview">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.get_financial_overview">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_financial_overview</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Cross-tenant financial health aggregate.</span>
+<span class="sd">    Returns derived health signals only — no individual P&amp;L line items.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="n">now</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">date</span><span class="p">()</span>
+                <span class="n">current_month</span> <span class="o">=</span> <span class="n">now</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">prev_month</span> <span class="o">=</span> <span class="p">(</span><span class="n">current_month</span> <span class="o">-</span> <span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="c1"># Active shops count</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select count(*) as active_shops</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    join core.stores s on s.tenant_id = t.id and s.is_active = true</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">active_shops</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;active_shops&quot;</span><span class="p">])</span>
+
+                <span class="c1"># Per-tenant latest financial snapshot</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    with latest as (</span>
+<span class="s2">                        select distinct on (tenant_id)</span>
+<span class="s2">                            tenant_id,</span>
+<span class="s2">                            period_month,</span>
+<span class="s2">                            cash_on_hand + coalesce(bank_balance, 0)            as cash_total,</span>
+<span class="s2">                            coalesce(monthly_expenses, 0)                       as monthly_burn,</span>
+<span class="s2">                            coalesce(monthly_sales, 0)                          as monthly_sales,</span>
+<span class="s2">                            supplier_payables + coalesce(rent_payable,0)</span>
+<span class="s2">                              + coalesce(salary_payable,0) + coalesce(loan_balance,0)</span>
+<span class="s2">                              + coalesce(tax_vat_payable,0) + coalesce(other_liabilities,0)</span>
+<span class="s2">                                                                                 as total_liabilities,</span>
+<span class="s2">                            cash_on_hand + coalesce(bank_balance,0)</span>
+<span class="s2">                              + coalesce(receivables,0) + coalesce(equipment_fixtures,0)</span>
+<span class="s2">                              + coalesce(other_assets,0)                         as liquid_assets</span>
+<span class="s2">                        from core.tenant_financial_snapshots</span>
+<span class="s2">                        where period_month &lt;= </span><span class="si">%s</span>
+<span class="s2">                        order by tenant_id, period_month desc</span>
+<span class="s2">                    )</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.id        as tenant_id,</span>
+<span class="s2">                        t.name      as tenant_name,</span>
+<span class="s2">                        l.period_month,</span>
+<span class="s2">                        l.cash_total,</span>
+<span class="s2">                        l.monthly_burn,</span>
+<span class="s2">                        l.monthly_sales,</span>
+<span class="s2">                        l.total_liabilities,</span>
+<span class="s2">                        l.liquid_assets,</span>
+<span class="s2">                        -- cash runway: cash / burn rate (avoid divide-by-zero)</span>
+<span class="s2">                        case when l.monthly_burn &gt; 0</span>
+<span class="s2">                            then l.cash_total / l.monthly_burn</span>
+<span class="s2">                            else 12.0</span>
+<span class="s2">                        end          as cash_runway_months,</span>
+<span class="s2">                        -- current ratio: liquid assets / liabilities</span>
+<span class="s2">                        case when l.total_liabilities &gt; 0</span>
+<span class="s2">                            then l.liquid_assets / l.total_liabilities</span>
+<span class="s2">                            else 2.0</span>
+<span class="s2">                        end          as current_ratio</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    left join latest l on l.tenant_id = t.id</span>
+<span class="s2">                    order by cash_runway_months asc nulls last</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">current_month</span><span class="p">,))</span>
+                <span class="n">rows</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+                <span class="c1"># Blended margin from report-level data (approximate from financial snapshots)</span>
+                <span class="c1"># We derive margin from monthly_sales - monthly_burn relative</span>
+                <span class="n">health_scores</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">at_risk</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+                    <span class="n">runway</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;cash_runway_months&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mf">6.0</span><span class="p">)</span>
+                    <span class="n">ratio</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;current_ratio&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mf">1.0</span><span class="p">)</span>
+                    <span class="c1"># We don&#39;t have margin directly from snapshots; derive from sales/burn</span>
+                    <span class="n">sales</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;monthly_sales&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+                    <span class="n">burn</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;monthly_burn&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+                    <span class="n">margin</span> <span class="o">=</span> <span class="p">((</span><span class="n">sales</span> <span class="o">-</span> <span class="n">burn</span><span class="p">)</span> <span class="o">/</span> <span class="n">sales</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span> <span class="k">if</span> <span class="n">sales</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+
+                    <span class="n">runway_score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">100.0</span><span class="p">,</span> <span class="n">runway</span> <span class="o">*</span> <span class="mf">16.7</span><span class="p">)</span>
+                    <span class="n">ratio_score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">100.0</span><span class="p">,</span> <span class="n">ratio</span> <span class="o">*</span> <span class="mf">50.0</span><span class="p">)</span>
+                    <span class="n">margin_score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">100.0</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">margin</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.67</span><span class="p">)</span>
+                    <span class="n">score</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">runway_score</span> <span class="o">*</span> <span class="mf">0.4</span> <span class="o">+</span> <span class="n">ratio_score</span> <span class="o">*</span> <span class="mf">0.3</span> <span class="o">+</span> <span class="n">margin_score</span> <span class="o">*</span> <span class="mf">0.3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+                    <span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;healthy&quot;</span> <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;=</span> <span class="mi">65</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;watch&quot;</span> <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;=</span> <span class="mi">40</span> <span class="k">else</span> <span class="s2">&quot;at_risk&quot;</span><span class="p">)</span>
+                    <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="n">score</span><span class="p">,</span>
+                        <span class="s2">&quot;cash_runway_months&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">runway</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                        <span class="s2">&quot;current_ratio&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+                        <span class="s2">&quot;margin_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">margin</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                        <span class="s2">&quot;last_snapshot&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;period_month&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;period_month&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">,</span>
+                    <span class="p">}</span>
+                    <span class="n">health_scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">runway</span> <span class="o">&lt;</span> <span class="mf">2.0</span> <span class="ow">and</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;period_month&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">at_risk</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+
+                <span class="n">shops_at_risk</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">at_risk</span><span class="p">)</span>
+                <span class="n">avg_margin</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="nb">round</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">e</span><span class="p">[</span><span class="s2">&quot;margin_pct&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">health_scores</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">health_scores</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">health_scores</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Missing snapshots this month</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select count(*) as missing</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    where not exists (</span>
+<span class="s2">                        select 1 from core.tenant_financial_snapshots s</span>
+<span class="s2">                        where s.tenant_id = t.id and s.period_month = </span><span class="si">%s</span>
+<span class="s2">                    )</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">current_month</span><span class="p">,))</span>
+                <span class="n">missing_this_month</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;missing&quot;</span><span class="p">])</span>
+
+                <span class="c1"># Platform margin trend (6 months — avg monthly_sales - burn / sales)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        period_month,</span>
+<span class="s2">                        avg(</span>
+<span class="s2">                            case when monthly_sales &gt; 0</span>
+<span class="s2">                                then (monthly_sales - monthly_expenses) / monthly_sales * 100</span>
+<span class="s2">                                else null</span>
+<span class="s2">                            end</span>
+<span class="s2">                        ) as avg_margin_pct</span>
+<span class="s2">                    from core.tenant_financial_snapshots</span>
+<span class="s2">                    where period_month &gt;= date_trunc(&#39;month&#39;, now() - interval &#39;5 months&#39;)</span>
+<span class="s2">                    group by period_month</span>
+<span class="s2">                    order by period_month asc</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">margin_trend</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">&quot;month&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;period_month&quot;</span><span class="p">]),</span> <span class="s2">&quot;avg_margin_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;avg_margin_pct&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span> <span class="mi">1</span><span class="p">)}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Snapshot coverage: last 3 months per tenant</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.id        as tenant_id,</span>
+<span class="s2">                        t.name      as tenant_name,</span>
+<span class="s2">                        array_agg(s.period_month order by s.period_month desc) as submitted_months</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    left join core.tenant_financial_snapshots s</span>
+<span class="s2">                        on s.tenant_id = t.id</span>
+<span class="s2">                       and s.period_month &gt;= date_trunc(&#39;month&#39;, now() - interval &#39;2 months&#39;)</span>
+<span class="s2">                    group by t.id, t.name</span>
+<span class="s2">                    order by t.name</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">coverage</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;submitted_months&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;submitted_months&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="p">[])],</span>
+                    <span class="p">}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;active_shops&quot;</span><span class="p">:</span> <span class="n">active_shops</span><span class="p">,</span>
+                    <span class="s2">&quot;shops_at_risk&quot;</span><span class="p">:</span> <span class="n">shops_at_risk</span><span class="p">,</span>
+                    <span class="s2">&quot;avg_margin_pct&quot;</span><span class="p">:</span> <span class="n">avg_margin</span><span class="p">,</span>
+                    <span class="s2">&quot;missing_snapshots_this_month&quot;</span><span class="p">:</span> <span class="n">missing_this_month</span><span class="p">,</span>
+                    <span class="s2">&quot;at_risk_shops&quot;</span><span class="p">:</span> <span class="n">at_risk</span><span class="p">,</span>
+                    <span class="s2">&quot;health_scores&quot;</span><span class="p">:</span> <span class="n">health_scores</span><span class="p">,</span>
+                    <span class="s2">&quot;margin_trend&quot;</span><span class="p">:</span> <span class="n">margin_trend</span><span class="p">,</span>
+                    <span class="s2">&quot;snapshot_coverage&quot;</span><span class="p">:</span> <span class="n">coverage</span><span class="p">,</span>
+                <span class="p">}</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span><span class="p">):</span>
+            <span class="k">raise</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<span class="c1"># ─── Content Operations (Campaigns) ──────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="get_campaigns_overview">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.get_campaigns_overview">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_campaigns_overview</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Cross-tenant campaign activity summary.</span>
+<span class="sd">    Used by /admin/campaigns/overview.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="c1"># Totals</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        count(*)                                                    as total_campaigns,</span>
+<span class="s2">                        count(*) filter (where c.created_at &gt;= now() - interval &#39;30 days&#39;)</span>
+<span class="s2">                                                                                    as last_30_days,</span>
+<span class="s2">                        coalesce(avg(c.generation_confidence), 0)                   as avg_confidence,</span>
+<span class="s2">                        coalesce(</span>
+<span class="s2">                            count(*) filter (where c.fallback_used = true)::float</span>
+<span class="s2">                            / nullif(count(*),0) * 100,</span>
+<span class="s2">                            0</span>
+<span class="s2">                        )                                                           as fallback_rate_pct</span>
+<span class="s2">                    from marketing.campaigns c</span>
+<span class="s2">                    where c.channel is not null</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="n">totals</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;total_campaigns&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;total_campaigns&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="s2">&quot;last_30_days&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;last_30_days&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="s2">&quot;avg_confidence_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;avg_confidence&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                    <span class="s2">&quot;fallback_rate_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;fallback_rate_pct&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span> <span class="mi">1</span><span class="p">),</span>
+                <span class="p">}</span>
+
+                <span class="c1"># By channel</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select coalesce(lower(channel), &#39;unknown&#39;) as channel, count(*) as cnt</span>
+<span class="s2">                    from marketing.campaigns</span>
+<span class="s2">                    where channel is not null</span>
+<span class="s2">                    group by 1</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">by_channel</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                    <span class="n">by_channel</span><span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;channel&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;cnt&quot;</span><span class="p">])</span>
+
+                <span class="c1"># By decision type (via recommendations join)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        coalesce(rec.recommendation, &#39;UNKNOWN&#39;) as decision_type,</span>
+<span class="s2">                        count(*) as cnt</span>
+<span class="s2">                    from marketing.campaigns c</span>
+<span class="s2">                    left join marketing.recommendations rec on rec.id = c.recommendation_id</span>
+<span class="s2">                    group by 1</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">by_decision</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                    <span class="n">by_decision</span><span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;decision_type&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;cnt&quot;</span><span class="p">])</span>
+
+                <span class="c1"># Fallback rate trend (last 30 days, daily)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        date_trunc(&#39;day&#39;, created_at)::date as day,</span>
+<span class="s2">                        coalesce(</span>
+<span class="s2">                            count(*) filter (where fallback_used = true)::float</span>
+<span class="s2">                            / nullif(count(*), 0) * 100,</span>
+<span class="s2">                            0</span>
+<span class="s2">                        ) as fallback_rate_pct</span>
+<span class="s2">                    from marketing.campaigns</span>
+<span class="s2">                    where created_at &gt;= now() - interval &#39;30 days&#39;</span>
+<span class="s2">                    group by 1</span>
+<span class="s2">                    order by 1 asc</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">fallback_trend</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;day&quot;</span><span class="p">]),</span> <span class="s2">&quot;fallback_rate_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;fallback_rate_pct&quot;</span><span class="p">]),</span> <span class="mi">1</span><span class="p">)}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Per-tenant activity</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.id                                        as tenant_id,</span>
+<span class="s2">                        t.name                                      as tenant_name,</span>
+<span class="s2">                        count(c.id)                                 as total,</span>
+<span class="s2">                        count(c.id) filter (where c.created_at &gt;= now() - interval &#39;30 days&#39;)</span>
+<span class="s2">                                                                    as last_30d,</span>
+<span class="s2">                        mode() within group (order by c.channel)    as most_used_channel,</span>
+<span class="s2">                        max(c.created_at)                           as last_campaign_at</span>
+<span class="s2">                    from core.tenants t</span>
+<span class="s2">                    left join marketing.campaigns c on c.tenant_id = t.id</span>
+<span class="s2">                    group by t.id, t.name</span>
+<span class="s2">                    order by count(c.id) desc</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">per_tenant</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_id&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                        <span class="s2">&quot;last_30d&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;last_30d&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+                        <span class="s2">&quot;most_used_channel&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;most_used_channel&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;last_campaign_at&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;last_campaign_at&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;last_campaign_at&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Recent campaigns (last 20)</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select</span>
+<span class="s2">                        t.name                              as tenant_name,</span>
+<span class="s2">                        coalesce(p.name, sv.sku_id)        as product_name,</span>
+<span class="s2">                        c.channel,</span>
+<span class="s2">                        c.headline,</span>
+<span class="s2">                        coalesce(c.tone, &#39;unknown&#39;)         as tone,</span>
+<span class="s2">                        coalesce(c.generation_confidence, 0) as confidence,</span>
+<span class="s2">                        coalesce(c.fallback_used, false)    as fallback_used,</span>
+<span class="s2">                        c.created_at</span>
+<span class="s2">                    from marketing.campaigns c</span>
+<span class="s2">                    join core.tenants t on t.id = c.tenant_id</span>
+<span class="s2">                    left join core.sku_variants sv on sv.id = c.variant_id</span>
+<span class="s2">                    left join core.products p on p.id = sv.product_id</span>
+<span class="s2">                    order by c.created_at desc</span>
+<span class="s2">                    limit 20</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">recent</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;tenant_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tenant_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;product_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;product_name&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;channel&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;channel&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;headline&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;headline&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;tone&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;tone&quot;</span><span class="p">],</span>
+                        <span class="s2">&quot;confidence_pct&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;confidence&quot;</span><span class="p">])</span> <span class="o">*</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                        <span class="s2">&quot;fallback_used&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;fallback_used&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;created_at&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;created_at&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;created_at&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">}</span>
+                    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="c1"># Channels active count</span>
+                <span class="n">channels_live</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">by_channel</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">])</span>
+
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="o">**</span><span class="n">totals</span><span class="p">,</span>
+                    <span class="s2">&quot;channels_live&quot;</span><span class="p">:</span> <span class="n">channels_live</span><span class="p">,</span>
+                    <span class="s2">&quot;by_channel&quot;</span><span class="p">:</span> <span class="n">by_channel</span><span class="p">,</span>
+                    <span class="s2">&quot;by_decision_type&quot;</span><span class="p">:</span> <span class="n">by_decision</span><span class="p">,</span>
+                    <span class="s2">&quot;fallback_trend&quot;</span><span class="p">:</span> <span class="n">fallback_trend</span><span class="p">,</span>
+                    <span class="s2">&quot;per_tenant&quot;</span><span class="p">:</span> <span class="n">per_tenant</span><span class="p">,</span>
+                    <span class="s2">&quot;recent&quot;</span><span class="p">:</span> <span class="n">recent</span><span class="p">,</span>
+                <span class="p">}</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span><span class="p">):</span>
+            <span class="k">raise</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<div class="viewcode-block" id="persist_campaign">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.persist_campaign">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">persist_campaign</span><span class="p">(</span>
+    <span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">variant_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">recommendation_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">channel</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">headline</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">body</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tone</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">generation_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">fallback_used</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Persist a generated campaign to marketing.campaigns.</span>
+<span class="sd">    Called after a successful IE3 campaign generation by the shop.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    insert into marketing.campaigns</span>
+<span class="s2">                        (tenant_id, variant_id, recommendation_id, channel, status,</span>
+<span class="s2">                         headline, body, tone, generation_confidence, fallback_used)</span>
+<span class="s2">                    values (</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, &#39;published&#39;, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">)</span>
+<span class="s2">                    returning id, created_at</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">,</span> <span class="p">(</span>
+                    <span class="n">tenant_id</span><span class="p">,</span>
+                    <span class="n">variant_id</span><span class="p">,</span>
+                    <span class="n">recommendation_id</span><span class="p">,</span>
+                    <span class="n">channel</span><span class="p">,</span>
+                    <span class="n">headline</span><span class="p">,</span>
+                    <span class="n">body</span><span class="p">,</span>
+                    <span class="n">tone</span><span class="p">,</span>
+                    <span class="n">generation_confidence</span><span class="p">,</span>
+                    <span class="n">fallback_used</span><span class="p">,</span>
+                <span class="p">))</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;campaign_id&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">],</span>
+                    <span class="s2">&quot;created_at&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;created_at&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+                    <span class="s2">&quot;ok&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="p">}</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span><span class="p">):</span>
+            <span class="k">raise</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<span class="c1"># ─── Admin Platform Assistant ─────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="get_admin_assistant_context">
+<a class="viewcode-back" href="../../eep/admin_analytics_db.html#eep.admin_analytics_db.get_admin_assistant_context">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_admin_assistant_context</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fetch a lightweight summary to prime the admin assistant system prompt.</span>
+<span class="sd">    Returns counts and top-level signals only.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;select count(*) as n from core.tenants&quot;</span><span class="p">)</span>
+                <span class="n">tenant_count</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;n&quot;</span><span class="p">])</span>
+
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select count(*) as n from intel.competitor_requests</span>
+<span class="s2">                    where status = &#39;pending&#39;</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">pending_requests</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;n&quot;</span><span class="p">])</span>
+
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select count(*) as n</span>
+<span class="s2">                    from outcome_tracking.decision_snapshots</span>
+<span class="s2">                    where status in (&#39;tracking&#39;,&#39;measured_7d&#39;)</span>
+<span class="s2">                      and (check_7d_at &lt;= now() + interval &#39;1 day&#39;</span>
+<span class="s2">                           or check_14d_at &lt;= now() + interval &#39;1 day&#39;)</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">pending_measurements</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;n&quot;</span><span class="p">])</span>
+
+                <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    select count(*) as n from core.tenants t</span>
+<span class="s2">                    where not exists (</span>
+<span class="s2">                        select 1 from core.tenant_financial_snapshots s</span>
+<span class="s2">                        where s.tenant_id = t.id</span>
+<span class="s2">                          and s.period_month = date_trunc(&#39;month&#39;, now())::date</span>
+<span class="s2">                    )</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">)</span>
+                <span class="n">missing_financials</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;n&quot;</span><span class="p">])</span>
+
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;tenant_count&quot;</span><span class="p">:</span> <span class="n">tenant_count</span><span class="p">,</span>
+                    <span class="s2">&quot;pending_competitor_requests&quot;</span><span class="p">:</span> <span class="n">pending_requests</span><span class="p">,</span>
+                    <span class="s2">&quot;pending_outcome_measurements&quot;</span><span class="p">:</span> <span class="n">pending_measurements</span><span class="p">,</span>
+                    <span class="s2">&quot;tenants_missing_financials_this_month&quot;</span><span class="p">:</span> <span class="n">missing_financials</span><span class="p">,</span>
+                <span class="p">}</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">DatabaseUnavailable</span><span class="p">):</span>
+            <span class="k">raise</span>
+        <span class="k">raise</span> <span class="n">DatabaseUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Hassan Aboali and contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../_static/documentation_options.js?v=4ebf8126"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    </body>
+</html>

@@ -23,7 +23,7 @@ const MODULES = [
   { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.', status: 'live' },
   { to: '/competitive', icon: Radar, title: 'Competitive Intelligence', desc: 'Price gaps across 7 Lebanese sportswear shops.', status: 'live' },
   { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders, seasonal pushes, ad creatives.', status: 'partial' },
-  { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, current ratio, lollar exposure.', status: 'live' },
+  { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Runway, liquidity, working capital.', status: 'live' },
 ];
 
 const SERVICES = [
@@ -378,7 +378,7 @@ export default function Landing() {
               { to: '/overview', icon: Radar, title: 'Executive Overview', desc: 'KPI snapshot, alerts and seasonal calendar.' },
               { to: '/queue', icon: ListChecks, title: 'Recommendations Queue', desc: 'Approve, edit or snooze 350 SKU decisions.' },
               { to: '/competitive', icon: Database, title: 'Competitive Intelligence', desc: 'Live price-gap analysis across 7 shops.' },
-              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, lollar exposure, OPEX coverage.' },
+              { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
               { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
             ].map((m, i) => (
               <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>

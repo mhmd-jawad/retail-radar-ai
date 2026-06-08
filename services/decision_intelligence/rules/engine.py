@@ -220,15 +220,19 @@ def rule_calendar_event_nudge(features: dict, *, today: datetime | None = None) 
     current_date = (today or datetime.now()).date()
     dos = features.get("days_of_supply", 0)
     margin_pct = features.get("current_margin_pct", 0)
+    event_score = float(features.get("event_proximity_score", 0.0) or 0.0)
     event_window, days_until_event = get_active_or_upcoming_event(current_date, EVENT_NUDGE_DAYS)
+    has_event_signal = event_window is not None or event_score >= 0.5
 
     fired = (
-        event_window is not None
+        has_event_signal
         and dos >= EVENT_NUDGE_DOS_MIN
         and margin_pct >= EVENT_NUDGE_MARGIN_MIN
     )
 
-    if event_window is None:
+    if event_window is None and event_score >= 0.5:
+        event_summary = f"Event proximity signal is high ({event_score:.2f})."
+    elif event_window is None:
         event_summary = ""
     elif days_until_event == 0:
         event_summary = (

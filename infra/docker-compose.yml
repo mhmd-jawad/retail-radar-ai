@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${ADMINER_PORT:-8081}:8080"
     restart: unless-stopped
 
   eep:
@@ -140,7 +140,6 @@ services:
     restart: unless-stopped
 
   telegram_assistant:
-    profiles: ["telegram"]
     build:
       context: ..
       dockerfile: services/telegram_assistant/Dockerfile
@@ -153,6 +152,7 @@ services:
     environment:
       EEP_BASE_URL: http://eep:8000
       IE3_BASE_URL: http://ie3_campaign_creative:8003
+      TELEGRAM_DIRECT_ALERTS_ENABLED: "false"
       PYTHONUNBUFFERED: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5).read()"]

@@ -192,6 +192,29 @@ def build_competitor_signals_for_product(
     product: dict[str, Any],
     competitor_rows: list[dict[str, Any]] | pd.DataFrame | None = None,
 ) -> dict[str, Any]:
+    """Build aggregated competitor signals for a single product.
+
+    Normalises the product fields, matches them against the cleaned competitor
+    dataset (exact style-code match first, fuzzy fallback second), and returns
+    a signals dict ready for consumption by the IE2 feature pipeline.
+
+    Args:
+        product: Product dict with at least ``sku_id``; optionally ``brand``,
+            ``style_code``, ``product_name``, ``category``, ``gender_target``,
+            and ``retail_price_usd``.
+        competitor_rows: Pre-loaded competitor data. If ``None`` the live
+            competitor rows are loaded from PostgreSQL (or the flat CSV
+            fallback if the DB is unavailable).
+
+    Returns:
+        Dict with keys: ``sku_id``, ``competitor_min_price``,
+        ``competitor_avg_price``, ``price_gap_pct``,
+        ``competitors_on_sale_count``, ``competitors_out_of_stock_count``,
+        ``num_competitors_tracked``, ``cheapest_competitor_name``,
+        ``price_trend_direction``, ``data_freshness_hours``,
+        ``confidence_score``, ``fallback_used``, ``fallback_reason``,
+        ``match_type``, ``match_score``, ``timestamp``.
+    """
     product_row = _product_row(product)
     sku_id = str(product_row.get("sku_id") or product.get("sku_id") or "")
     clean_rows = _as_clean_rows(competitor_rows)
@@ -244,6 +267,22 @@ def build_competitor_signals_for_product(
 
 
 def build_competitor_signals_for_sku(sku_id: str) -> dict[str, Any]:
+    """Build competitor signals for a SKU looked up from the products index.
+
+    Convenience wrapper around :func:`build_competitor_signals_for_product`
+    that resolves product metadata from the flat-file products index before
+    computing signals.
+
+    Args:
+        sku_id: The SKU identifier to look up.
+
+    Returns:
+        Competitor signals dict (same shape as
+        :func:`build_competitor_signals_for_product`).
+
+    Raises:
+        KeyError: If ``sku_id`` is not present in the products index.
+    """
     product = load_products_index().get(sku_id)
     if product is None:
         raise KeyError(sku_id)

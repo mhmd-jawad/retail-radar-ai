@@ -5,7 +5,7 @@ Owner: Mohammad Farhat.
 Receives a PROMOTE RecommendationResult from IE2 and generates a full campaign package:
   - Text copy (Instagram, Facebook, TikTok, headline, ad copy) via Anthropic Claude (direct API)
   - Image generation prompt via Anthropic Claude (direct API)
-  - Product image via OpenAI gpt-image-1 → Replicate → Pillow (fallback chain)
+  - Product image via OpenAI DALL-E 3 → Replicate → Pillow (fallback chain)
   - Writes one campaign row per channel to marketing.campaigns
 
 Port: 8003
@@ -33,7 +33,7 @@ from typing import Any, Literal, Optional
 import anthropic
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
@@ -70,10 +70,7 @@ _openai_image_client = AsyncOpenAI(api_key=_OPENAI_IMAGE_API_KEY or "not-set")
 _REPLICATE_MODEL_VERSION = "db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
 
 _OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-if not _OPENROUTER_API_KEY:
-    logging.getLogger("ie3_campaign_creative").warning(
-        "OPENROUTER_API_KEY is not set — all LLM calls will fail with 401"
-    )
+# OpenRouter is a legacy fallback path; text generation uses Anthropic directly.
 
 _openrouter_client = AsyncOpenAI(
     api_key=_OPENROUTER_API_KEY or "not-set",
@@ -105,7 +102,7 @@ app.add_middleware(
         "http://127.0.0.1:8083",
     ],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Tenant-ID"],
 )
 
 # Serve locally generated promo images (used when Replicate + imgbb are both unavailable)
@@ -137,7 +134,7 @@ class CampaignPackage(BaseModel):
     instagram_caption: str = Field(max_length=300)
     facebook_post: str = Field(max_length=500)
     tiktok_caption: str = Field(max_length=150)
-    whatsapp_message: str = Field(default='', max_length=160)
+    telegram_message: str = Field(default='', max_length=160)
     headline: str = Field(max_length=60)
     ad_copy_short: str = Field(max_length=150)
     ad_copy_long: str = Field(max_length=400)
@@ -150,6 +147,13 @@ class CampaignPackage(BaseModel):
     prompt_version: str = "v1.0"
     # One entry per platform: {platform, success, post_id, post_url, error}
     social_posts: list[dict] = Field(default_factory=list)
+
+
+def _publish_failure_posts(message: str) -> list[dict[str, Any]]:
+    return [
+        {"platform": "instagram", "success": False, "post_id": None, "post_url": None, "error": message},
+        {"platform": "facebook", "success": False, "post_id": None, "post_url": None, "error": message},
+    ]
 
 
 # ── Database helpers (mirrored from eep/retail_db.py pattern) ─────────────────
@@ -186,7 +190,28 @@ def _connect():
         conn.close()
 
 
-def _get_tenant_context(cur) -> dict[str, Any]:
+def _get_tenant_context(cur, tenant_id: str | None = None) -> dict[str, Any]:
+    """Resolve tenant context.
+
+    If *tenant_id* (a UUID string) is supplied, look it up directly.
+    Otherwise fall back to RETAIL_TENANT_SLUG / RETAIL_STORE_CODE env vars
+    so that single-tenant deployments continue to work unchanged.
+    """
+    if tenant_id:
+        store = os.environ.get("RETAIL_STORE_CODE", DEFAULT_STORE_CODE)
+        cur.execute(
+            """
+            select t.id as tenant_id, s.id as store_id
+            from core.tenants t
+            join core.stores s on s.tenant_id = t.id
+            where t.id = %s and s.code = %s and s.is_active = true
+            """,
+            (tenant_id, store),
+        )
+        row = cur.fetchone()
+        if row:
+            return row
+    # Fallback: env-var resolution (single-tenant / local dev)
     slug = os.environ.get("RETAIL_TENANT_SLUG", DEFAULT_TENANT_SLUG)
     store = os.environ.get("RETAIL_STORE_CODE", DEFAULT_STORE_CODE)
     cur.execute(
@@ -204,11 +229,11 @@ def _get_tenant_context(cur) -> dict[str, Any]:
     return row
 
 
-def _fetch_product_data_sync(sku_id: str) -> dict[str, Any] | None:
+def _fetch_product_data_sync(sku_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
     """Fetch brand, category, pricing, stock, and variant info for a SKU."""
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _get_tenant_context(cur)
+            ctx = _get_tenant_context(cur, tenant_id=tenant_id)
             cur.execute(
                 """
                 select
@@ -241,7 +266,7 @@ def _fetch_product_data_sync(sku_id: str) -> dict[str, Any] | None:
             return cur.fetchone()
 
 
-def _write_campaigns_sync(package: CampaignPackage, sku_id: str) -> None:
+def _write_campaigns_sync(package: CampaignPackage, sku_id: str, tenant_id: str | None = None) -> None:
     """Write one marketing.campaigns row per channel (instagram, facebook, tiktok)."""
     body_map = {
         "instagram": package.instagram_caption,
@@ -253,7 +278,7 @@ def _write_campaigns_sync(package: CampaignPackage, sku_id: str) -> None:
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            ctx = _get_tenant_context(cur)
+            ctx = _get_tenant_context(cur, tenant_id=tenant_id)
 
             # Resolve variant_id for FK reference
             cur.execute(
@@ -409,7 +434,7 @@ def _build_fallback_copy(brief: PromotionBrief) -> dict[str, str]:
         f"lowkey obsessed with this {brand} drop — {name} at {disc}% off, grab it #{brand_tag} #fyp",
     ][t]
 
-    # ── WhatsApp (max 160) — Lebanese-friendly casual ───────────────────────
+    # ── Telegram (max 160) — Lebanese-friendly casual ───────────────────────
     wa = [
         f"Mar7aba! 👋 {name} by {brand} — {disc}% off, only {stock} left. Reply with your size to reserve.",
         f"Ahla! Looking for {cat.split()[0]}? {brand} {name} just dropped {disc}% off. DM us your size 🖤",
@@ -479,7 +504,7 @@ def _build_fallback_copy(brief: PromotionBrief) -> dict[str, str]:
         "instagram_caption": ig[:300],
         "facebook_post":     fb[:500],
         "tiktok_caption":    tt[:150],
-        "whatsapp_message":  wa[:160],
+        "telegram_message":  wa[:160],
         "headline":          hl[:60],
         "ad_copy_short":     short[:150],
         "ad_copy_long":      long_[:400],
@@ -493,12 +518,14 @@ def _truncate_copy_fields(copy: dict) -> dict:
         "instagram_caption": 300,
         "facebook_post": 500,
         "tiktok_caption": 150,
-        "whatsapp_message": 160,
+        "telegram_message": 160,
         "headline": 60,
         "ad_copy_short": 150,
         "ad_copy_long": 400,
     }
     result = dict(copy)
+    if "telegram_message" not in result and "whatsapp_message" in result:
+        result["telegram_message"] = result["whatsapp_message"]
     for key, limit in limits.items():
         if key in result and isinstance(result[key], str):
             result[key] = result[key][:limit]
@@ -507,13 +534,17 @@ def _truncate_copy_fields(copy: dict) -> dict:
 
 def _validate_copy_keys(copy: dict) -> bool:
     required = {
-        "instagram_caption", "facebook_post", "tiktok_caption", "whatsapp_message",
+        "instagram_caption", "facebook_post", "tiktok_caption",
         "headline", "ad_copy_short", "ad_copy_long",
         "cta_primary", "cta_secondary",
     }
+    has_message = any(
+        isinstance(copy.get(key), str) and copy[key].strip()
+        for key in ("telegram_message", "whatsapp_message")
+    )
     return required.issubset(copy.keys()) and all(
         isinstance(copy[k], str) and copy[k].strip() for k in required
-    )
+    ) and has_message
 
 
 # ── LLM Prompts ───────────────────────────────────────────────────────────────
@@ -542,7 +573,7 @@ PLATFORM RULES:
 - facebook_post     : max 500 chars — friendly, conversational, engaging — include 3–4 relevant hashtags at the end
 - tiktok_caption    : max 150 chars — Gen-Z tone, emojis, casual ("no cap", \
 "it's giving", "lowkey obsessed")
-- whatsapp_message  : max 160 chars — personal, direct, Lebanese market (English). \
+- telegram_message  : max 160 chars — personal, direct, Lebanese market (English). \
 Feel like a friend texting. Can open with "Mar7aba", "Ahla", or "Yalla". \
 End with a clear action: "Reply with your size", "DM to reserve", or "Available in-store today".
 - headline          : max 60 chars  — bold, punchy, one strong idea
@@ -560,7 +591,7 @@ RULES:
 not copy-pasted across channels
 
 Return ONLY a raw JSON object with these exact keys:
-instagram_caption, facebook_post, tiktok_caption, whatsapp_message,
+instagram_caption, facebook_post, tiktok_caption, telegram_message,
 headline, ad_copy_short, ad_copy_long, cta_primary, cta_secondary
 
 No markdown. No explanation. Raw JSON only."""
@@ -675,7 +706,7 @@ async def _call_anthropic_image_prompt(brief: PromotionBrief) -> str:
 
 
 async def _generate_image_openai(image_prompt: str) -> str:
-    """Generate a promotional image using OpenAI gpt-image-1 via direct HTTP."""
+    """Generate a promotional image using OpenAI DALL-E 3 via direct HTTP."""
     if not _OPENAI_IMAGE_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is not set")
 
@@ -688,8 +719,6 @@ async def _generate_image_openai(image_prompt: str) -> str:
         "1:1 square format, Instagram-ready, premium quality product shot."
     )
 
-    # Call the OpenAI API directly with httpx — the SDK always injects
-    # response_format which gpt-image-1 does not accept.
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
             "https://api.openai.com/v1/images/generations",
@@ -707,12 +736,12 @@ async def _generate_image_openai(image_prompt: str) -> str:
         )
 
     if resp.status_code != 200:
-        raise RuntimeError(f"OpenAI image API error {resp.status_code}: {resp.text[:300]}")
+        raise RuntimeError(f"OpenAI DALL-E 3 API error {resp.status_code}: {resp.text[:300]}")
 
     data = resp.json()
     b64 = data.get("data", [{}])[0].get("b64_json")
     if not b64:
-        raise RuntimeError(f"gpt-image-1 returned no image data: {data}")
+        raise RuntimeError(f"DALL-E 3 returned no image data: {data}")
 
     img_bytes = base64.b64decode(b64)
     return await _upload_imgbb(img_bytes)
@@ -863,6 +892,40 @@ def health():
 def debug_env():
     tok = os.getenv("FB_PAGE_ACCESS_TOKEN", "")
     return {"token_first30": tok[:30], "token_length": len(tok), "token_last4": tok[-4:] if tok else ""}
+
+
+@app.get("/debug/image-test")
+async def debug_image_test():
+    """Quick smoke-test for image generation. Hit this URL to confirm DALL-E 3 + ImgBB work."""
+    openai_key = bool(_OPENAI_IMAGE_API_KEY)
+    imgbb_key = bool(os.getenv("IMGBB_API_KEY", "").strip())
+    replicate_key = bool(_REPLICATE_API_KEY)
+
+    if not openai_key:
+        return {"status": "error", "message": "OPENAI_API_KEY is missing"}
+    if not imgbb_key:
+        return {"status": "error", "message": "IMGBB_API_KEY is missing"}
+
+    try:
+        url = await asyncio.wait_for(
+            _generate_image_openai("A stylish sports shoe on a clean white background, retail advertisement"),
+            timeout=90.0,
+        )
+        return {
+            "status": "ok",
+            "image_url": url,
+            "openai_key_set": openai_key,
+            "imgbb_key_set": imgbb_key,
+            "replicate_key_set": replicate_key,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "openai_key_set": openai_key,
+            "imgbb_key_set": imgbb_key,
+            "replicate_key_set": replicate_key,
+        }
 
 
 # ── Facebook: get Page ID helper ──────────────────────────────────────────────
@@ -1023,7 +1086,10 @@ async def instagram_callback(code: str = "", error: str = "", error_reason: str 
 
 
 @app.post("/campaign/generate", response_model=CampaignPackage)
-async def generate_campaign(recommendation: RecommendationResult):
+async def generate_campaign(
+    recommendation: RecommendationResult,
+    x_tenant_id: str | None = Header(default=None, alias="x-tenant-id"),
+):
     """
     Generate and publish a full campaign for a PROMOTE recommendation.
 
@@ -1053,7 +1119,7 @@ async def generate_campaign(recommendation: RecommendationResult):
     product_data: dict[str, Any] = {}
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_product_data_sync, recommendation.sku_id),
+            asyncio.to_thread(_fetch_product_data_sync, recommendation.sku_id, x_tenant_id),
             timeout=3.0,
         )
         if result:
@@ -1146,13 +1212,18 @@ async def generate_campaign(recommendation: RecommendationResult):
 
     # ── Step 4: generate image + upload to ImgBB ──────────────────────────────
     try:
-        image_url, img_fallback = await _generate_image_full(image_prompt, brief)
-    except Exception as exc:
-        logger.error("Image generation failed for sku=%s: %s", recommendation.sku_id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Image generation failed: {exc}",
+        image_url, img_fallback = await asyncio.wait_for(
+            _generate_image_full(image_prompt, brief),
+            timeout=float(os.environ.get("IE3_IMAGE_TIMEOUT_SECONDS", "90")),
         )
+    except Exception as exc:
+        logger.error(
+            "Image generation failed for sku=%s: %s - using placeholder image",
+            recommendation.sku_id,
+            exc,
+        )
+        image_url = FALLBACK_IMAGE_URL
+        img_fallback = True
     if img_fallback:
         fallback_used = True
 
@@ -1162,7 +1233,7 @@ async def generate_campaign(recommendation: RecommendationResult):
         instagram_caption=text_copy["instagram_caption"],
         facebook_post=text_copy["facebook_post"],
         tiktok_caption=text_copy["tiktok_caption"],
-        whatsapp_message=text_copy.get("whatsapp_message", ""),
+        telegram_message=text_copy.get("telegram_message", ""),
         headline=text_copy["headline"],
         ad_copy_short=text_copy["ad_copy_short"],
         ad_copy_long=text_copy["ad_copy_long"],
@@ -1178,7 +1249,7 @@ async def generate_campaign(recommendation: RecommendationResult):
     # ── Step 6: write to DB (non-blocking — errors are logged, not raised) ────
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(_write_campaigns_sync, package, recommendation.sku_id),
+            asyncio.to_thread(_write_campaigns_sync, package, recommendation.sku_id, x_tenant_id),
             timeout=3.0,
         )
         logger.info(
@@ -1195,19 +1266,24 @@ async def generate_campaign(recommendation: RecommendationResult):
     from services.campaign_creative.publishers import publish_to_all_platforms
 
     try:
+        _db_url = os.environ.get("DATABASE_URL", "")
         social_posts = await asyncio.wait_for(
             publish_to_all_platforms(
                 package.instagram_caption,
                 package.facebook_post,
                 package.image_url,
+                tenant_id=x_tenant_id,
+                db_url=_db_url or None,
             ),
-            timeout=90.0,
+            timeout=float(os.environ.get("IE3_PUBLISH_TIMEOUT_SECONDS", "60")),
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Social publishing failed: {exc}",
+        logger.error(
+            "Social publishing failed for sku=%s: %s - returning draft package",
+            recommendation.sku_id,
+            exc,
         )
+        social_posts = _publish_failure_posts(str(exc))
 
     # Log each result and collect failures
     failures: list[str] = []
@@ -1225,13 +1301,10 @@ async def generate_campaign(recommendation: RecommendationResult):
             failures.append(f"{r['platform']}: {r['error']}")
 
     if failures:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "message": "Campaign generated but social publishing failed",
-                "image_url": package.image_url,
-                "failures": failures,
-            },
+        logger.warning(
+            "Campaign draft returned with publish failures for sku=%s: %s",
+            recommendation.sku_id,
+            "; ".join(failures),
         )
 
-    return package.model_copy(update={"social_posts": social_posts})
+    return package.model_copy(update={"social_posts": social_posts, "fallback_used": package.fallback_used or bool(failures)})

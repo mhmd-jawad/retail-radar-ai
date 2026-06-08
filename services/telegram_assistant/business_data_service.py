@@ -19,6 +19,11 @@ import psycopg
 from prometheus_client import Gauge
 from psycopg.rows import dict_row
 
+from services.common.price_normalization import (
+    effective_competitor_price_usd,
+    normalize_competitor_price_usd,
+    price_gap_pct,
+)
 from services.telegram_assistant.conversation_store import ConversationManager, DEFAULT_DATABASE_URL
 
 logger = logging.getLogger("telegram_assistant.business_data_service")
@@ -162,16 +167,17 @@ class BusinessDataService:
                 COALESCE(pr.amount, 0)       AS our_price_usd,
                 cl.shop_code                 AS competitor,
                 cl.product_name              AS competitor_product,
-                cl.competitor_price          AS comp_price_usd,
-                cl.competitor_sale_price     AS comp_sale_price_usd,
+                cl.competitor_price,
+                cl.competitor_sale_price,
+                cl.currency,
                 cl.is_on_sale,
                 cl.availability,
-                ROUND(
-                    ((COALESCE(pr.amount,0) - COALESCE(cl.competitor_sale_price, cl.competitor_price)) /
-                     NULLIF(COALESCE(pr.amount,0), 0) * 100)::numeric, 1
-                )                            AS price_gap_pct,
                 cl.last_seen_at
             FROM intel.competitor_products_latest cl
+            JOIN intel.tenant_competitors tc
+                ON tc.shop_code = cl.shop_code
+               AND tc.tenant_id = %s
+               AND tc.is_active = true
             JOIN core.sku_variants sv
                 ON sv.style_code = cl.style_code
                AND sv.tenant_id = %s
@@ -190,7 +196,7 @@ class BusinessDataService:
         conn = await self._db_connect()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(sql, (tenant_id,))
+                await cur.execute(sql, (tenant_id, tenant_id))
                 return await cur.fetchall()
         finally:
             await conn.close()
@@ -274,7 +280,7 @@ class BusinessDataService:
         # Check cache
         if not force_refresh:
             try:
-                cached_data, cached_at = await self._conv.get_cached_business_data(chat_id)
+                cached_data, cached_at = await self._conv.get_cached_business_data(chat_id, tenant_id=tenant_id)
                 if cached_data and cached_at:
                     age = (
                         datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)
@@ -405,11 +411,19 @@ class BusinessDataService:
                         "brand": r["brand"],
                         "our_price_usd": float(r.get("our_price_usd") or 0),
                         "competitor": r["competitor"],
-                        "comp_price_usd": float(r.get("comp_price_usd") or 0),
-                        "comp_sale_price_usd": float(r["comp_sale_price_usd"]) if r.get("comp_sale_price_usd") else None,
+                        "comp_price_usd": normalize_competitor_price_usd(r.get("competitor_price"), r.get("currency")) or 0,
+                        "comp_sale_price_usd": normalize_competitor_price_usd(r.get("competitor_sale_price"), r.get("currency")),
                         "is_on_sale": bool(r.get("is_on_sale")),
                         "availability": r.get("availability"),
-                        "price_gap_pct": float(r.get("price_gap_pct") or 0),
+                        "price_gap_pct": price_gap_pct(
+                            r.get("our_price_usd"),
+                            effective_competitor_price_usd(
+                                r.get("competitor_price"),
+                                r.get("competitor_sale_price"),
+                                r.get("currency"),
+                                r.get("is_on_sale"),
+                            ),
+                        ) or 0,
                     }
                     for r in comp_rows
                 ]
@@ -449,7 +463,7 @@ class BusinessDataService:
 
         # Cache result
         try:
-            await self._conv.set_cached_business_data(chat_id, context)
+            await self._conv.set_cached_business_data(chat_id, context, tenant_id=_tenant_id)
         except Exception as exc:
             logger.warning("Failed to write business data cache: %s", exc)
 
@@ -543,18 +557,73 @@ class BusinessDataService:
             result["proactive_insight"] = proactive_insight
         return result
 
-    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
-        """Financial snapshot combining CSV profile and live revenue from DB."""
-        result: dict[str, Any] = {}
+    async def _fetch_financial_config_from_db(self, tenant_id: str) -> dict[str, Any]:
+        """Load per-tenant financial config from core.tenant_financial_config."""
+        conn = await self._db_connect()
         try:
-            fp = self._load_financial_profile()
-            cf = fp.get("cashflow_summary", {})
-            inv = fp.get("inventory_summary", {})
-            result["cash_runway_months"] = float(cf.get("cash_runway_months", 0))
-            result["monthly_fixed_opex_usd"] = float(cf.get("monthly_fixed_opex_usd", 0))
-            result["blended_margin_pct"] = float(inv.get("blended_margin_pct", 0))
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT monthly_fixed_opex_usd, blended_margin_pct
+                    FROM core.tenant_financial_config
+                    WHERE tenant_id = %s
+                    LIMIT 1
+                    """,
+                    (tenant_id,),
+                )
+                row = await cur.fetchone()
+            return dict(row) if row else {}
         except Exception as exc:
-            logger.warning("Failed to load financial_profile.json: %s", exc)
+            logger.warning("Failed to fetch tenant financial config: %s", exc)
+            return {}
+        finally:
+            await conn.close()
+
+    async def _fetch_latest_financial_snapshot_from_db(self, tenant_id: str) -> dict[str, Any]:
+        """Load the most recent monthly snapshot from core.tenant_financial_snapshots."""
+        conn = await self._db_connect()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT cash_on_hand_usd, bank_balance_usd, receivables_usd,
+                           supplier_payables_usd, loan_balance_usd,
+                           monthly_sales_usd, monthly_expenses_usd, period_month
+                    FROM core.tenant_financial_snapshots
+                    WHERE tenant_id = %s
+                    ORDER BY period_month DESC
+                    LIMIT 1
+                    """,
+                    (tenant_id,),
+                )
+                row = await cur.fetchone()
+            return dict(row) if row else {}
+        except Exception as exc:
+            logger.warning("Failed to fetch tenant financial snapshot: %s", exc)
+            return {}
+        finally:
+            await conn.close()
+
+    async def get_financials_snapshot(self, tenant_id: str) -> dict[str, Any]:
+        """Financial snapshot from per-tenant DB tables with live revenue."""
+        result: dict[str, Any] = {}
+
+        # Per-tenant config (OPEX, margin)
+        fin_cfg = await self._fetch_financial_config_from_db(tenant_id)
+        result["monthly_fixed_opex_usd"] = float(fin_cfg.get("monthly_fixed_opex_usd") or 0)
+        result["blended_margin_pct"] = float(fin_cfg.get("blended_margin_pct") or 0)
+
+        # Per-tenant monthly snapshot (cash, bank, payables, loans)
+        snap = await self._fetch_latest_financial_snapshot_from_db(tenant_id)
+        cash = float(snap.get("cash_on_hand_usd") or 0) + float(snap.get("bank_balance_usd") or 0)
+        monthly_expenses = float(snap.get("monthly_expenses_usd") or result["monthly_fixed_opex_usd"] or 0)
+        if cash > 0 and monthly_expenses > 0:
+            result["cash_runway_months"] = round(cash / monthly_expenses, 1)
+        else:
+            result["cash_runway_months"] = 0.0
+        result["cash_on_hand_usd"] = cash
+        result["supplier_payables_usd"] = float(snap.get("supplier_payables_usd") or 0)
+        result["loan_balance_usd"] = float(snap.get("loan_balance_usd") or 0)
 
         try:
             rev = await self._fetch_revenue_from_db(tenant_id)
@@ -562,14 +631,7 @@ class BusinessDataService:
             result["revenue_last_7d_usd"] = float(rev.get("last_7d_usd") or 0)
             result["revenue_last_30d_usd"] = float(rev.get("last_30d_usd") or 0)
             result["transactions_this_month"] = int(rev.get("txn_count_this_month") or 0)
-            if result.get("revenue_current_month_usd", 0) == 0:
-                try:
-                    result["revenue_current_month_usd"] = self._load_cashflow_current_month()
-                    result["revenue_source"] = "csv_projection"
-                except Exception:
-                    result["revenue_source"] = "unavailable"
-            else:
-                result["revenue_source"] = "live_pos"
+            result["revenue_source"] = "live_pos" if result["revenue_current_month_usd"] > 0 else "unavailable"
         except Exception as exc:
             logger.warning("Failed to fetch revenue for financials snapshot: %s", exc)
 
@@ -596,10 +658,18 @@ class BusinessDataService:
                 "brand": r["brand"],
                 "our_price_usd": float(r.get("our_price_usd") or 0),
                 "competitor": r["competitor"],
-                "comp_price_usd": float(r.get("comp_price_usd") or 0),
-                "comp_sale_price_usd": float(r["comp_sale_price_usd"]) if r.get("comp_sale_price_usd") else None,
+                "comp_price_usd": normalize_competitor_price_usd(r.get("competitor_price"), r.get("currency")) or 0,
+                "comp_sale_price_usd": normalize_competitor_price_usd(r.get("competitor_sale_price"), r.get("currency")),
                 "is_on_sale": bool(r.get("is_on_sale")),
-                "price_gap_pct": float(r.get("price_gap_pct") or 0),
+                "price_gap_pct": price_gap_pct(
+                    r.get("our_price_usd"),
+                    effective_competitor_price_usd(
+                        r.get("competitor_price"),
+                        r.get("competitor_sale_price"),
+                        r.get("currency"),
+                        r.get("is_on_sale"),
+                    ),
+                ) or 0,
             }
             for r in rows
         ]
@@ -842,10 +912,15 @@ class BusinessDataService:
                 SELECT
                     COUNT(*)                              AS total_tracked,
                     MIN(COALESCE(cl.competitor_sale_price, cl.competitor_price)) AS cheapest_price,
+                    MIN(cl.currency)                    AS cheapest_currency,
                     MIN(cl.shop_code)                     AS cheapest_shop,
                     SUM(CASE WHEN cl.is_on_sale THEN 1 ELSE 0 END)  AS on_sale_count,
                     SUM(CASE WHEN cl.availability = 'out_of_stock' THEN 1 ELSE 0 END) AS oos_count
                 FROM intel.competitor_products_latest cl
+                JOIN intel.tenant_competitors tc
+                    ON tc.shop_code = cl.shop_code
+                   AND tc.tenant_id = %s
+                   AND tc.is_active = true
                 JOIN core.sku_variants sv2
                     ON sv2.style_code = cl.style_code
                     AND sv2.tenant_id = %s
@@ -871,6 +946,7 @@ class BusinessDataService:
                 comp.total_tracked,
                 comp.cheapest_price,
                 comp.cheapest_shop,
+                comp.cheapest_currency,
                 comp.on_sale_count,
                 comp.oos_count
             FROM core.sku_variants sv
@@ -887,12 +963,12 @@ class BusinessDataService:
             GROUP BY sv.id, sv.sku_id, p.name, p.brand, p.category,
                      sv.cost_price_usd, sv.reorder_point, pr.amount,
                      vel.daily_vel, comp.total_tracked, comp.cheapest_price,
-                     comp.cheapest_shop, comp.on_sale_count, comp.oos_count
+                     comp.cheapest_shop, comp.cheapest_currency, comp.on_sale_count, comp.oos_count
         """
         conn = await self._db_connect()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(sql, (sku_id, tenant_id, tenant_id, sku_id, tenant_id, sku_id))
+                await cur.execute(sql, (sku_id, tenant_id, tenant_id, tenant_id, sku_id, tenant_id, sku_id))
                 row = await cur.fetchone()
         finally:
             await conn.close()
@@ -906,8 +982,8 @@ class BusinessDataService:
         vel = float(row["daily_velocity"] or 0)
         dos = row["days_of_supply"]
         margin_now = round((retail - cost) / retail * 100, 1) if retail > cost else 0.0
-        cheapest = float(row["cheapest_price"] or 0)
-        price_gap_pct = round((retail - cheapest) / retail * 100, 1) if retail > 0 and cheapest > 0 else None
+        cheapest = normalize_competitor_price_usd(row["cheapest_price"], row.get("cheapest_currency"))
+        price_gap = price_gap_pct(retail, cheapest)
 
         # Post-discount pricing
         disc = suggested_discount_pct or 0.0
@@ -962,12 +1038,12 @@ class BusinessDataService:
             },
             "competition": {
                 "competitors_tracked": int(row["total_tracked"] or 0),
-                "cheapest_competitor_price_usd": cheapest if cheapest > 0 else None,
+                "cheapest_competitor_price_usd": cheapest,
                 "cheapest_competitor": row["cheapest_shop"],
-                "our_price_vs_cheapest_gap_pct": price_gap_pct,
+                "our_price_vs_cheapest_gap_pct": price_gap,
                 "price_position": (
-                    "above_market" if (price_gap_pct or 0) > 5
-                    else "below_market" if (price_gap_pct or 0) < -5
+                    "above_market" if (price_gap or 0) > 5
+                    else "below_market" if (price_gap or 0) < -5
                     else "at_market"
                 ),
                 "competitors_on_sale": int(row["on_sale_count"] or 0),

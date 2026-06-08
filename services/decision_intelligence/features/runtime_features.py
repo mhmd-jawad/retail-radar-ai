@@ -52,6 +52,16 @@ def _to_int(value: Any, default: int = 0) -> int:
 
 
 def market_position_from_gap(price_gap_pct: float) -> str:
+    """Translate a numeric price gap into a human-readable market position label.
+
+    Args:
+        price_gap_pct: Fractional gap between our price and competitor minimum
+            (positive = we are more expensive).
+
+    Returns:
+        One of ``"premium"``, ``"above_market"``, ``"at_market"``,
+        ``"below_market"``, or ``"deep_value"``.
+    """
     if price_gap_pct > 0.15:
         return "premium"
     if price_gap_pct > 0.05:
@@ -393,6 +403,27 @@ def build_runtime_feature_instance(
     tenant_id: str | None = None,
     feature_columns: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Build a complete model-ready feature dict for a single live SKU.
+
+    Reads inventory, pricing, and competitor data from PostgreSQL, runs the
+    same feature engineering pipeline used during training, and returns a
+    payload that can be passed directly to the CatBoost model.
+
+    Args:
+        sku_id: The SKU identifier to score.
+        tenant_id: Optional tenant UUID override; defaults to the value of the
+            ``RETAIL_TENANT_SLUG`` environment variable.
+        feature_columns: Optional list of column names expected by the model.
+            Any missing columns are filled with ``-1`` safe defaults.
+
+    Returns:
+        Dict with keys ``sku_id``, ``product_name``, ``brand``, ``category``,
+        ``retail_price_usd``, ``cost_price_usd``, ``current_stock``,
+        ``features`` (model-ready feature dict), and ``competitor_signals``.
+
+    Raises:
+        KeyError: If the SKU or tenant/store combination is not found in the DB.
+    """
     import psycopg
     from psycopg.rows import dict_row
 

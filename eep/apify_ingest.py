@@ -1,3 +1,14 @@
+"""
+Apify webhook receiver and competitor scrape ingest pipeline.
+
+Receives POST callbacks from Apify cloud actor runs, downloads the
+dataset items, validates and normalises each scraped product record,
+and writes them to the ``intel_scraping`` PostgreSQL schema.
+
+Environment variables:
+    APIFY_TOKEN    — Apify API token for dataset download.
+    DATABASE_URL   — PostgreSQL connection string.
+"""
 from __future__ import annotations
 
 import hashlib
