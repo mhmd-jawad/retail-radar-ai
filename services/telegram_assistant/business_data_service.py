@@ -19,6 +19,11 @@ import psycopg
 from prometheus_client import Gauge
 from psycopg.rows import dict_row
 
+from services.common.price_normalization import (
+    effective_competitor_price_usd,
+    normalize_competitor_price_usd,
+    price_gap_pct,
+)
 from services.telegram_assistant.conversation_store import ConversationManager, DEFAULT_DATABASE_URL
 
 logger = logging.getLogger("telegram_assistant.business_data_service")
@@ -162,14 +167,11 @@ class BusinessDataService:
                 COALESCE(pr.amount, 0)       AS our_price_usd,
                 cl.shop_code                 AS competitor,
                 cl.product_name              AS competitor_product,
-                cl.competitor_price          AS comp_price_usd,
-                cl.competitor_sale_price     AS comp_sale_price_usd,
+                cl.competitor_price,
+                cl.competitor_sale_price,
+                cl.currency,
                 cl.is_on_sale,
                 cl.availability,
-                ROUND(
-                    ((COALESCE(pr.amount,0) - COALESCE(cl.competitor_sale_price, cl.competitor_price)) /
-                     NULLIF(COALESCE(pr.amount,0), 0) * 100)::numeric, 1
-                )                            AS price_gap_pct,
                 cl.last_seen_at
             FROM intel.competitor_products_latest cl
             JOIN intel.tenant_competitors tc
@@ -409,11 +411,19 @@ class BusinessDataService:
                         "brand": r["brand"],
                         "our_price_usd": float(r.get("our_price_usd") or 0),
                         "competitor": r["competitor"],
-                        "comp_price_usd": float(r.get("comp_price_usd") or 0),
-                        "comp_sale_price_usd": float(r["comp_sale_price_usd"]) if r.get("comp_sale_price_usd") else None,
+                        "comp_price_usd": normalize_competitor_price_usd(r.get("competitor_price"), r.get("currency")) or 0,
+                        "comp_sale_price_usd": normalize_competitor_price_usd(r.get("competitor_sale_price"), r.get("currency")),
                         "is_on_sale": bool(r.get("is_on_sale")),
                         "availability": r.get("availability"),
-                        "price_gap_pct": float(r.get("price_gap_pct") or 0),
+                        "price_gap_pct": price_gap_pct(
+                            r.get("our_price_usd"),
+                            effective_competitor_price_usd(
+                                r.get("competitor_price"),
+                                r.get("competitor_sale_price"),
+                                r.get("currency"),
+                                r.get("is_on_sale"),
+                            ),
+                        ) or 0,
                     }
                     for r in comp_rows
                 ]
@@ -648,10 +658,18 @@ class BusinessDataService:
                 "brand": r["brand"],
                 "our_price_usd": float(r.get("our_price_usd") or 0),
                 "competitor": r["competitor"],
-                "comp_price_usd": float(r.get("comp_price_usd") or 0),
-                "comp_sale_price_usd": float(r["comp_sale_price_usd"]) if r.get("comp_sale_price_usd") else None,
+                "comp_price_usd": normalize_competitor_price_usd(r.get("competitor_price"), r.get("currency")) or 0,
+                "comp_sale_price_usd": normalize_competitor_price_usd(r.get("competitor_sale_price"), r.get("currency")),
                 "is_on_sale": bool(r.get("is_on_sale")),
-                "price_gap_pct": float(r.get("price_gap_pct") or 0),
+                "price_gap_pct": price_gap_pct(
+                    r.get("our_price_usd"),
+                    effective_competitor_price_usd(
+                        r.get("competitor_price"),
+                        r.get("competitor_sale_price"),
+                        r.get("currency"),
+                        r.get("is_on_sale"),
+                    ),
+                ) or 0,
             }
             for r in rows
         ]
@@ -894,6 +912,7 @@ class BusinessDataService:
                 SELECT
                     COUNT(*)                              AS total_tracked,
                     MIN(COALESCE(cl.competitor_sale_price, cl.competitor_price)) AS cheapest_price,
+                    MIN(cl.currency)                    AS cheapest_currency,
                     MIN(cl.shop_code)                     AS cheapest_shop,
                     SUM(CASE WHEN cl.is_on_sale THEN 1 ELSE 0 END)  AS on_sale_count,
                     SUM(CASE WHEN cl.availability = 'out_of_stock' THEN 1 ELSE 0 END) AS oos_count
@@ -927,6 +946,7 @@ class BusinessDataService:
                 comp.total_tracked,
                 comp.cheapest_price,
                 comp.cheapest_shop,
+                comp.cheapest_currency,
                 comp.on_sale_count,
                 comp.oos_count
             FROM core.sku_variants sv
@@ -943,7 +963,7 @@ class BusinessDataService:
             GROUP BY sv.id, sv.sku_id, p.name, p.brand, p.category,
                      sv.cost_price_usd, sv.reorder_point, pr.amount,
                      vel.daily_vel, comp.total_tracked, comp.cheapest_price,
-                     comp.cheapest_shop, comp.on_sale_count, comp.oos_count
+                     comp.cheapest_shop, comp.cheapest_currency, comp.on_sale_count, comp.oos_count
         """
         conn = await self._db_connect()
         try:
@@ -962,8 +982,8 @@ class BusinessDataService:
         vel = float(row["daily_velocity"] or 0)
         dos = row["days_of_supply"]
         margin_now = round((retail - cost) / retail * 100, 1) if retail > cost else 0.0
-        cheapest = float(row["cheapest_price"] or 0)
-        price_gap_pct = round((retail - cheapest) / retail * 100, 1) if retail > 0 and cheapest > 0 else None
+        cheapest = normalize_competitor_price_usd(row["cheapest_price"], row.get("cheapest_currency"))
+        price_gap = price_gap_pct(retail, cheapest)
 
         # Post-discount pricing
         disc = suggested_discount_pct or 0.0
@@ -1018,12 +1038,12 @@ class BusinessDataService:
             },
             "competition": {
                 "competitors_tracked": int(row["total_tracked"] or 0),
-                "cheapest_competitor_price_usd": cheapest if cheapest > 0 else None,
+                "cheapest_competitor_price_usd": cheapest,
                 "cheapest_competitor": row["cheapest_shop"],
-                "our_price_vs_cheapest_gap_pct": price_gap_pct,
+                "our_price_vs_cheapest_gap_pct": price_gap,
                 "price_position": (
-                    "above_market" if (price_gap_pct or 0) > 5
-                    else "below_market" if (price_gap_pct or 0) < -5
+                    "above_market" if (price_gap or 0) > 5
+                    else "below_market" if (price_gap or 0) < -5
                     else "at_market"
                 ),
                 "competitors_on_sale": int(row["on_sale_count"] or 0),

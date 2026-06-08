@@ -1,3 +1,17 @@
+"""
+Data assembly bridge between raw storage and the frontend API.
+
+Reads from the StylePulse report JSON, live product/inventory CSVs,
+competitor price data, and PostgreSQL, then assembles dashboard-ready
+response payloads for the EEP frontend endpoints.
+
+Key responsibilities:
+
+- Transform StylePulse analysis results into per-SKU dashboard cards
+- Build competitor price comparison tables
+- Construct inventory health summaries with trend data
+- Assemble financial KPI widgets from snapshot history
+"""
 from __future__ import annotations
 
 import csv
@@ -13,6 +27,11 @@ from statistics import median
 from typing import Any
 
 from services.market_intelligence.competitor_processor import build_competitor_signals_for_product
+from services.common.price_normalization import (
+    effective_competitor_price_usd,
+    normalize_competitor_price_usd,
+    price_gap_pct,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -398,19 +417,30 @@ def build_frontend_report() -> dict[str, Any]:
         state = latest_states.get(sku_id, {})
         competitor_names = [name.strip() for name in str(product.get("competitors", "")).split(",") if name.strip()]
 
+        our_price = _to_float(raw_position.get("our_price_usd"), _to_float(product.get("retail_price_usd"), 0.0))
+        market_min = normalize_competitor_price_usd(
+            raw_position.get("market_min_usd"),
+            raw_position.get("currency"),
+        ) or normalize_competitor_price_usd(product.get("market_min_price_usd"))
+        market_avg = normalize_competitor_price_usd(
+            state.get("competitor_avg_price_usd"),
+            state.get("currency"),
+        ) or normalize_competitor_price_usd(
+            raw_position.get("market_median_usd"),
+            raw_position.get("currency"),
+        ) or normalize_competitor_price_usd(product.get("market_median_price_usd"))
+        gap = price_gap_pct(our_price, market_min) if market_min else None
+
         competitor_positions.append(
             {
                 "sku_id": sku_id,
                 "product_name": raw_position.get("product_name") or product.get("product_name"),
                 "brand": raw_position.get("brand") or product.get("brand") or "Unknown",
                 "category": _friendly_category(raw_position.get("system_category") or product.get("system_category")),
-                "our_price_usd": round(_to_float(raw_position.get("our_price_usd"), _to_float(product.get("retail_price_usd"), 0.0)), 2),
-                "market_min_usd": round(_to_float(raw_position.get("market_min_usd"), _to_float(product.get("market_min_price_usd"), 0.0)), 2),
-                "market_avg_usd": round(
-                    _to_float(state.get("competitor_avg_price_usd"), _to_float(raw_position.get("market_median_usd"), _to_float(product.get("market_median_price_usd"), 0.0))),
-                    2,
-                ),
-                "price_gap_pct": round(_to_float(raw_position.get("price_gap_pct"), 0.0), 1),
+                "our_price_usd": round(our_price, 2),
+                "market_min_usd": round(market_min or 0.0, 2),
+                "market_avg_usd": round(market_avg or market_min or 0.0, 2),
+                "price_gap_pct": gap if gap is not None else round(_to_float(raw_position.get("price_gap_pct"), 0.0), 1),
                 "position": raw_position.get("position", "at_market"),
                 "competitors_count": _to_int(raw_position.get("num_competitors"), _to_int(product.get("num_competitors"), 0)),
                 "competitors_on_sale": _to_int(raw_position.get("competitors_on_sale"), _to_int(state.get("competitors_on_sale_count"), 0)),
@@ -783,7 +813,7 @@ def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
     database_rows = _read_intel_rows(
         """
         select shop_code, product_key, competitor_product_id, product_name, brand_name,
-               coalesce(competitor_sale_price, competitor_price, 0) as price_usd,
+               competitor_price, competitor_sale_price, currency,
                is_on_sale, availability, source_url, last_seen_at
         from intel.competitor_products_latest
         order by last_seen_at desc
@@ -798,7 +828,12 @@ def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
                 "external_id": row["competitor_product_id"] or row["product_key"],
                 "product_name": row["product_name"],
                 "brand": row["brand_name"] or "Unknown",
-                "price_usd": round(_to_float(row["price_usd"]), 2),
+                "price_usd": effective_competitor_price_usd(
+                    row["competitor_price"],
+                    row["competitor_sale_price"],
+                    row["currency"],
+                    row["is_on_sale"],
+                ) or 0.0,
                 "on_sale": bool(row["is_on_sale"]),
                 "in_stock": str(row["availability"] or "").lower() == "in_stock",
                 "url": row["source_url"] or "",
@@ -818,9 +853,12 @@ def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         for record in records:
-            price = _to_float(record.get("competitor_sale_price"), _to_float(record.get("competitor_price"), 0.0))
-            if not price:
-                price = _to_float(record.get("competitor_price"), 0.0)
+            price = effective_competitor_price_usd(
+                record.get("competitor_price"),
+                record.get("competitor_sale_price"),
+                record.get("currency"),
+                record.get("is_on_sale"),
+            ) or 0.0
             rows.append(
                 {
                     "shop": shop,

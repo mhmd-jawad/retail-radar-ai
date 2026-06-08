@@ -272,7 +272,7 @@ export interface CampaignCreative {
   ad_copy_long: string;
   instagram_post: string;
   facebook_post: string;
-  whatsapp_broadcast: string;
+  telegram_broadcast: string;
   cta_primary: string;
   cta_secondary: string;
   image_url: string;
@@ -771,4 +771,119 @@ export interface OutcomeRow extends OutcomeSnapshot {
   sku_id: string;
   product_name: string;
   brand: string | null;
+}
+
+// ─── Admin Platform Operations Types ─────────────────────────────────────────
+
+export interface AdminOutcomesByType {
+  count: number;
+  avg_accuracy: number;
+}
+
+export interface AdminOutcomePending {
+  snapshot_id: number;
+  tenant_id: string;
+  tenant_name: string;
+  product_name: string;
+  decision_type: Decision;
+  window_days: 7 | 14;
+  check_due_at: string;
+}
+
+export interface AdminOutcomeTenantRow {
+  tenant_id: string;
+  tenant_name: string;
+  decisions: number;
+  avg_accuracy: number;
+  revenue_delta_usd: number;
+  last_decision_at: string | null;
+}
+
+export interface AdminCalibrationPoint {
+  confidence: number;
+  accuracy: number;
+}
+
+export interface AdminAccuracyTrendPoint {
+  date: string;
+  avg_accuracy: number;
+}
+
+export interface AdminOutcomesAggregate {
+  total_decisions: number;
+  avg_accuracy_pct: number;
+  pending_measurements: number;
+  total_revenue_impact_usd: number;
+  by_decision_type: Partial<Record<Decision, AdminOutcomesByType>>;
+  calibration: AdminCalibrationPoint[];
+  per_tenant: AdminOutcomeTenantRow[];
+  pending: AdminOutcomePending[];
+  accuracy_trend: AdminAccuracyTrendPoint[];
+}
+
+export interface AdminFinancialTenantScore {
+  tenant_id: string;
+  tenant_name: string;
+  score: number;
+  cash_runway_months: number;
+  current_ratio: number;
+  margin_pct: number;
+  last_snapshot: string | null;
+  status: 'healthy' | 'watch' | 'at_risk';
+}
+
+export interface AdminSnapshotCoverage {
+  tenant_id: string;
+  tenant_name: string;
+  submitted_months: string[];
+}
+
+export interface AdminFinancialOverview {
+  active_shops: number;
+  shops_at_risk: number;
+  avg_margin_pct: number;
+  missing_snapshots_this_month: number;
+  at_risk_shops: AdminFinancialTenantScore[];
+  health_scores: AdminFinancialTenantScore[];
+  margin_trend: { month: string; avg_margin_pct: number }[];
+  snapshot_coverage: AdminSnapshotCoverage[];
+}
+
+export interface AdminCampaignTenantRow {
+  tenant_id: string;
+  tenant_name: string;
+  total: number;
+  last_30d: number;
+  most_used_channel: string | null;
+  last_campaign_at: string | null;
+}
+
+export interface AdminCampaignRecentItem {
+  tenant_name: string;
+  product_name: string;
+  channel: string;
+  headline: string;
+  tone: string;
+  confidence_pct: number;
+  fallback_used: boolean;
+  created_at: string;
+}
+
+export interface AdminCampaignsOverview {
+  total_campaigns: number;
+  last_30_days: number;
+  avg_confidence_pct: number;
+  fallback_rate_pct: number;
+  channels_live: number;
+  by_channel: Record<string, number>;
+  by_decision_type: Record<string, number>;
+  fallback_trend: { date: string; fallback_rate_pct: number }[];
+  per_tenant: AdminCampaignTenantRow[];
+  recent: AdminCampaignRecentItem[];
+}
+
+export interface AdminAssistantMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  tools_used?: string[];
 }

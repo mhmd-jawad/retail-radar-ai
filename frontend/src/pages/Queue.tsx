@@ -26,7 +26,9 @@ import { RecommendationDrawer } from '@/components/recommendations/Recommendatio
 
 const decisionOrder: Decision[] = ['CLEAR', 'MARKDOWN', 'PROMOTE', 'HOLD'];
 type QueueBand = Decision | 'UNSCORED';
+type ActionFilter = QueueBand | 'ALL';
 const queueBandOrder: QueueBand[] = ['UNSCORED', ...decisionOrder];
+const actionTabs: ActionFilter[] = ['ALL', 'PROMOTE', 'MARKDOWN', 'CLEAR', 'HOLD', 'UNSCORED'];
 const SYSTEM_SYNC_LIMIT = 120;
 const SYSTEM_SYNC_CONCURRENCY = 1;
 const SYSTEM_SYNC_TTL_MS = 5 * 60_000;
@@ -39,19 +41,24 @@ type SystemDecisionState = {
   trigger?: SystemDecisionTrigger;
 };
 
+type ActionDetails = {
+  reason: string;
+  suggested: string;
+};
+
 export default function Queue() {
   const { data: report, isLoading } = useReport();
   const { recState, setRecStatus, mode } = useSettings();
   const tenantScope = useTenantScopeKey();
-  const [view, setView] = useState<'board' | 'table'>('board');
+  const [view, setView] = useState<'board' | 'table'>('table');
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<{ brand: string; category: string; decision: QueueBand | 'ALL' }>({
+  const [filters, setFilters] = useState<{ brand: string; category: string; decision: ActionFilter }>({
     brand: 'ALL', category: 'ALL', decision: 'ALL',
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openSku, setOpenSku] = useState<string | null>(null);
 
-  const skus = report?.inventory.sku_analysis || [];
+  const skus = useMemo(() => report?.inventory.sku_analysis ?? [], [report]);
   const brands = useMemo(() => Array.from(new Set(skus.map((s) => s.brand))).sort(), [skus]);
   const categories = useMemo(() => Array.from(new Set(skus.map((s) => s.category))).sort(), [skus]);
   const [systemDecisionState, setSystemDecisionState] = useState<Record<string, SystemDecisionState>>(
@@ -239,11 +246,55 @@ export default function Queue() {
     });
   }, [skus, filters, search, resolvedBandBySku]);
 
+  const actionCounts = useMemo(() => {
+    const counts: Record<ActionFilter, number> = { ALL: 0, UNSCORED: 0, HOLD: 0, PROMOTE: 0, MARKDOWN: 0, CLEAR: 0 };
+    skus.forEach((sku) => {
+      if (!matchesQueueScope(sku, filters.brand, filters.category, search)) return;
+      const band = resolvedBandBySku.get(sku.sku_id) ?? 'UNSCORED';
+      counts.ALL += 1;
+      counts[band] += 1;
+    });
+    return counts;
+  }, [skus, filters.brand, filters.category, search, resolvedBandBySku]);
+
   const grouped = useMemo(() => {
     const m: Record<QueueBand, SkuAnalysis[]> = { UNSCORED: [], HOLD: [], PROMOTE: [], MARKDOWN: [], CLEAR: [] };
     filtered.forEach((s) => m[resolvedBandBySku.get(s.sku_id) ?? 'UNSCORED'].push(s));
     return m;
   }, [filtered, resolvedBandBySku]);
+
+  const competitorBySku = useMemo(() => {
+    return new Map((report?.competitor.sku_positioning ?? []).map((item) => [item.sku_id, item]));
+  }, [report]);
+
+  const actionDetailsBySku = useMemo(() => {
+    const map = new Map<string, ActionDetails>();
+    report?.promotions.promote.forEach((item) => {
+      map.set(item.sku_id, {
+        reason: item.reason,
+        suggested: `${item.expected_lift_pct.toFixed(0)}% lift`,
+      });
+    });
+    report?.promotions.markdown.forEach((item) => {
+      map.set(item.sku_id, {
+        reason: item.reason,
+        suggested: `${item.suggested_discount_pct.toFixed(0)}% off -> ${fmtUSD(item.suggested_price_usd)}`,
+      });
+    });
+    report?.promotions.clearance.forEach((item) => {
+      map.set(item.sku_id, {
+        reason: `${item.age_days}d old stock`,
+        suggested: `Clear at ${fmtUSD(item.suggested_price_usd)}`,
+      });
+    });
+    report?.promotions.hold_pricing.forEach((item) => {
+      map.set(item.sku_id, {
+        reason: item.reason,
+        suggested: 'Hold price',
+      });
+    });
+    return map;
+  }, [report]);
 
   if (isLoading || !report) {
     return (<><TopBar title="Recommendations Queue" /><PageSkeleton /></>);
@@ -252,12 +303,31 @@ export default function Queue() {
   const toggleSel = (sku: string) => {
     setSelected((prev) => {
       const n = new Set(prev);
-      n.has(sku) ? n.delete(sku) : n.add(sku);
+      if (n.has(sku)) {
+        n.delete(sku);
+      } else {
+        n.add(sku);
+      }
       return n;
     });
   };
 
   const bulkAction = (status: 'approved' | 'rejected' | 'snoozed') => {
+    if (status === 'approved') {
+      const selectedSkus = skus.filter((sku) => selected.has(sku.sku_id));
+      const selectedBands = selectedSkus.map((sku) => resolvedBand(sku));
+      const promoteCount = selectedBands.filter((band) => band === 'PROMOTE').length;
+      const markdownCount = selectedBands.filter((band) => band === 'MARKDOWN').length;
+      const clearCount = selectedBands.filter((band) => band === 'CLEAR').length;
+      const estimatedApiActions = promoteCount + markdownCount + clearCount;
+      const ok = window.confirm(
+        `Approve ${selected.size} selected recommendation(s)?\n\n` +
+        `Estimated costly actions if executed later: ${estimatedApiActions} API/campaign action(s) ` +
+        `(${promoteCount} promote, ${markdownCount} markdown, ${clearCount} clear).\n\n` +
+        'This approval only updates the dashboard status. Campaign generation or notifications still require a separate execution step.',
+      );
+      if (!ok) return;
+    }
     selected.forEach((sku) => setRecStatus(sku, status));
     toast.success(`${selected.size} SKUs ${status}`, { description: 'Logged to audit trail.' });
     setSelected(new Set());
@@ -297,6 +367,28 @@ export default function Queue() {
       />
 
       <main className="flex-1 px-6 lg:px-8 py-6 space-y-5 animate-fade-in">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-raised p-1">
+          {actionTabs.map((band) => {
+            const active = filters.decision === band;
+            const count = actionCounts[band];
+            return (
+              <button
+                key={band}
+                onClick={() => setFilters({ ...filters, decision: band })}
+                className={cn(
+                  'h-8 px-3 rounded-md text-[12px] font-semibold inline-flex items-center gap-2 transition-colors',
+                  active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                )}
+              >
+                {band === 'ALL' ? 'All actions' : <BandBadge band={band} size="sm" />}
+                <span className={cn('font-mono text-[10.5px]', active ? 'text-background/70' : 'text-muted-foreground')}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Filters bar */}
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-surface-raised border border-border">
           <div className="flex items-center gap-2 min-w-[260px] flex-1 px-3 h-9 rounded-md border border-border bg-card">
@@ -305,7 +397,7 @@ export default function Queue() {
           </div>
           <FilterSelect value={filters.brand} onChange={(v) => setFilters({ ...filters, brand: v })} options={['ALL', ...brands]} label="Brand" />
           <FilterSelect value={filters.category} onChange={(v) => setFilters({ ...filters, category: v })} options={['ALL', ...categories]} label="Category" />
-          <FilterSelect value={filters.decision} onChange={(v) => setFilters({ ...filters, decision: v as any })} options={['ALL', ...queueBandOrder]} label="Decision" />
+          <FilterSelect value={filters.decision} onChange={(v) => setFilters({ ...filters, decision: v as ActionFilter })} options={['ALL', ...queueBandOrder]} label="Decision" />
           <div className="ml-auto flex items-center gap-2">
             {selected.size > 0 && (
               <>
@@ -357,11 +449,17 @@ export default function Queue() {
                     <th className="px-4 py-3 text-left">SKU</th>
                     <th className="px-4 py-3 text-left">Product</th>
                     <th className="px-4 py-3 text-left">Brand</th>
+                    <th className="px-4 py-3 text-left">Category</th>
                     <th className="px-4 py-3 text-right">Stock</th>
                     <th className="px-4 py-3 text-right">DOS</th>
                     <th className="px-4 py-3 text-right">Margin</th>
                     <th className="px-4 py-3 text-right">Price</th>
-                    <th className="px-4 py-3 text-left">Decision</th>
+                    <th className="px-4 py-3 text-right">Competitor</th>
+                    <th className="px-4 py-3 text-right">Gap</th>
+                    <th className="px-4 py-3 text-left">Action</th>
+                    <th className="px-4 py-3 text-right">Confidence</th>
+                    <th className="px-4 py-3 text-left">Suggested</th>
+                    <th className="px-4 py-3 text-left">Reason</th>
                     <th className="px-4 py-3 text-left">Status</th>
                   </tr>
                 </thead>
@@ -369,6 +467,14 @@ export default function Queue() {
                   {filtered.slice(0, 200).map((s) => {
                     const band = resolvedBand(s);
                     const currentLiveStatus = liveStatus(s);
+                    const liveResult = liveDecisionBySku.get(s.sku_id);
+                    const position = competitorBySku.get(s.sku_id);
+                    const detail = actionDetailsBySku.get(s.sku_id);
+                    const confidence = liveResult?.confidence;
+                    const suggested = liveResult?.suggested_price_usd
+                      ? `${fmtUSD(liveResult.suggested_price_usd)}${liveResult.suggested_discount_pct ? ` · ${liveResult.suggested_discount_pct.toFixed(0)}% off` : ''}`
+                      : detail?.suggested ?? (band === 'HOLD' ? 'Hold price' : 'Sync for suggestion');
+                    const reason = liveResult?.explanation || detail?.reason || 'Awaiting live recommendation';
                     return (
                       <tr key={s.sku_id} className="border-t border-border hover:bg-accent/40 cursor-pointer" onClick={() => setOpenSku(s.sku_id)}>
                         <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -377,16 +483,28 @@ export default function Queue() {
                         <td className="px-4 py-2.5 font-mono text-[12px] text-muted-foreground">{s.sku_id}</td>
                         <td className="px-4 py-2.5 font-medium">{s.product_name}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{s.brand}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{s.category}</td>
                         <td className="px-4 py-2.5 text-right font-mono">{s.current_stock}</td>
                         <td className={cn('px-4 py-2.5 text-right font-mono', dosTextClass(s.days_of_supply))}>{fmtDos(s.days_of_supply, { suffix: false })}</td>
                         <td className={cn('px-4 py-2.5 text-right font-mono', s.margin_pct < 35 ? 'text-decision-clear' : s.margin_pct >= 45 ? 'text-decision-promote' : 'text-foreground')}>{fmtPct(s.margin_pct, 0)}</td>
                         <td className="px-4 py-2.5 text-right font-mono">{fmtUSD(s.retail_price_usd)}</td>
+                        <td className="px-4 py-2.5 text-right font-mono">
+                          {position?.market_min_usd ? fmtUSD(position.market_min_usd) : '—'}
+                        </td>
+                        <td className={cn('px-4 py-2.5 text-right font-mono', (position?.price_gap_pct ?? 0) > 10 ? 'text-decision-markdown' : (position?.price_gap_pct ?? 0) < -10 ? 'text-decision-promote' : 'text-muted-foreground')}>
+                          {position ? `${position.price_gap_pct > 0 ? '+' : ''}${fmtPct(position.price_gap_pct, 1)}` : '—'}
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
                             <BandBadge band={band} size="sm" />
                             {currentLiveStatus && <LiveStatusPill status={currentLiveStatus} />}
                           </div>
                         </td>
+                        <td className="px-4 py-2.5 text-right font-mono">
+                          {typeof confidence === 'number' ? fmtPct(confidence * 100, 0) : currentLiveStatus === 'live' ? '—' : 'Sync'}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground max-w-[180px] truncate">{suggested}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground max-w-[260px] truncate">{reason}</td>
                         <td className="px-4 py-2.5">
                           <span className={cn('inline-flex px-2 py-0.5 rounded text-[10.5px] font-mono uppercase tracking-wider', statusStyles[recState[scopedSkuKey(s.sku_id, tenantScope)]?.status || 'pending'])}>
                             {recState[scopedSkuKey(s.sku_id, tenantScope)]?.status || 'pending'}

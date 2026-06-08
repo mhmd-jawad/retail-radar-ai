@@ -221,7 +221,7 @@ async def post_to_instagram(
     Docs: https://developers.facebook.com/docs/instagram-api/reference/ig-user/media
     NOTE: image_url must be a publicly reachable HTTPS URL.
     """
-    # Try DB credentials first, fall back to env vars
+    # Try DB credentials first, fall back to FB_PAGE_ACCESS_TOKEN (Meta token works for both FB and IG)
     creds = await _load_social_credentials(db_url, tenant_id, "instagram")
     token      = creds.get("access_token") or os.getenv("FB_PAGE_ACCESS_TOKEN", "").strip()
     ig_user_id = creds.get("user_id") or os.getenv("IG_USER_ID", "").strip()

@@ -1,7 +1,7 @@
 """
 Unit tests for IE3 — Campaign Creative Service.
 
-Tests are fully offline: all external calls (OpenRouter, Replicate, PostgreSQL)
+Tests are fully offline: all external calls (Anthropic, Replicate, PostgreSQL)
 are mocked so no API keys or database are needed.
 
 Run:
@@ -86,6 +86,7 @@ MOCK_TEXT_COPY: dict[str, str] = {
     "instagram_caption": "🔥 Adidas Predator Edge is 15% OFF — limited stock! #SportsFashion #Adidas #Football #SaleAlert",
     "facebook_post": "Big drop! Adidas Predator Edge Football Boot is now 15% off. Grab yours before it sells out!",
     "tiktok_caption": "POV: Adidas just dropped 15% off the Predator Edge 👟🔥 no cap #Adidas #Football",
+    "whatsapp_message": "15% off Adidas Predator Edge today. Limited stock - shop now.",
     "headline": "15% OFF — Predator Edge by Adidas",
     "ad_copy_short": "Limited stock. 15% off the Adidas Predator Edge. Shop now.",
     "ad_copy_long": "The Adidas Predator Edge Football Boot is engineered for elite performance. At 15% off, this is your moment. Limited stock — don't miss it.",
@@ -128,28 +129,41 @@ def mock_db():
 
 @pytest.fixture
 def mock_llm_success():
-    """Patches OpenRouter to return valid text copy + image prompt."""
+    """Patches Anthropic to return valid text copy + image prompt."""
     text_response = MagicMock()
-    text_response.choices = [MagicMock()]
-    text_response.choices[0].message.content = json.dumps(MOCK_TEXT_COPY)
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = json.dumps(MOCK_TEXT_COPY)
+    text_response.content = [text_block]
 
     image_response = MagicMock()
-    image_response.choices = [MagicMock()]
-    image_response.choices[0].message.content = MOCK_IMAGE_PROMPT
+    image_block = MagicMock()
+    image_block.type = "text"
+    image_block.text = MOCK_IMAGE_PROMPT
+    image_response.content = [image_block]
 
     async def _create(**kwargs):
         # Return image prompt response for the shorter max_tokens call
-        if kwargs.get("max_tokens", 1200) <= 200:
+        if kwargs.get("max_tokens", 1200) <= 400:
             return image_response
         return text_response
 
-    with patch(
-        "services.campaign_creative.main._openrouter_client"
-    ) as mock_client:
-        mock_client.chat = MagicMock()
-        mock_client.chat.completions = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch("services.campaign_creative.main._anthropic_client") as mock_client:
+        mock_client.messages = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=_create)
         yield mock_client
+
+
+@pytest.fixture(autouse=True)
+def mock_publish_success():
+    async def _publish(*args, **kwargs):
+        return [
+            {"platform": "facebook", "success": True, "post_id": "fb-1", "post_url": "https://facebook.test/fb-1", "error": None},
+            {"platform": "instagram", "success": True, "post_id": "ig-1", "post_url": "https://instagram.test/ig-1", "error": None},
+        ]
+
+    with patch("services.campaign_creative.publishers.publish_to_all_platforms", new=AsyncMock(side_effect=_publish)):
+        yield
 
 
 @pytest.fixture
@@ -357,15 +371,10 @@ async def test_generate_campaign_rejects_clear(client):
 async def test_generate_campaign_uses_fallback_when_llm_fails(
     client, mock_db, mock_replicate_success
 ):
-    """When OpenRouter fails both attempts, fallback templates are used and fallback_used=True."""
-    with patch(
-        "services.campaign_creative.main._openrouter_client"
-    ) as mock_client:
-        mock_client.chat = MagicMock()
-        mock_client.chat.completions = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=Exception("OpenRouter timeout")
-        )
+    """When Anthropic fails both attempts, fallback templates are used and fallback_used=True."""
+    with patch("services.campaign_creative.main._anthropic_client") as mock_client:
+        mock_client.messages = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("Anthropic timeout"))
         resp = await client.post("/campaign/generate", json=PROMOTE_PAYLOAD)
 
     assert resp.status_code == 200
@@ -418,19 +427,58 @@ async def test_generate_campaign_db_failure_still_returns_package(
     assert data["headline"]  # package still assembled with defaults
 
 
+async def test_generate_campaign_publish_exception_returns_draft(
+    client, mock_db, mock_llm_success, mock_replicate_success
+):
+    with patch(
+        "services.campaign_creative.publishers.publish_to_all_platforms",
+        new=AsyncMock(side_effect=Exception("Meta timeout")),
+    ):
+        resp = await client.post("/campaign/generate", json=PROMOTE_PAYLOAD)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["headline"]
+    assert data["fallback_used"] is True
+    assert len(data["social_posts"]) == 2
+    assert all(not post["success"] for post in data["social_posts"])
+    assert "Meta timeout" in data["social_posts"][0]["error"]
+
+
+async def test_generate_campaign_publish_failures_return_draft_status(
+    client, mock_db, mock_llm_success, mock_replicate_success
+):
+    async def _publish(*args, **kwargs):
+        return [
+            {"platform": "facebook", "success": False, "post_id": None, "post_url": None, "error": "missing token"},
+            {"platform": "instagram", "success": False, "post_id": None, "post_url": None, "error": "missing token"},
+        ]
+
+    with patch(
+        "services.campaign_creative.publishers.publish_to_all_platforms",
+        new=AsyncMock(side_effect=_publish),
+    ):
+        resp = await client.post("/campaign/generate", json=PROMOTE_PAYLOAD)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["fallback_used"] is True
+    assert [post["platform"] for post in data["social_posts"]] == ["facebook", "instagram"]
+    assert all(not post["success"] for post in data["social_posts"])
+
+
 async def test_generate_campaign_invalid_json_from_llm_triggers_retry_then_fallback(
     client, mock_db, mock_replicate_success
 ):
     """LLM returns non-JSON → retry → still fails → fallback templates used."""
-    with patch(
-        "services.campaign_creative.main._openrouter_client"
-    ) as mock_client:
-        mock_client.chat = MagicMock()
-        mock_client.chat.completions = MagicMock()
+    with patch("services.campaign_creative.main._anthropic_client") as mock_client:
         bad_response = MagicMock()
-        bad_response.choices = [MagicMock()]
-        bad_response.choices[0].message.content = "Sure! Here is your copy: not json at all"
-        mock_client.chat.completions.create = AsyncMock(return_value=bad_response)
+        bad_block = MagicMock()
+        bad_block.type = "text"
+        bad_block.text = "Sure! Here is your copy: not json at all"
+        bad_response.content = [bad_block]
+        mock_client.messages = MagicMock()
+        mock_client.messages.create = AsyncMock(return_value=bad_response)
 
         resp = await client.post("/campaign/generate", json=PROMOTE_PAYLOAD)
 

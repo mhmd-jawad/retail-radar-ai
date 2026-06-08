@@ -159,9 +159,9 @@ const sampleCreative: CampaignCreative = {
   ad_copy_long: 'From morning Corniche miles to AUB intramurals — the new running drop is engineered for Lebanese summer pavement. In-store now across Beirut, Jounieh, and Tripoli. Cash and card welcome.',
   instagram_post: '☀️ Summer pace, secured.\nNew running drop — fresh USD pricing, in stock today.\n#RetailRadar #BeirutRuns',
   facebook_post: 'Your summer running upgrade is here. Visit our Beirut, Jounieh or Tripoli locations — limited stock per size.',
-  whatsapp_broadcast: 'Mar7aba 👋 New running drop just landed — shall we hold a pair in your size? Reply with size + city.',
+  telegram_broadcast: 'Mar7aba 👋 New running drop just landed — shall we hold a pair in your size? Reply with size + city.',
   cta_primary: 'Reserve in store',
-  cta_secondary: 'WhatsApp us',
+  cta_secondary: 'Message us on Telegram',
   generation_confidence: 0.86, fallback_used: false,
 };
 
@@ -169,7 +169,7 @@ const promote: PromoteItem[] = SKUS.filter(s => s.decision === 'PROMOTE').slice(
   sku_id: s.sku_id, product_name: s.product_name, brand: s.brand, category: s.category,
   reason: i % 3 === 0 ? 'Healthy margin + below-market price + seasonal tailwind' : 'Strong velocity, low days-of-supply risk',
   expected_lift_pct: round(8 + rnd() * 22, 1),
-  channels: ['Instagram', 'WhatsApp', 'In-store window'],
+  channels: ['Instagram', 'Telegram', 'In-store window'],
   creative: i < 12 ? { ...sampleCreative, headline: `${s.brand} ${s.category.split(' ')[0]} — built for Lebanese summer`, generation_confidence: round(0.7 + rnd() * 0.25, 2) } : undefined,
 }));
 

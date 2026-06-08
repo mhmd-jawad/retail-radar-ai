@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { fmtNum, relativeTime } from '@/lib/format';
 import type { AdminTenant } from '@/types/domain';
 import { useAuth } from '@/store/auth';
 import { AdminHeader, Empty, Status } from './AdminDashboard';
+import { SocialAccountsManager } from '@/components/admin/SocialAccountsManager';
 
 type ShopStatus = 'pending' | 'active' | 'suspended' | 'archived';
 
@@ -15,6 +16,7 @@ export default function AdminShops() {
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedSocial, setExpandedSocial] = useState<string | null>(null);
   const navigate = useNavigate();
   const startImpersonation = useAuth((state) => state.startImpersonation);
 
@@ -84,35 +86,55 @@ export default function AdminShops() {
                   {tenants.map((tenant) => {
                     const status = (tenant.onboarding_status || 'unknown') as string;
                     const busy = busyId === tenant.id;
+                    const socialOpen = expandedSocial === tenant.id;
                     return (
-                      <tr key={tenant.id} className="border-b border-border/60">
-                        <td className="py-3 pr-4">
-                          <div className="font-semibold">{tenant.name}</div>
-                          <div className="text-xs text-muted-foreground">{tenant.slug}</div>
-                        </td>
-                        <td className="py-3 pr-4 text-muted-foreground">{tenant.contact_email || '-'}</td>
-                        <td className="py-3 pr-4 font-mono">{fmtNum(tenant.sku_count)}</td>
-                        <td className="py-3 pr-4 font-mono">{fmtNum(tenant.competitor_count)}</td>
-                        <td className="py-3 pr-4"><Status value={status} /></td>
-                        <td className="py-3 pr-4 text-muted-foreground">{relativeTime(tenant.created_at)}</td>
-                        <td className="py-3 text-right">
-                          <div className="inline-flex gap-2">
-                            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void viewAsShop(tenant)}>
-                              View as shop
-                            </Button>
-                            {status !== 'active' && (
-                              <Button size="sm" disabled={busy} onClick={() => void setStatus(tenant, 'active')}>
-                                {status === 'pending' ? 'Approve' : 'Reactivate'}
+                      <Fragment key={tenant.id}>
+                        <tr className="border-b border-border/60">
+                          <td className="py-3 pr-4">
+                            <div className="font-semibold">{tenant.name}</div>
+                            <div className="text-xs text-muted-foreground">{tenant.slug}</div>
+                          </td>
+                          <td className="py-3 pr-4 text-muted-foreground">{tenant.contact_email || '-'}</td>
+                          <td className="py-3 pr-4 font-mono">{fmtNum(tenant.sku_count)}</td>
+                          <td className="py-3 pr-4 font-mono">{fmtNum(tenant.competitor_count)}</td>
+                          <td className="py-3 pr-4"><Status value={status} /></td>
+                          <td className="py-3 pr-4 text-muted-foreground">{relativeTime(tenant.created_at)}</td>
+                          <td className="py-3 text-right">
+                            <div className="inline-flex gap-2 flex-wrap justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setExpandedSocial(socialOpen ? null : tenant.id)}
+                              >
+                                {socialOpen ? 'Hide Social' : 'Social'}
                               </Button>
-                            )}
-                            {status === 'active' && (
-                              <Button size="sm" variant="outline" disabled={busy} onClick={() => void setStatus(tenant, 'suspended')}>
-                                Suspend
+                              <Button size="sm" variant="secondary" disabled={busy} onClick={() => void viewAsShop(tenant)}>
+                                View as shop
                               </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                              {status !== 'active' && (
+                                <Button size="sm" disabled={busy} onClick={() => void setStatus(tenant, 'active')}>
+                                  {status === 'pending' ? 'Approve' : 'Reactivate'}
+                                </Button>
+                              )}
+                              {status === 'active' && (
+                                <Button size="sm" variant="outline" disabled={busy} onClick={() => void setStatus(tenant, 'suspended')}>
+                                  Suspend
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {socialOpen && (
+                          <tr className="border-b border-border/60 bg-muted/30">
+                            <td colSpan={7} className="px-4 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                                Social Connections — {tenant.name}
+                              </p>
+                              <SocialAccountsManager tenantId={tenant.id} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

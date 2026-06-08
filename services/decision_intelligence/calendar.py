@@ -13,6 +13,16 @@ from datetime import date
 
 @dataclass(frozen=True)
 class RetailEventWindow:
+    """A named retail event window with a peak date and demand scoring curve.
+
+    Attributes:
+        name: Internal event identifier (e.g. ``"back_to_school"``).
+        start_date: First day of the event window.
+        peak_date: Day of maximum demand / pricing impact.
+        end_date: Last day of the event window.
+        peak_score: Maximum proximity score (0.0–1.0) achieved on ``peak_date``.
+    """
+
     name: str
     start_date: date
     peak_date: date
@@ -20,6 +30,15 @@ class RetailEventWindow:
     peak_score: float
 
 def _fixed_event_windows(year: int) -> list[RetailEventWindow]:
+    """Return the fixed-date retail event windows for the given calendar year.
+
+    Args:
+        year: The calendar year to build windows for.
+
+    Returns:
+        List of :class:`RetailEventWindow` instances covering back-to-school,
+        pre-holiday, and holiday-gifting periods.
+    """
     return [
         RetailEventWindow(
             name="back_to_school",
@@ -46,10 +65,32 @@ def _fixed_event_windows(year: int) -> list[RetailEventWindow]:
 
 
 def get_retail_event_windows(year: int) -> list[RetailEventWindow]:
+    """Return all retail event windows for the given year.
+
+    Args:
+        year: The calendar year.
+
+    Returns:
+        List of :class:`RetailEventWindow` objects.
+    """
     return _fixed_event_windows(year)
 
 
 def _score_event_window(target_date: date, event: RetailEventWindow, lookahead_days: int = 14) -> float:
+    """Score how much a single event window influences ``target_date``.
+
+    Returns a float in [0.0, 1.0] reflecting proximity to the event peak.
+    The score ramps up linearly before the peak, fades after it, and applies
+    a lookahead ramp for dates up to ``lookahead_days`` before the window opens.
+
+    Args:
+        target_date: The date being evaluated.
+        event: The retail event window to score against.
+        lookahead_days: Number of days before the window start to begin ramping.
+
+    Returns:
+        Proximity score in [0.0, 1.0].
+    """
     if event.start_date <= target_date <= event.end_date:
         if target_date <= event.peak_date:
             total_days = max((event.peak_date - event.start_date).days, 1)
@@ -70,6 +111,18 @@ def _score_event_window(target_date: date, event: RetailEventWindow, lookahead_d
 
 
 def get_event_proximity_score(target_date: date, lookahead_days: int = 14) -> float:
+    """Return the maximum event proximity score for a given date.
+
+    Checks both the current year and the following year so that
+    year-boundary events are captured correctly.
+
+    Args:
+        target_date: The date to score.
+        lookahead_days: How many days ahead of each window to start scoring.
+
+    Returns:
+        Maximum proximity score across all known event windows, in [0.0, 1.0].
+    """
     windows = get_retail_event_windows(target_date.year) + get_retail_event_windows(target_date.year + 1)
     return max((_score_event_window(target_date, event, lookahead_days) for event in windows), default=0.0)
 
@@ -78,6 +131,20 @@ def get_active_or_upcoming_event(
     target_date: date,
     lookahead_days: int = 14,
 ) -> tuple[RetailEventWindow | None, int | None]:
+    """Find the active or nearest upcoming event window for a given date.
+
+    If ``target_date`` falls inside an event window the closest-to-peak
+    window is returned with ``days_until = 0``. Otherwise, the nearest
+    upcoming window within ``lookahead_days`` is returned.
+
+    Args:
+        target_date: The date to evaluate.
+        lookahead_days: How many days ahead to look for upcoming events.
+
+    Returns:
+        A tuple of ``(event_window, days_until_start)``.
+        Both values are ``None`` when no relevant event is found.
+    """
     windows = get_retail_event_windows(target_date.year) + get_retail_event_windows(target_date.year + 1)
 
     active_events = [event for event in windows if event.start_date <= target_date <= event.end_date]

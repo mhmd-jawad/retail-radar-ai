@@ -37,6 +37,10 @@ import type {
   ShopProfile,
   ShopProfileInput,
   ShopSignupInput,
+  AdminOutcomesAggregate,
+  AdminFinancialOverview,
+  AdminCampaignsOverview,
+  AdminAssistantMessage,
 } from '@/types/domain';
 import { MOCK_SCRAPE_RUNS, MOCK_COMPETITOR_LATEST } from '@/data/mockReport';
 import { useSettings } from '@/store/settings';
@@ -49,6 +53,11 @@ function settings() {
 
 function apiHeaders(extra?: Record<string, string>): Record<string, string> {
   return { ...authHeader(), ...(extra ?? {}) };
+}
+
+function tenantHeader(): Record<string, string> {
+  const tenantId = useAuth.getState().user?.tenant_id;
+  return tenantId ? { 'X-Tenant-ID': tenantId } : {};
 }
 
 function hasAuthSession(): boolean {
@@ -200,6 +209,58 @@ export async function impersonateShop(tenantId: string): Promise<AuthResponse> {
   });
   if (!r.ok) throw new Error(await apiError(r, `EEP /admin/impersonate/${tenantId}`));
   return r.json();
+}
+
+export interface SocialAccountEntry {
+  platform: 'facebook' | 'instagram' | 'telegram';
+  account_name: string | null;
+  page_id: string | null;
+  user_id: string | null;
+  is_active: boolean;
+  webhook_registered_at: string | null;
+}
+
+export interface SocialAccountPayload {
+  platform: 'facebook' | 'instagram' | 'telegram';
+  access_token: string;
+  page_id?: string;
+  user_id?: string;
+  account_name?: string;
+}
+
+export async function fetchAdminSocialAccounts(tenantId: string): Promise<SocialAccountEntry[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/tenants/${encodeURIComponent(tenantId)}/social-accounts`, {
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/tenants/${tenantId}/social-accounts`));
+  return r.json();
+}
+
+export async function upsertAdminSocialAccount(
+  tenantId: string,
+  payload: SocialAccountPayload,
+): Promise<{ status: string; webhook_status?: string }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/tenants/${encodeURIComponent(tenantId)}/social-accounts`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/tenants/${tenantId}/social-accounts`));
+  return r.json();
+}
+
+export async function removeAdminSocialAccount(
+  tenantId: string,
+  platform: string,
+): Promise<void> {
+  const { base } = settings();
+  const r = await fetch(
+    `${base}/admin/tenants/${encodeURIComponent(tenantId)}/social-accounts/${platform}`,
+    { method: 'DELETE', headers: apiHeaders() },
+  );
+  if (!r.ok) throw new Error(await apiError(r, `EEP /admin/tenants/${tenantId}/social-accounts/${platform}`));
 }
 
 export async function fetchReport(): Promise<Report> {
@@ -459,7 +520,7 @@ export async function pingIE3(): Promise<{ ok: boolean; latency_ms: number; deta
  * POST {ie3Base}/campaign/generate
  *
  * Sends a RecommendationResult-shaped payload to IE3 which generates copy +
- * image and publishes to Instagram & Facebook atomically in one shot.
+ * image and attempts Instagram/Facebook publishing best-effort.
  * Returns a CampaignCreative with social_posts reflecting publish status.
  */
 export async function generateAndPublishCampaign(
@@ -489,7 +550,7 @@ export async function generateAndPublishCampaign(
 
   const r = await fetch(`${ie3}/campaign/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...tenantHeader() },
     body: JSON.stringify(payload),
   });
 
@@ -505,7 +566,7 @@ export async function generateAndPublishCampaign(
     ad_copy_long: pkg.ad_copy_long ?? '',
     instagram_post: pkg.instagram_caption ?? '',
     facebook_post: pkg.facebook_post ?? '',
-    whatsapp_broadcast: pkg.whatsapp_message ?? '',
+    telegram_broadcast: pkg.telegram_message ?? '',
     cta_primary: pkg.cta_primary ?? '',
     cta_secondary: pkg.cta_secondary ?? '',
     image_url: pkg.image_url ?? '',
@@ -754,14 +815,14 @@ export async function measureAllDue(): Promise<{ measured: number; skipped: numb
 export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/balance-sheet`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/balance-sheet ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/balance-sheet'));
   return r.json();
 }
 
 export async function fetchDetailedProfitability(): Promise<DetailedProfitability> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/profitability`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/profitability ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/profitability'));
   return r.json();
 }
 
@@ -770,7 +831,7 @@ export interface CashflowMonth { month: string; in: number; out: number; net: nu
 export async function fetchCashflow(): Promise<CashflowMonth[]> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/cashflow`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/cashflow ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/cashflow'));
   const json = await r.json();
   // backend wraps series in { series: [...] }, unwrap if needed
   return Array.isArray(json) ? json : (json.series ?? []);
@@ -779,7 +840,7 @@ export async function fetchCashflow(): Promise<CashflowMonth[]> {
 export async function fetchFinancialSnapshots(): Promise<FinancialSnapshot[]> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/snapshots?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/snapshots ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
   const json = await r.json();
   return json.snapshots ?? [];
 }
@@ -787,7 +848,7 @@ export async function fetchFinancialSnapshots(): Promise<FinancialSnapshot[]> {
 export async function fetchCurrentFinancialSnapshot(): Promise<{ period_month: string; missing_snapshot: boolean; snapshot: FinancialSnapshot | null }> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/snapshots/current`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/snapshots/current ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots/current'));
   return r.json();
 }
 
@@ -806,9 +867,79 @@ export async function saveFinancialSnapshot(periodMonth: string, payload: Partia
 export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]> {
   const { base } = settings();
   const r = await fetch(`${base}/financial/progress?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(`/financial/progress ${r.status}`);
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/progress'));
   const json = await r.json();
   return json.series ?? [];
+}
+
+// ─── Admin Platform Operations ────────────────────────────────────────────────
+
+export async function fetchAdminOutcomes(): Promise<AdminOutcomesAggregate> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/outcomes/aggregate`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/outcomes/aggregate ${r.status}`);
+  return r.json();
+}
+
+export async function triggerAdminMeasurement(snapshotId: number, windowDays: 7 | 14): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/outcomes/trigger`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ snapshot_id: snapshotId, window_days: windowDays }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'trigger measurement'));
+  return r.json();
+}
+
+export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/financial/overview`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/financial/overview ${r.status}`);
+  return r.json();
+}
+
+export async function fetchAdminCampaignsOverview(): Promise<AdminCampaignsOverview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/campaigns/overview`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(`/admin/campaigns/overview ${r.status}`);
+  return r.json();
+}
+
+export interface PersistCampaignInput {
+  variant_id?: string;
+  recommendation_id?: string;
+  channel: string;
+  headline: string;
+  body?: string;
+  tone?: string;
+  generation_confidence?: number;
+  fallback_used?: boolean;
+}
+
+export async function persistCampaign(input: PersistCampaignInput): Promise<{ campaign_id: string; ok: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/campaigns`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'persist campaign'));
+  return r.json();
+}
+
+export async function adminAssistantChat(
+  message: string,
+  sessionId?: string,
+): Promise<{ reply: string; tools_used: string[]; session_id: string }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/admin/assistant/chat`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message, session_id: sessionId ?? '' }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'admin assistant'));
+  return r.json();
 }
 
 // Supabase-ready stubs (future)

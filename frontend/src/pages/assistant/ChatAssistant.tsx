@@ -25,7 +25,39 @@ interface Message {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ASSISTANT_BASE =
-  (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ?? 'http://localhost:8004';
+  (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ??
+  (import.meta.env.PROD ? '/assistant-api' : 'http://localhost:8004');
+
+async function assistantErrorMessage(res: Response): Promise<string> {
+  let detail = '';
+  try {
+    const payload = await res.json();
+    detail = typeof payload?.detail === 'string' ? payload.detail : JSON.stringify(payload);
+  } catch {
+    detail = await res.text().catch(() => '');
+  }
+  if (res.status === 401 || res.status === 403) {
+    return 'Your dashboard session is not authorized for Radar Assistant. Log in again.';
+  }
+  if (res.status === 503) {
+    return `Radar Assistant service is not ready${detail ? `: ${detail}` : ''}`;
+  }
+  if (res.status >= 500) {
+    return `Radar Assistant backend failed${detail ? `: ${detail}` : ''}`;
+  }
+  return detail || `Radar Assistant request failed with HTTP ${res.status}`;
+}
+
+function randomId() {
+  try {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+  } catch {
+    // Fall through for non-secure HTTP origins.
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const TOOL_LABELS: Record<string, string> = {
   get_inventory_overview: 'Inventory',
@@ -234,7 +266,7 @@ export default function ChatAssistant() {
     const key = `radar-chat-sid-${tenantId}`;
     let sid = sessionStorage.getItem(key);
     if (!sid) {
-      sid = crypto.randomUUID();
+      sid = randomId();
       sessionStorage.setItem(key, sid);
     }
     sessionIdRef.current = sid;
@@ -260,13 +292,14 @@ export default function ChatAssistant() {
 
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'user', content: trimmed, timestamp: new Date() },
+        { id: randomId(), role: 'user', content: trimmed, timestamp: new Date() },
       ]);
       setInput('');
       setLoading(true);
 
       try {
-        const res = await fetch(`${ASSISTANT_BASE}/chat`, {
+        const assistantBase = ASSISTANT_BASE.replace(/\/$/, '');
+        const res = await fetch(`${assistantBase}/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -280,15 +313,14 @@ export default function ChatAssistant() {
         });
 
         if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          throw new Error(errText || `HTTP ${res.status}`);
+          throw new Error(await assistantErrorMessage(res));
         }
 
         const data = (await res.json()) as { reply: string; tools_used: string[] };
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             role: 'assistant',
             content: data.reply,
             tools: data.tools_used,
@@ -297,13 +329,22 @@ export default function ChatAssistant() {
         ]);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
+        const authError = msg.includes('not authorized') || msg.includes('Log in again');
+        const serviceError = msg.includes('service is not ready');
+        const backendError = msg.includes('backend failed');
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             role: 'assistant',
             content:
-              'Something went wrong — please try again in a moment. If the issue persists, check that the assistant service is running.',
+              authError
+                ? 'Your session is not authorized for Radar Assistant. Please log in again.'
+                : serviceError
+                  ? 'Radar Assistant is starting or not wired in this deployment yet. Try again after the assistant service is healthy.'
+                  : backendError
+                    ? 'Radar Assistant reached the backend, but the backend failed while answering. Please try again in a moment.'
+                    : 'Something went wrong. Please try again in a moment.',
             timestamp: new Date(),
             error: true,
           },
@@ -326,7 +367,7 @@ export default function ChatAssistant() {
   function newChat() {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
-    const newSid = crypto.randomUUID();
+    const newSid = randomId();
     sessionStorage.setItem(key, newSid);
     sessionIdRef.current = newSid;
     setMessages([]);

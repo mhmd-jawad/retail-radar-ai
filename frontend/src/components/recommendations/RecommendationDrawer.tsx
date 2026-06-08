@@ -199,7 +199,7 @@ export function RecommendationDrawer({ sku, open, onClose }: Props) {
                     </div>
                     {[
                       { l: 'Instagram', v: promo.creative.instagram_post },
-                      { l: 'WhatsApp', v: promo.creative.whatsapp_broadcast },
+                      { l: 'Telegram', v: promo.creative.telegram_broadcast },
                       { l: 'Facebook', v: promo.creative.facebook_post },
                     ].map((c) => (
                       <div key={c.l} className="rounded-md bg-card border border-border p-2.5">

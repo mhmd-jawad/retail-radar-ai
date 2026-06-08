@@ -6,7 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtDos, fmtUSD, fmtPct, fmtNum, isUnknownDos, relativeTime } from '@/lib/format';
 import {
-  Boxes, Radar, DollarSign, Wallet, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database,
+  Boxes, Radar, DollarSign, Wallet, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database, Target,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -102,6 +102,9 @@ export default function Overview() {
                 <Link to="/financial" className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
                   View cashflow detail
                 </Link>
+                <Link to="/closed-loop" className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
+                  Closed-loop results
+                </Link>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -122,7 +125,7 @@ export default function Overview() {
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <KpiCard label="Inventory @ Cost" icon={Boxes} value={fmtUSD(inventory.metrics.inventory_value_at_cost_usd, { compact: true })}
             hint={`${fmtNum(inventory.metrics.total_units)} units · ${medianDosHint}`} />
           <KpiCard label="Cash Runway" icon={Wallet} variant="warning" value={`${cashRunwayMonths.toFixed(1)} mo`}
@@ -131,6 +134,8 @@ export default function Overview() {
             hint={`${competitor.market_overview.shops_covered} shops · ${competitor.market_overview.data_freshness_hours}h freshness`} />
           <KpiCard label="Blended Margin" icon={TrendingUp} variant="success" value={fmtPct(inventory.metrics.blended_margin_pct)}
             hint="Healthy band ≥ 45%" trend={{ value: '+0.6pp', direction: 'up' }} />
+          <KpiCard label="Closed Loop" icon={Target} variant="data" value="7d / 14d"
+            hint="Track decision lift, revenue delta, and accuracy" />
         </div>
 
         {/* Decision distribution + Directives */}

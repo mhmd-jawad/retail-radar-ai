@@ -19,8 +19,8 @@ spec:
           labelSelector: { matchLabels: { app: pgbouncer } }
       containers:
         - name: pgbouncer
-          image: edoburu/pgbouncer:1.23.1
-          ports: [{ containerPort: 6432 }]
+          image: edoburu/pgbouncer:latest
+          ports: [{ containerPort: 5432 }]
           env:
             - { name: DB_HOST,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_HOST } } }
             - { name: DB_PORT,     valueFrom: { secretKeyRef: { name: pgbouncer-secret, key: DB_PORT } } }
@@ -34,7 +34,7 @@ spec:
             - { name: SERVER_TLS_SSLMODE, value: "require" }   # PgBouncer → RDS uses TLS
             - { name: AUTH_TYPE,          value: "scram-sha-256" }
           readinessProbe:
-            tcpSocket: { port: 6432 }
+            tcpSocket: { port: 5432 }
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
@@ -48,4 +48,4 @@ metadata:
   namespace: retail-radar
 spec:
   selector: { app: pgbouncer }
-  ports: [{ port: 6432, targetPort: 6432 }]
+  ports: [{ port: 6432, targetPort: 5432 }]

@@ -1,0 +1,732 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>services.campaign_creative.publishers - StylePulse AI Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=12bf603c" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">StylePulse AI Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <span class="sidebar-brand-text">StylePulse AI Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Overview</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture Overview</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">EEP — Orchestrator (port 8000)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../eep/index.html">EEP — Orchestrator</a><input aria-label="Toggle navigation of EEP — Orchestrator" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/main.html">EEP Main (FastAPI Application)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/auth_db.html">Authentication Database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/retail_db.html">Retail Database Layer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/frontend_bridge.html">Frontend Bridge</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/apify_ingest.html">Apify Ingest</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/observability.html">Observability &amp; Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/outcome_tracking.html">Outcome Tracking</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../eep/admin_analytics_db.html">Admin Analytics Database</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE1 — Market Intelligence (port 8001)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../ie1/index.html">IE1 — Market Intelligence</a><input aria-label="Toggle navigation of IE1 — Market Intelligence" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie1/main.html">IE1 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie1/competitor_processor.html">Competitor Processor</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE2 — Decision Intelligence (port 8002)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../ie2/index.html">IE2 — Decision Intelligence</a><input aria-label="Toggle navigation of IE2 — Decision Intelligence" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie2/main.html">IE2 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie2/schemas.html">Schemas &amp; Pydantic Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie2/calendar.html">Retail Event Calendar</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../ie2/rules/index.html">Rules Engine</a><input aria-label="Toggle navigation of Rules Engine" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/rules/engine.html">Hard Rules Engine</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../ie2/features/index.html">Feature Engineering</a><input aria-label="Toggle navigation of Feature Engineering" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/features/engineer.html">Feature Engineer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/features/runtime_features.html">Runtime Features</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/features/validate.html">Feature Validation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/features/clean_competitors.html">Competitor Data Cleaning</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../ie2/explainability/index.html">Explainability</a><input aria-label="Toggle navigation of Explainability" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/explainability/shap_engine.html">SHAP Engine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/explainability/templates.html">Explanation Templates</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../ie2/training/index.html">Model Training</a><input aria-label="Toggle navigation of Model Training" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/training/train.html">CatBoost Training</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/training/baseline.html">Baseline Model</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../ie2/evaluation/index.html">Model Evaluation</a><input aria-label="Toggle navigation of Model Evaluation" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/evaluation/promote.html">Model Promotion Pipeline</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../ie2/evaluation/edge_case_benchmark.html">Edge Case Benchmark</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">IE3 — Campaign Creative (port 8003)</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../ie3/index.html">IE3 — Campaign Creative</a><input aria-label="Toggle navigation of IE3 — Campaign Creative" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie3/main.html">IE3 FastAPI Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie3/publishers.html">Social Media Publishers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../ie3/image_gen.html">Image Generation</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">StylePulse Offline Engine</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../stylepulse/index.html">StylePulse Offline Engine</a><input aria-label="Toggle navigation of StylePulse Offline Engine" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../stylepulse/engine.html">StylePulse Engine</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../stylepulse/analyzers/index.html">Analyzers</a><input aria-label="Toggle navigation of Analyzers" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../stylepulse/analyzers/inventory.html">Inventory Health Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../stylepulse/analyzers/competitor.html">Competitive Intelligence Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../stylepulse/analyzers/financial.html">Financial Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../stylepulse/analyzers/promotions.html">Promotion Directive Analyzer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../stylepulse/analyzers/thresholds.html">Lebanon Retail Thresholds</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../stylepulse/report/generator.html">Report Generator</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Data Pipeline</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../data_pipeline/index.html">Data Pipeline</a><input aria-label="Toggle navigation of Data Pipeline" class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../data_pipeline/build_inventory.html">Build Inventory Script</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../data_pipeline/scrapers/index.html">Scrapers</a><input aria-label="Toggle navigation of Scrapers" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../data_pipeline/scrapers/base.html">Base Scraper</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../data_pipeline/scrapers/shopify_scraper.html">Shopify Scraper</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../data_pipeline/scrapers/runner.html">Scraper Runner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../data_pipeline/scrapers/storage.html">Scraper Storage</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Shared Utilities</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../common/index.html">Shared Utilities</a><input aria-label="Toggle navigation of Shared Utilities" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../common/price_normalization.html">Price Normalisation</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for services.campaign_creative.publishers</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">IE3 — Social Media Publishers.</span>
+
+<span class="sd">Posts campaign packages to Facebook Pages and Instagram Business accounts.</span>
+
+<span class="sd">Required environment variables (set in services/campaign_creative/.env):</span>
+
+<span class="sd">    Facebook + Instagram (same Meta App):</span>
+<span class="sd">        FB_PAGE_ACCESS_TOKEN  — long-lived Page access token</span>
+<span class="sd">        FB_PAGE_ID            — numeric Facebook Page ID</span>
+<span class="sd">        IG_USER_ID            — Instagram Business account user ID</span>
+<span class="sd">                                (linked to the Facebook Page above)</span>
+
+<span class="sd">    Optional:</span>
+<span class="sd">        IMGBB_API_KEY         — imgbb.com key; enables public image hosting for</span>
+<span class="sd">                                locally-generated Pillow images so IG can</span>
+<span class="sd">                                fetch them. Get one free at https://imgbb.com/</span>
+
+<span class="sd">How to get credentials:</span>
+<span class="sd">    Facebook/Instagram:</span>
+<span class="sd">        1. Create a Meta App at developers.facebook.com</span>
+<span class="sd">        2. Add &quot;Pages&quot; and &quot;Instagram Graph API&quot; products</span>
+<span class="sd">        3. Connect your Facebook Page and Instagram Business account</span>
+<span class="sd">        4. Generate a long-lived Page Access Token via Graph API Explorer</span>
+<span class="sd">        5. Find IG_USER_ID: GET /{page-id}?fields=instagram_business_account</span>
+
+<span class="sd">NOTE: The image URL must be publicly accessible for Instagram.</span>
+<span class="sd">      If using a Replicate-generated image, it&#39;s already public.</span>
+<span class="sd">      For Pillow fallback images, set IMGBB_API_KEY for auto-upload.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;ie3_publishers&quot;</span><span class="p">)</span>
+
+<span class="n">_GRAPH_BASE</span> <span class="o">=</span> <span class="s2">&quot;https://graph.facebook.com/v20.0&quot;</span>
+
+
+<span class="c1"># ── Image URL validator ───────────────────────────────────────────────────────</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_validate_image_url</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate that *url* is a publicly accessible direct image URL.</span>
+
+<span class="sd">    Instagram&#39;s /media endpoint requires Meta&#39;s servers to download the image</span>
+<span class="sd">    from this URL.  If the URL is local, a webpage, or unreachable the publish</span>
+<span class="sd">    step fails with a cryptic &quot;media could not be fetched&quot; error.</span>
+
+<span class="sd">    Raises ValueError with a clear message if validation fails.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;https://&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL must start with https:// — got: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">h</span> <span class="ow">in</span> <span class="n">url</span> <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;localhost&quot;</span><span class="p">,</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="s2">&quot;::1&quot;</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL must be publicly accessible, not a local address: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="c1"># imgbb webpage URL — wrong field was used</span>
+    <span class="k">if</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;https://ibb.co/&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Image URL points to an imgbb *webpage* — use the direct image URL &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(https://i.ibb.co/...) instead: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="c1"># placehold.co placeholders can&#39;t be fetched by Meta</span>
+    <span class="k">if</span> <span class="s2">&quot;placehold.co&quot;</span> <span class="ow">in</span> <span class="n">url</span> <span class="ow">or</span> <span class="s2">&quot;placeholder&quot;</span> <span class="ow">in</span> <span class="n">url</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL is a placeholder and cannot be fetched by Meta: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">12.0</span><span class="p">,</span> <span class="n">follow_redirects</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL is not reachable: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2"> — </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL returned HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2"> (expected 200): </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="n">content_type</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content-type&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">content_type</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;image/&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Image URL content-type is </span><span class="si">{</span><span class="n">content_type</span><span class="si">!r}</span><span class="s2"> — must be image/png or &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;image/jpeg. URL is likely a webpage, not a direct image: </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="c1"># ── Result model ──────────────────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="PublishResult">
+<a class="viewcode-back" href="../../../ie3/publishers.html#services.campaign_creative.publishers.PublishResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PublishResult</span><span class="p">:</span>
+    <span class="n">platform</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">post_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">post_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">error</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+<div class="viewcode-block" id="PublishResult.to_dict">
+<a class="viewcode-back" href="../../../ie3/publishers.html#services.campaign_creative.publishers.PublishResult.to_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;platform&quot;</span><span class="p">:</span>  <span class="bp">self</span><span class="o">.</span><span class="n">platform</span><span class="p">,</span>
+            <span class="s2">&quot;success&quot;</span><span class="p">:</span>   <span class="bp">self</span><span class="o">.</span><span class="n">success</span><span class="p">,</span>
+            <span class="s2">&quot;post_id&quot;</span><span class="p">:</span>   <span class="bp">self</span><span class="o">.</span><span class="n">post_id</span><span class="p">,</span>
+            <span class="s2">&quot;post_url&quot;</span><span class="p">:</span>  <span class="bp">self</span><span class="o">.</span><span class="n">post_url</span><span class="p">,</span>
+            <span class="s2">&quot;error&quot;</span><span class="p">:</span>     <span class="bp">self</span><span class="o">.</span><span class="n">error</span><span class="p">,</span>
+        <span class="p">}</span></div>
+</div>
+
+
+
+<span class="c1"># ── Per-tenant credential loader ─────────────────────────────────────────────</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_load_social_credentials</span><span class="p">(</span>
+    <span class="n">db_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">platform</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load social credentials from DB for a tenant, returning a dict with the keys</span>
+<span class="sd">    needed for that platform.  Returns empty dict if DB is unavailable or no row found.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">db_url</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">tenant_id</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">psycopg</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.rows</span><span class="w"> </span><span class="kn">import</span> <span class="n">dict_row</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="k">await</span> <span class="n">psycopg</span><span class="o">.</span><span class="n">AsyncConnection</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">db_url</span><span class="p">,</span> <span class="n">row_factory</span><span class="o">=</span><span class="n">dict_row</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">async</span> <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+                <span class="k">await</span> <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                    SELECT access_token, page_id, user_id</span>
+<span class="sd">                    FROM marketing.tenant_social_accounts</span>
+<span class="sd">                    WHERE tenant_id = %s AND platform = %s AND is_active = true</span>
+<span class="sd">                    LIMIT 1</span>
+<span class="sd">                    &quot;&quot;&quot;</span><span class="p">,</span>
+                    <span class="p">(</span><span class="n">tenant_id</span><span class="p">,</span> <span class="n">platform</span><span class="p">),</span>
+                <span class="p">)</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="k">await</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+            <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Could not load social credentials for tenant </span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">tenant_id</span><span class="p">,</span> <span class="n">platform</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+
+<span class="c1"># ── Facebook ──────────────────────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="post_to_facebook">
+<a class="viewcode-back" href="../../../ie3/publishers.html#services.campaign_creative.publishers.post_to_facebook">[docs]</a>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">post_to_facebook</span><span class="p">(</span>
+    <span class="n">caption</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">image_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">db_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PublishResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Post an image + caption to a Facebook Page.</span>
+
+<span class="sd">    API: POST /{page-id}/photos</span>
+<span class="sd">    Docs: https://developers.facebook.com/docs/graph-api/reference/page/photos/</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Try DB credentials first, fall back to env vars</span>
+    <span class="n">creds</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_load_social_credentials</span><span class="p">(</span><span class="n">db_url</span><span class="p">,</span> <span class="n">tenant_id</span><span class="p">,</span> <span class="s2">&quot;facebook&quot;</span><span class="p">)</span>
+    <span class="n">token</span>   <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;access_token&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;FB_PAGE_ACCESS_TOKEN&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">page_id</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_id&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;FB_PAGE_ID&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;FB token in use (length: </span><span class="si">%d</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">token</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">page_id</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span>
+            <span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">error</span><span class="o">=</span><span class="s2">&quot;FB_PAGE_ACCESS_TOKEN and FB_PAGE_ID must be set in .env&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">_validate_image_url</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Invalid image URL: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">30.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_GRAPH_BASE</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">page_id</span><span class="si">}</span><span class="s2">/photos&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s2">&quot;caption&quot;</span><span class="p">:</span>      <span class="n">caption</span><span class="p">,</span>
+                    <span class="s2">&quot;url&quot;</span><span class="p">:</span>          <span class="n">image_url</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span> <span class="ow">and</span> <span class="s2">&quot;id&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                <span class="n">pid</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span>
+                <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span>
+                    <span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="n">post_id</span><span class="o">=</span><span class="n">pid</span><span class="p">,</span>
+                    <span class="n">post_url</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;https://www.facebook.com/</span><span class="si">{</span><span class="n">pid</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Facebook API error: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Facebook post exception: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span></div>
+
+
+
+<span class="c1"># ── Instagram ─────────────────────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="post_to_instagram">
+<a class="viewcode-back" href="../../../ie3/publishers.html#services.campaign_creative.publishers.post_to_instagram">[docs]</a>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">post_to_instagram</span><span class="p">(</span>
+    <span class="n">caption</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">image_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">db_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PublishResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Post an image to an Instagram Business account via Meta Graph API.</span>
+
+<span class="sd">    Two-step flow:</span>
+<span class="sd">        1. Create a media container  → returns creation_id</span>
+<span class="sd">        2. Publish the container     → returns post_id</span>
+
+<span class="sd">    Docs: https://developers.facebook.com/docs/instagram-api/reference/ig-user/media</span>
+<span class="sd">    NOTE: image_url must be a publicly reachable HTTPS URL.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Try DB credentials first, fall back to FB_PAGE_ACCESS_TOKEN (Meta token works for both FB and IG)</span>
+    <span class="n">creds</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_load_social_credentials</span><span class="p">(</span><span class="n">db_url</span><span class="p">,</span> <span class="n">tenant_id</span><span class="p">,</span> <span class="s2">&quot;instagram&quot;</span><span class="p">)</span>
+    <span class="n">token</span>      <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;access_token&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;FB_PAGE_ACCESS_TOKEN&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">ig_user_id</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_id&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;IG_USER_ID&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">ig_user_id</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span>
+            <span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">error</span><span class="o">=</span><span class="s2">&quot;FB_PAGE_ACCESS_TOKEN and IG_USER_ID must be set in .env&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">_validate_image_url</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Invalid image URL: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">60.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+
+            <span class="c1"># Step 1: create container</span>
+            <span class="n">r1</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_GRAPH_BASE</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">ig_user_id</span><span class="si">}</span><span class="s2">/media&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s2">&quot;image_url&quot;</span><span class="p">:</span>    <span class="n">image_url</span><span class="p">,</span>
+                    <span class="s2">&quot;caption&quot;</span><span class="p">:</span>      <span class="n">caption</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+            <span class="n">d1</span> <span class="o">=</span> <span class="n">r1</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">r1</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span> <span class="ow">or</span> <span class="s2">&quot;id&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">d1</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Instagram container creation failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">d1</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">d1</span><span class="p">))</span>
+
+            <span class="n">creation_id</span> <span class="o">=</span> <span class="n">d1</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span>
+
+            <span class="c1"># Step 2: poll until container is ready (status=FINISHED), then publish</span>
+            <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+                <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+                <span class="n">status_resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_GRAPH_BASE</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">creation_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span> <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="s2">&quot;status_code&quot;</span><span class="p">},</span>
+                <span class="p">)</span>
+                <span class="n">status_data</span> <span class="o">=</span> <span class="n">status_resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+                <span class="n">status_code</span> <span class="o">=</span> <span class="n">status_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status_code&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;IG container </span><span class="si">%s</span><span class="s2"> status: </span><span class="si">%s</span><span class="s2"> (attempt </span><span class="si">%d</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">creation_id</span><span class="p">,</span> <span class="n">status_code</span><span class="p">,</span> <span class="n">attempt</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">status_code</span> <span class="o">==</span> <span class="s2">&quot;ERROR&quot;</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Container error: </span><span class="si">{</span><span class="n">status_data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">status_code</span> <span class="o">==</span> <span class="s2">&quot;FINISHED&quot;</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;IG container not ready after 30s, attempting publish anyway&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Step 3: publish</span>
+            <span class="n">r2</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_GRAPH_BASE</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">ig_user_id</span><span class="si">}</span><span class="s2">/media_publish&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s2">&quot;creation_id&quot;</span><span class="p">:</span>  <span class="n">creation_id</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+            <span class="n">d2</span> <span class="o">=</span> <span class="n">r2</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">r2</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span> <span class="ow">and</span> <span class="s2">&quot;id&quot;</span> <span class="ow">in</span> <span class="n">d2</span><span class="p">:</span>
+                <span class="n">pid</span> <span class="o">=</span> <span class="n">d2</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span>
+                <span class="c1"># Fetch the human-readable permalink (numeric ID ≠ shortcode)</span>
+                <span class="n">permalink</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;https://www.instagram.com/p/</span><span class="si">{</span><span class="n">pid</span><span class="si">}</span><span class="s2">/&quot;</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">r3</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_GRAPH_BASE</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">pid</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span> <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="s2">&quot;permalink&quot;</span><span class="p">},</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">r3</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
+                        <span class="n">permalink</span> <span class="o">=</span> <span class="n">r3</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;permalink&quot;</span><span class="p">,</span> <span class="n">permalink</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>  <span class="c1"># fall back to numeric URL</span>
+                <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span>
+                    <span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="n">post_id</span><span class="o">=</span><span class="n">pid</span><span class="p">,</span>
+                    <span class="n">post_url</span><span class="o">=</span><span class="n">permalink</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Instagram publish failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">d2</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">d2</span><span class="p">))</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Instagram post exception: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">PublishResult</span><span class="p">(</span><span class="s2">&quot;instagram&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span></div>
+
+
+
+<span class="c1"># ── Orchestrator ──────────────────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="publish_to_all_platforms">
+<a class="viewcode-back" href="../../../ie3/publishers.html#services.campaign_creative.publishers.publish_to_all_platforms">[docs]</a>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">publish_to_all_platforms</span><span class="p">(</span>
+    <span class="n">instagram_caption</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">facebook_post</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">image_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">db_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fire Facebook and Instagram publishers in parallel.</span>
+<span class="sd">    Never raises — every error is captured inside the result dict.</span>
+<span class="sd">    Returns a list of 2 dicts (one per platform).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span>
+        <span class="n">post_to_facebook</span><span class="p">(</span><span class="n">facebook_post</span><span class="p">,</span> <span class="n">image_url</span><span class="p">,</span> <span class="n">tenant_id</span><span class="o">=</span><span class="n">tenant_id</span><span class="p">,</span> <span class="n">db_url</span><span class="o">=</span><span class="n">db_url</span><span class="p">),</span>
+        <span class="n">post_to_instagram</span><span class="p">(</span><span class="n">instagram_caption</span><span class="p">,</span> <span class="n">image_url</span><span class="p">,</span> <span class="n">tenant_id</span><span class="o">=</span><span class="n">tenant_id</span><span class="p">,</span> <span class="n">db_url</span><span class="o">=</span><span class="n">db_url</span><span class="p">),</span>
+        <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">platforms</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="s2">&quot;instagram&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">PublishResult</span><span class="p">(</span><span class="n">platforms</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">))</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+
+    <span class="k">return</span> <span class="n">output</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Hassan Aboali and contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=4ebf8126"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    </body>
+</html>

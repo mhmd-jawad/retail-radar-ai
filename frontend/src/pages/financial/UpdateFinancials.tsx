@@ -137,7 +137,11 @@ export default function UpdateFinancials() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['financial-current-snapshot'] });
       queryClient.invalidateQueries({ queryKey: ['financial-balance-sheet'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-profitability'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-cashflow'] });
       queryClient.invalidateQueries({ queryKey: ['financial-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
+      queryClient.invalidateQueries({ queryKey: ['report-live'] });
       navigate('/financial/balance-sheet');
     },
   });

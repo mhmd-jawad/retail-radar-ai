@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone, Wallet,
-  Activity, Bot,
+  Activity, Bot, Target,
   User, LogOut,
   type LucideIcon,
 } from 'lucide-react';
@@ -17,6 +17,7 @@ const sections: { label: string; items: { to: string; label: string; icon: Lucid
       { to: '/overview', label: 'Overview', icon: LayoutDashboard },
       { to: '/assistant', label: 'Radar Assistant', icon: Bot },
       { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: 'queue' },
+      { to: '/closed-loop', label: 'Closed Loop', icon: Target },
     ],
   },
   {
