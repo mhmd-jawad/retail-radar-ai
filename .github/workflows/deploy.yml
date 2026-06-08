@@ -1,0 +1,235 @@
+name: CI/CD - Test, Build, Deploy
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: mhmd-jawad
+  PRODUCTION_URL: http://e43c88ab0453c69b919ea0b68ffac616-860150828.eu-central-1.elb.amazonaws.com
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir \
+            pytest pytest-asyncio httpx \
+            -r eep/requirements.txt \
+            -r services/decision_intelligence/requirements.txt \
+            -r services/market_intelligence/requirements.txt \
+            -r services/campaign_creative/requirements.txt \
+            -r services/telegram_assistant/requirements.txt
+
+      - name: Run Python unit tests
+        run: |
+          pytest tests/unit -x -q \
+            --ignore=tests/unit/test_rds_live_reads.py \
+            --ignore=tests/unit/test_live_rds_competitor_eval.py
+        env:
+          PYTHONPATH: .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_DATA_MODE: eep-live
+          VITE_API_BASE_URL: /api
+          VITE_IE1_BASE_URL: /ie1
+          VITE_IE2_BASE_URL: /ie2
+          VITE_IE3_BASE_URL: /ie3
+          VITE_ASSISTANT_URL: /assistant-api
+        run: |
+          npm ci
+          npm run build
+
+  build:
+    name: Build and Push Images
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha: ${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.OWNER }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push EEP
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: eep/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-eep:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=eep
+          cache-to: type=gha,scope=eep,mode=max
+
+      - name: Build and push IE1
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/market_intelligence/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-ie1:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=ie1
+          cache-to: type=gha,scope=ie1,mode=max
+
+      - name: Build and push IE2
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/decision_intelligence/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-ie2:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=ie2
+          cache-to: type=gha,scope=ie2,mode=max
+
+      - name: Build and push IE3
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/campaign_creative/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-ie3:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=ie3
+          cache-to: type=gha,scope=ie3,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          build-args: |
+            VITE_DATA_MODE=eep-live
+            VITE_API_BASE_URL=/api
+            VITE_IE1_BASE_URL=/ie1
+            VITE_IE2_BASE_URL=/ie2
+            VITE_IE3_BASE_URL=/ie3
+            VITE_ASSISTANT_URL=/assistant-api
+            VITE_API_KEY=${{ secrets.VITE_API_KEY }}
+            VITE_GRAFANA_URL=${{ secrets.VITE_GRAFANA_URL }}
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-frontend:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Build and push Telegram assistant
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/telegram_assistant/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/retail-radar-telegram:${{ steps.sha.outputs.short }}
+          cache-from: type=gha,scope=telegram
+          cache-to: type=gha,scope=telegram,mode=max
+
+  deploy:
+    name: Deploy to Production k3s
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin manifests to built image tag
+        run: |
+          sed -i -E "s/(newTag: )[A-Za-z0-9._-]+/\1${{ needs.build.outputs.sha }}/g" infra/k8s/kustomization.yaml
+
+      - name: Copy Kubernetes manifests to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.BOX_B_HOST }}
+          username: ${{ secrets.BOX_B_USER }}
+          key: ${{ secrets.BOX_B_SSH_KEY }}
+          source: infra/k8s
+          target: /tmp/retail-radar-deploy-${{ needs.build.outputs.sha }}
+          rm: true
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.BOX_B_HOST }}
+          username: ${{ secrets.BOX_B_USER }}
+          key: ${{ secrets.BOX_B_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            SHA="${{ needs.build.outputs.sha }}"
+            APP_URL="${{ env.PRODUCTION_URL }}"
+            MANIFEST_DIR="/tmp/retail-radar-deploy-$SHA/infra/k8s"
+
+            if command -v kubectl >/dev/null 2>&1; then
+              KUBECTL="kubectl"
+              mkdir -p "$HOME/.kube"
+              if [ ! -f "$HOME/.kube/config" ]; then
+                sudo cp /etc/rancher/k3s/k3s.yaml "$HOME/.kube/config"
+                sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+              fi
+              export KUBECONFIG="$HOME/.kube/config"
+            else
+              KUBECTL="sudo k3s kubectl"
+            fi
+
+            test -f "$MANIFEST_DIR/kustomization.yaml"
+            $KUBECTL apply -k "$MANIFEST_DIR"
+
+            $KUBECTL rollout status deployment/eep -n retail-radar --timeout=300s
+            $KUBECTL rollout status deployment/frontend -n retail-radar --timeout=300s
+            $KUBECTL rollout status deployment/ie1 -n retail-radar --timeout=300s
+            $KUBECTL rollout status deployment/ie2 -n retail-radar --timeout=300s
+            $KUBECTL rollout status deployment/ie3 -n retail-radar --timeout=300s
+            $KUBECTL rollout status deployment/telegram -n retail-radar --timeout=300s
+
+            for path in /api/health /assistant-api/health /login; do
+              for attempt in $(seq 1 30); do
+                if curl -fsS --max-time 10 "$APP_URL$path" >/dev/null; then
+                  echo "OK $path"
+                  break
+                fi
+                if [ "$attempt" -eq 30 ]; then
+                  echo "Health check failed: $APP_URL$path"
+                  $KUBECTL get pods -n retail-radar -o wide
+                  exit 1
+                fi
+                sleep 5
+              done
+            done
+
+            echo "retail-radar deployed at $SHA"
+            $KUBECTL get pods -n retail-radar -o wide

@@ -14,12 +14,11 @@ import {
   fetchRetailInventory,
   importRetailInventory,
   recordRetailInventoryMovement,
-  recommend,
+  startSystemDecisionSyncSku,
   updateRetailInventoryItem,
 } from '@/lib/adapter';
 import { parseInventoryCsv } from '@/lib/inventoryCsv';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
-import { writeSystemDecisionEntry } from '@/lib/systemDecisionCache';
 import type {
   Report,
   RetailInventoryInput,
@@ -27,7 +26,6 @@ import type {
   RetailInventoryMovementInput,
   RetailInventoryMovementType,
   RetailInventoryResponse,
-  IE2Request,
 } from '@/types/domain';
 import {
   AlertTriangle,
@@ -185,7 +183,7 @@ function InventoryManager() {
         description: `${savedItem.sku_id} persisted in core inventory tables.`,
       });
       if (!wasEditing) {
-        syncNewSkuDecision(savedItem, tenantScope);
+        syncNewSkuDecision(savedItem, queryClient);
       }
     },
     onError: (error: Error) => toast.error('Save failed', { description: error.message }),
@@ -964,45 +962,19 @@ function normalizedForm(form: InventoryFormState): RetailInventoryInput {
   };
 }
 
-function syncNewSkuDecision(item: RetailInventoryItem, tenantScope: string) {
-  toast.info('Syncing system decision for new SKU', {
-    description: `${item.sku_id} is being sent through EEP -> IE1 -> IE2.`,
-  });
-  recommend(toRecommendationRequest(item))
-    .then((result) => {
-      writeSystemDecisionEntry(tenantScope, item.sku_id, {
-        status: 'live',
-        result: { ...result, sku_id: result.sku_id ?? item.sku_id },
-        checkedAt: Date.now(),
-        trigger: 'new_sku',
-      });
-      toast.success('System decision synced for new SKU', {
-        description: `${item.sku_id}: ${result.recommendation}`,
+function syncNewSkuDecision(item: RetailInventoryItem, queryClient: ReturnType<typeof useQueryClient>) {
+  startSystemDecisionSyncSku(item.sku_id)
+    .then((run) => {
+      queryClient.invalidateQueries({ queryKey: ['system-decisions-latest'] });
+      toast.success('System decision sync started for new SKU', {
+        description: `${item.sku_id} is queued through EEP -> IE1 -> IE2 in run ${run.id.slice(0, 8)}.`,
       });
     })
     .catch((error: Error) => {
-      writeSystemDecisionEntry(tenantScope, item.sku_id, {
-        status: 'error',
-        error: error.message,
-        checkedAt: Date.now(),
-        trigger: 'new_sku',
-      });
-      toast.error('System decision failed for new SKU', {
+      toast.error('System decision sync failed to start', {
         description: `${item.sku_id}: ${error.message}`,
       });
     });
-}
-
-function toRecommendationRequest(item: RetailInventoryItem): IE2Request {
-  return {
-    sku_id: item.sku_id,
-    product_name: item.product_name,
-    brand: item.brand,
-    category: item.category,
-    retail_price_usd: item.retail_price_usd,
-    cost_price_usd: item.cost_price_usd,
-    current_stock: item.current_stock,
-  };
 }
 
 function cleanNullable(value: string | null | undefined) {

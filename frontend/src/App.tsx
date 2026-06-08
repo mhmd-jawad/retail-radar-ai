@@ -14,13 +14,12 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminNotifications from "./pages/admin/AdminNotifications";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminShops from "./pages/admin/AdminShops";
-import AdminOutcomes from "./pages/admin/AdminOutcomes";
 import AdminCampaigns from "./pages/admin/AdminCampaigns";
 import Overview from "./pages/Overview";
 import Queue from "./pages/Queue";
 import Inventory from "./pages/Inventory";
-import Competitive from "./pages/Competitive";
 import Promotions from "./pages/Promotions";
+import Financial from "./pages/Financial";
 import Ops from "./pages/Ops";
 import ClosedLoopOutcomes from "./pages/ClosedLoopOutcomes";
 import NotFound from "./pages/NotFound";
@@ -53,8 +52,8 @@ const App = () => (
               <Route path="/overview" element={<Overview />} />
               <Route path="/queue" element={<Queue />} />
               <Route path="/inventory" element={<Inventory />} />
-              <Route path="/competitive" element={<Competitive />} />
               <Route path="/promotions" element={<Promotions />} />
+              <Route path="/financial" element={<Financial />} />
               <Route path="/closed-loop" element={<ClosedLoopOutcomes />} />
               <Route path="/upload" element={<Navigate to="/inventory" replace />} />
               <Route path="/audit" element={<Navigate to="/overview" replace />} />
@@ -67,7 +66,6 @@ const App = () => (
           <Route element={<ProtectedRoute roles={["admin"]} />}>
             <Route element={<AdminShell />}>
               <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/outcomes" element={<AdminOutcomes />} />
               <Route path="/admin/campaigns" element={<AdminCampaigns />} />
               <Route path="/admin/shops" element={<AdminShops />} />
               <Route path="/admin/competitor-requests" element={<Navigate to="/admin/notifications" replace />} />

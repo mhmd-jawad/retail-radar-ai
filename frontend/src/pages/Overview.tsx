@@ -243,8 +243,7 @@ export default function Overview() {
             </div>
           </Section>
 
-          <Section title="Top Pricing Opportunities" subtitle="Estimated uplift when accepted"
-            action={<Link to="/competitive" className="text-[12px] text-primary font-semibold hover:underline">All</Link>}>
+          <Section title="Top Pricing Opportunities" subtitle="Estimated uplift when accepted">
             <ul className="space-y-2">
               {competitor.opportunities.slice(0, 5).map((o) => (
                 <li key={o.sku_id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/40 transition">
@@ -273,7 +272,6 @@ export default function Overview() {
             {[
               { to: '/queue', icon: Database, label: 'Recommendations', count: String(skuCount) },
               { to: '/inventory', icon: Boxes, label: 'Inventory & Stock', count: `${inventory.metrics.dead_stock_skus} dead` },
-              { to: '/competitive', icon: Radar, label: 'Competitive', count: `${competitor.market_overview.shops_covered} shops` },
               { to: '/promotions', icon: DollarSign, label: 'Promotions', count: `${promotions.promote.length} ready` },
             ].map((q) => (
               <Link key={q.to} to={q.to} className="group p-4 rounded-lg border border-border hover:border-primary/40 hover:shadow-md-soft transition-all">

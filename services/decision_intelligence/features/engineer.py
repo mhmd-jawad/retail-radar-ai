@@ -23,7 +23,7 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-from services.decision_intelligence.calendar import get_event_proximity_score
+from services.decision_intelligence.calendar import get_event_proximity_score, get_retail_event_windows
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = ROOT / "data" / "real"
@@ -51,6 +51,13 @@ CATEGORY_VELOCITY = {
 SEASONAL_MULTIPLIERS = {
     1: 0.70, 2: 0.80, 3: 0.90, 4: 1.10, 5: 1.15, 6: 1.20,
     7: 1.10, 8: 1.30, 9: 1.20, 10: 0.90, 11: 0.85, 12: 0.90,
+}
+
+# Backward-compatible month-level view used by older tests/callers. Runtime
+# scoring uses the richer date-window calendar in decision_intelligence.calendar.
+EVENT_WINDOWS = {
+    event.peak_date.month: (event.name, event.peak_score)
+    for event in get_retail_event_windows(2026)
 }
 
 CATEGORY_SEASONAL_BOOST = {

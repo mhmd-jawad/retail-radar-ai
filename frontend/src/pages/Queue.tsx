@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useReport } from '@/hooks/useReport';
 import { TopBar } from '@/components/layout/TopBar';
 import { Section } from '@/components/shared/Section';
@@ -8,17 +9,20 @@ import { decisionStyles, dosTextClass, fmtDos, fmtPct, fmtUSD, statusStyles } fr
 import { useSettings } from '@/store/settings';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
-import { recommend } from '@/lib/adapter';
-import type { Decision, IE2Request, IE2Result, SkuAnalysis } from '@/types/domain';
 import {
-  SYSTEM_DECISION_CACHE_EVENT,
-  isDailySystemDecisionDue,
-  markDailySystemDecisionRun,
-  readSystemDecisionCache,
-  writeSystemDecisionEntry,
-  type SystemDecisionStatus,
-  type SystemDecisionTrigger,
-} from '@/lib/systemDecisionCache';
+  fetchSystemDecisionLatest,
+  fetchSystemDecisionRun,
+  startSystemDecisionSyncAll,
+  startSystemDecisionSyncUnsynced,
+} from '@/lib/adapter';
+import type {
+  Decision,
+  IE2Result,
+  SkuAnalysis,
+  SystemDecisionLatestItem,
+  SystemDecisionLatestStatus,
+  SystemDecisionRun,
+} from '@/types/domain';
 import { Search, LayoutGrid, Table as TableIcon, Filter, Check, X, Clock, Pencil, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -29,17 +33,6 @@ type QueueBand = Decision | 'UNSCORED';
 type ActionFilter = QueueBand | 'ALL';
 const queueBandOrder: QueueBand[] = ['UNSCORED', ...decisionOrder];
 const actionTabs: ActionFilter[] = ['ALL', 'PROMOTE', 'MARKDOWN', 'CLEAR', 'HOLD', 'UNSCORED'];
-const SYSTEM_SYNC_LIMIT = 120;
-const SYSTEM_SYNC_CONCURRENCY = 1;
-const SYSTEM_SYNC_TTL_MS = 5 * 60_000;
-
-type SystemDecisionState = {
-  status: Exclude<SystemDecisionStatus, 'report'>;
-  result?: IE2Result;
-  error?: string;
-  checkedAt: number;
-  trigger?: SystemDecisionTrigger;
-};
 
 type ActionDetails = {
   reason: string;
@@ -50,218 +43,115 @@ export default function Queue() {
   const { data: report, isLoading } = useReport();
   const { recState, setRecStatus, mode } = useSettings();
   const tenantScope = useTenantScopeKey();
-  const [view, setView] = useState<'board' | 'table'>('table');
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<'board' | 'table'>('board');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<{ brand: string; category: string; decision: ActionFilter }>({
     brand: 'ALL', category: 'ALL', decision: 'ALL',
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openSku, setOpenSku] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const skus = useMemo(() => report?.inventory.sku_analysis ?? [], [report]);
   const brands = useMemo(() => Array.from(new Set(skus.map((s) => s.brand))).sort(), [skus]);
   const categories = useMemo(() => Array.from(new Set(skus.map((s) => s.category))).sort(), [skus]);
-  const [systemDecisionState, setSystemDecisionState] = useState<Record<string, SystemDecisionState>>(
-    () => readSystemDecisionCache(tenantScope) as Record<string, SystemDecisionState>,
-  );
-  const [syncProgress, setSyncProgress] = useState({ active: false, completed: 0, total: 0 });
-  const systemDecisionStateRef = useRef(systemDecisionState);
-  const syncActiveRef = useRef(false);
+
+  const systemDecisions = useQuery({
+    queryKey: ['system-decisions-latest', tenantScope],
+    queryFn: fetchSystemDecisionLatest,
+    enabled: mode === 'eep-live',
+    retry: false,
+    refetchInterval: activeRunId ? 5_000 : false,
+  });
+
+  const runQuery = useQuery({
+    queryKey: ['system-decision-run', tenantScope, activeRunId],
+    queryFn: () => fetchSystemDecisionRun(activeRunId!),
+    enabled: mode === 'eep-live' && Boolean(activeRunId),
+    retry: false,
+    refetchInterval: activeRunId ? 3_000 : false,
+  });
 
   useEffect(() => {
-    systemDecisionStateRef.current = systemDecisionState;
-  }, [systemDecisionState]);
-
-  useEffect(() => {
-    syncActiveRef.current = syncProgress.active;
-  }, [syncProgress.active]);
-
-  useEffect(() => {
-    setSystemDecisionState(readSystemDecisionCache(tenantScope) as Record<string, SystemDecisionState>);
-  }, [tenantScope]);
-
-  useEffect(() => {
-    const onCacheUpdate = (event: Event) => {
-      if (syncActiveRef.current) return;
-      const detail = (event as CustomEvent<{ scopeKey?: string }>).detail;
-      if (detail?.scopeKey && detail.scopeKey !== tenantScope) return;
-      setSystemDecisionState(readSystemDecisionCache(tenantScope) as Record<string, SystemDecisionState>);
-    };
-    window.addEventListener(SYSTEM_DECISION_CACHE_EVENT, onCacheUpdate);
-    return () => window.removeEventListener(SYSTEM_DECISION_CACHE_EVENT, onCacheUpdate);
-  }, [tenantScope]);
-
-  const systemDecisionCandidates = useMemo(() => {
-    return skus
-      .filter((sku) => matchesQueueScope(sku, filters.brand, filters.category, search))
-      .sort((a, b) => systemSyncPriority(a) - systemSyncPriority(b))
-      .slice(0, SYSTEM_SYNC_LIMIT);
-  }, [skus, filters.brand, filters.category, search]);
-  const systemDecisionCandidateKey = useMemo(
-    () => systemDecisionCandidates.map((s) => s.sku_id).join('|'),
-    [systemDecisionCandidates],
-  );
-
-  const startSystemSync = useCallback((targets: SkuAnalysis[], trigger: SystemDecisionTrigger, forceRefresh = false) => {
-    if (mode !== 'eep-live' || targets.length === 0 || syncActiveRef.current) return;
-    const now = Date.now();
-    const syncTargets = targets.filter((sku) => {
-      const existing = systemDecisionStateRef.current[sku.sku_id];
-      return forceRefresh || !existing || existing.status === 'error' || now - existing.checkedAt > SYSTEM_SYNC_TTL_MS;
-    });
-
-    if (syncTargets.length === 0) {
-      setSyncProgress({ active: false, completed: 0, total: 0 });
-      return;
-    }
-
-    syncActiveRef.current = true;
-    setSystemDecisionState((prev) => {
-      const next = { ...prev };
-      syncTargets.forEach((sku) => {
-        next[sku.sku_id] = { ...next[sku.sku_id], status: 'queued', checkedAt: now, trigger };
+    const run = runQuery.data;
+    if (!run || isRunActive(run)) return;
+    queryClient.invalidateQueries({ queryKey: ['system-decisions-latest'] });
+    queryClient.invalidateQueries({ queryKey: ['report'] });
+    queryClient.invalidateQueries({ queryKey: ['report-live'] });
+    setActiveRunId(null);
+    if (run.status === 'completed') {
+      toast.success('System decision sync completed', {
+        description: `${run.completed_count}/${run.total_count} SKUs synced.`,
       });
-      return next;
-    });
-    setSyncProgress({ active: true, completed: 0, total: syncTargets.length });
+    } else {
+      toast.warning('System decision sync finished with issues', {
+        description: `${run.failed_count}/${run.total_count} SKUs failed. Open Needs Sync for details.`,
+      });
+    }
+  }, [queryClient, runQuery.data]);
 
-    let nextIndex = 0;
-    let active = 0;
-    let completed = 0;
-    let cancelled = false;
-
-    const launchNext = () => {
-      if (cancelled) return;
-      while (active < SYSTEM_SYNC_CONCURRENCY && nextIndex < syncTargets.length) {
-        const sku = syncTargets[nextIndex++];
-        active += 1;
-        setSystemDecisionState((prev) => ({
-          ...prev,
-          [sku.sku_id]: { ...prev[sku.sku_id], status: 'checking', checkedAt: Date.now(), trigger },
-        }));
-
-        recommend(toRecommendationRequest(sku))
-          .then((result) => {
-            if (cancelled) return;
-            setSystemDecisionState((prev) => ({
-              ...prev,
-              [sku.sku_id]: {
-                status: 'live',
-                result: { ...result, sku_id: result.sku_id ?? sku.sku_id },
-                checkedAt: Date.now(),
-                trigger,
-              },
-            }));
-            writeSystemDecisionEntry(tenantScope, sku.sku_id, {
-              status: 'live',
-              result: { ...result, sku_id: result.sku_id ?? sku.sku_id },
-              checkedAt: Date.now(),
-              trigger,
-            });
-          })
-          .catch((error: unknown) => {
-            if (cancelled) return;
-            const message = error instanceof Error ? error.message : String(error);
-            setSystemDecisionState((prev) => ({
-              ...prev,
-              [sku.sku_id]: {
-                status: 'error',
-                error: message,
-                checkedAt: Date.now(),
-                trigger,
-              },
-            }));
-            writeSystemDecisionEntry(tenantScope, sku.sku_id, {
-              status: 'error',
-              error: message,
-              checkedAt: Date.now(),
-              trigger,
-            });
-          })
-          .finally(() => {
-            if (cancelled) return;
-            active -= 1;
-            completed += 1;
-            const stillActive = completed < syncTargets.length;
-            syncActiveRef.current = stillActive;
-            setSyncProgress({ active: stillActive, completed, total: syncTargets.length });
-            launchNext();
-          });
-      }
-    };
-
-    launchNext();
-
-    return () => {
-      cancelled = true;
-      syncActiveRef.current = false;
-    };
-  }, [mode, tenantScope]);
-
-  useEffect(() => {
-    if (mode !== 'eep-live') return;
-    const maybeRunDaily = () => {
-      if (!syncActiveRef.current && isDailySystemDecisionDue(tenantScope)) {
-        markDailySystemDecisionRun(tenantScope);
-        startSystemSync(systemDecisionCandidates, 'daily_9am', true);
-      }
-    };
-    maybeRunDaily();
-    const interval = window.setInterval(maybeRunDaily, 60_000);
-    return () => window.clearInterval(interval);
-  }, [mode, tenantScope, systemDecisionCandidateKey, startSystemSync, systemDecisionCandidates]);
+  const latestBySku = useMemo(() => {
+    const map = new Map<string, SystemDecisionLatestItem>();
+    (systemDecisions.data?.items || []).forEach((item) => map.set(item.sku_id, item));
+    return map;
+  }, [systemDecisions.data]);
 
   const liveDecisionBySku = useMemo(() => {
     const map = new Map<string, IE2Result>();
-    Object.entries(systemDecisionState).forEach(([skuId, state]) => {
-      if (state.status === 'live' && state.result?.recommendation && !state.result.error) {
-        map.set(skuId, state.result);
-      }
+    latestBySku.forEach((item, skuId) => {
+      const result = resultFromLatest(item);
+      if (result) map.set(skuId, result);
     });
     return map;
-  }, [systemDecisionState]);
-  const resolvedBandBySku = useMemo(() => {
-    const map = new Map<string, QueueBand>();
-    skus.forEach((sku) => {
-      map.set(sku.sku_id, liveDecisionBySku.get(sku.sku_id)?.recommendation ?? 'UNSCORED');
-    });
-    return map;
-  }, [skus, liveDecisionBySku]);
-  const resolvedBand = (sku: SkuAnalysis) => resolvedBandBySku.get(sku.sku_id) ?? 'UNSCORED';
-  const liveStatus = (sku: SkuAnalysis): SystemDecisionStatus | undefined => {
-    if (mode !== 'eep-live') return undefined;
-    const state = systemDecisionState[sku.sku_id];
-    if (state) return state.status;
-    return 'report';
+  }, [latestBySku]);
+
+  const resolvedBand = (sku: SkuAnalysis): QueueBand => {
+    if (mode !== 'eep-live') return sku.decision;
+    return liveDecisionBySku.get(sku.sku_id)?.recommendation ?? 'UNSCORED';
   };
 
   const filtered = useMemo(() => {
     return skus.filter((s) => {
-      const band = resolvedBandBySku.get(s.sku_id) ?? 'UNSCORED';
+      const band = resolvedBand(s);
       if (filters.brand !== 'ALL' && s.brand !== filters.brand) return false;
       if (filters.category !== 'ALL' && s.category !== filters.category) return false;
       if (filters.decision !== 'ALL' && band !== filters.decision) return false;
       if (search && !`${s.sku_id} ${s.product_name} ${s.brand}`.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [skus, filters, search, resolvedBandBySku]);
+  }, [skus, filters, search, liveDecisionBySku, mode]);
 
   const actionCounts = useMemo(() => {
     const counts: Record<ActionFilter, number> = { ALL: 0, UNSCORED: 0, HOLD: 0, PROMOTE: 0, MARKDOWN: 0, CLEAR: 0 };
     skus.forEach((sku) => {
-      if (!matchesQueueScope(sku, filters.brand, filters.category, search)) return;
-      const band = resolvedBandBySku.get(sku.sku_id) ?? 'UNSCORED';
+      if (filters.brand !== 'ALL' && sku.brand !== filters.brand) return;
+      if (filters.category !== 'ALL' && sku.category !== filters.category) return;
+      if (search && !`${sku.sku_id} ${sku.product_name} ${sku.brand}`.toLowerCase().includes(search.toLowerCase())) return;
+      const band = resolvedBand(sku);
       counts.ALL += 1;
       counts[band] += 1;
     });
     return counts;
-  }, [skus, filters.brand, filters.category, search, resolvedBandBySku]);
+  }, [skus, filters.brand, filters.category, search, liveDecisionBySku, mode]);
 
   const grouped = useMemo(() => {
     const m: Record<QueueBand, SkuAnalysis[]> = { UNSCORED: [], HOLD: [], PROMOTE: [], MARKDOWN: [], CLEAR: [] };
-    filtered.forEach((s) => m[resolvedBandBySku.get(s.sku_id) ?? 'UNSCORED'].push(s));
+    filtered.forEach((s) => m[resolvedBand(s)].push(s));
     return m;
-  }, [filtered, resolvedBandBySku]);
+  }, [filtered, liveDecisionBySku, mode]);
+
+  const syncAll = useMutation({
+    mutationFn: startSystemDecisionSyncAll,
+    onSuccess: (run) => handleRunStarted(run, setActiveRunId, queryClient),
+    onError: (error: Error) => toast.error('Sync all failed to start', { description: error.message }),
+  });
+
+  const syncUnsynced = useMutation({
+    mutationFn: startSystemDecisionSyncUnsynced,
+    onSuccess: (run) => handleRunStarted(run, setActiveRunId, queryClient),
+    onError: (error: Error) => toast.error('Sync unsynced failed to start', { description: error.message }),
+  });
 
   const competitorBySku = useMemo(() => {
     return new Map((report?.competitor.sku_positioning ?? []).map((item) => [item.sku_id, item]));
@@ -300,6 +190,12 @@ export default function Queue() {
     return (<><TopBar title="Recommendations Queue" /><PageSkeleton /></>);
   }
 
+  const run = runQuery.data || systemDecisions.data?.latest_run || null;
+  const syncActive = isRunActive(run) || syncAll.isPending || syncUnsynced.isPending;
+  const summary = systemDecisions.data?.summary;
+  const openSkuItem = openSku ? skus.find((s) => s.sku_id === openSku) || null : null;
+  const openSystemDecision = openSku ? liveDecisionBySku.get(openSku) : undefined;
+
   const toggleSel = (sku: string) => {
     setSelected((prev) => {
       const n = new Set(prev);
@@ -337,22 +233,24 @@ export default function Queue() {
     <>
       <TopBar
         title="Recommendations Queue"
-        subtitle={`${filtered.length} of ${skus.length} SKUs - ${
-          syncProgress.active
-            ? `system sync ${syncProgress.completed}/${syncProgress.total}`
-            : liveDecisionBySku.size > 0
-              ? `${liveDecisionBySku.size}/${systemDecisionCandidates.length} cached system decisions`
-              : `${systemDecisionCandidates.length} report decisions - sync manually or daily at 9 AM`
-        }`}
+        subtitle={`${filtered.length} of ${skus.length} SKUs - ${queueSubtitle(mode, summary, run)}`}
         actions={
           <div className="hidden md:flex items-center gap-2">
             <button
-              onClick={() => startSystemSync(systemDecisionCandidates, 'manual', true)}
-              disabled={syncProgress.active}
-              className="h-8 px-3 rounded-md border border-border bg-surface-raised text-[12px] font-semibold inline-flex items-center gap-1.5 text-foreground hover:bg-accent"
+              onClick={() => syncUnsynced.mutate()}
+              disabled={mode !== 'eep-live' || syncActive}
+              className="h-8 px-3 rounded-md border border-border bg-surface-raised text-[12px] font-semibold inline-flex items-center gap-1.5 text-foreground hover:bg-accent disabled:opacity-50"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', syncProgress.active && 'animate-spin')} />
-              {syncProgress.active ? 'Syncing' : 'Sync system'}
+              <RefreshCw className={cn('h-3.5 w-3.5', syncActive && 'animate-spin')} />
+              Sync Unsynced
+            </button>
+            <button
+              onClick={() => syncAll.mutate()}
+              disabled={mode !== 'eep-live' || syncActive}
+              className="h-8 px-3 rounded-md border border-primary/30 bg-primary/10 text-[12px] font-semibold inline-flex items-center gap-1.5 text-primary hover:bg-primary/15 disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', syncActive && 'animate-spin')} />
+              Sync All
             </button>
             <div className="flex items-center gap-1 rounded-md border border-border bg-surface-raised p-1">
               <button onClick={() => setView('board')} className={cn('px-2.5 py-1 rounded text-[12px] inline-flex items-center gap-1.5', view === 'board' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>
@@ -393,7 +291,7 @@ export default function Queue() {
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-surface-raised border border-border">
           <div className="flex items-center gap-2 min-w-[260px] flex-1 px-3 h-9 rounded-md border border-border bg-card">
             <Search className="h-4 w-4 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="SKU, product, brand…" className="bg-transparent outline-none text-[13px] flex-1" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="SKU, product, brand..." className="bg-transparent outline-none text-[13px] flex-1" />
           </div>
           <FilterSelect value={filters.brand} onChange={(v) => setFilters({ ...filters, brand: v })} options={['ALL', ...brands]} label="Brand" />
           <FilterSelect value={filters.category} onChange={(v) => setFilters({ ...filters, category: v })} options={['ALL', ...categories]} label="Category" />
@@ -414,6 +312,7 @@ export default function Queue() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {queueBandOrder.map((d) => {
               const items = grouped[d];
+              const syncingCount = items.filter((item) => latestBySku.get(item.sku_id)?.status === 'syncing').length;
               const s = bandStyles(d);
               return (
                 <div key={d} className="rounded-xl bg-card border border-border overflow-hidden flex flex-col max-h-[78vh]">
@@ -421,19 +320,32 @@ export default function Queue() {
                     <div className="flex items-center gap-2">
                       <BandBadge band={d} size="lg" />
                       <span className="text-[12px] text-muted-foreground font-mono">{items.length}</span>
+                      {syncingCount > 0 && (
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-amber-300">
+                          {syncingCount} syncing
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-2">
                     {items.length === 0 && (
                       <div className="text-center text-[12px] text-muted-foreground py-12">No SKUs in this band</div>
                     )}
-                    {items.slice(0, 60).map((sku) => (
-                      <SkuCard key={sku.sku_id} sku={sku} onOpen={() => setOpenSku(sku.sku_id)}
-                        band={resolvedBand(sku)}
-                        liveStatus={liveStatus(sku)}
-                        selected={selected.has(sku.sku_id)} onSelect={() => toggleSel(sku.sku_id)}
-                        status={recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status} />
-                    ))}
+                    {items.slice(0, 60).map((sku) => {
+                      const latest = latestBySku.get(sku.sku_id);
+                      return (
+                        <SkuCard
+                          key={sku.sku_id}
+                          sku={sku}
+                          onOpen={() => setOpenSku(sku.sku_id)}
+                          band={resolvedBand(sku)}
+                          latest={latest}
+                          selected={selected.has(sku.sku_id)}
+                          onSelect={() => toggleSel(sku.sku_id)}
+                          status={recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -457,6 +369,7 @@ export default function Queue() {
                     <th className="px-4 py-3 text-right">Competitor</th>
                     <th className="px-4 py-3 text-right">Gap</th>
                     <th className="px-4 py-3 text-left">Action</th>
+                    <th className="px-4 py-3 text-left">Sync</th>
                     <th className="px-4 py-3 text-right">Confidence</th>
                     <th className="px-4 py-3 text-left">Suggested</th>
                     <th className="px-4 py-3 text-left">Reason</th>
@@ -466,7 +379,7 @@ export default function Queue() {
                 <tbody>
                   {filtered.slice(0, 200).map((s) => {
                     const band = resolvedBand(s);
-                    const currentLiveStatus = liveStatus(s);
+                    const latest = latestBySku.get(s.sku_id);
                     const liveResult = liveDecisionBySku.get(s.sku_id);
                     const position = competitorBySku.get(s.sku_id);
                     const detail = actionDetailsBySku.get(s.sku_id);
@@ -494,14 +407,15 @@ export default function Queue() {
                         <td className={cn('px-4 py-2.5 text-right font-mono', (position?.price_gap_pct ?? 0) > 10 ? 'text-decision-markdown' : (position?.price_gap_pct ?? 0) < -10 ? 'text-decision-promote' : 'text-muted-foreground')}>
                           {position ? `${position.price_gap_pct > 0 ? '+' : ''}${fmtPct(position.price_gap_pct, 1)}` : '—'}
                         </td>
+                        <td className="px-4 py-2.5"><BandBadge band={band} size="sm" /></td>
                         <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <BandBadge band={band} size="sm" />
-                            {currentLiveStatus && <LiveStatusPill status={currentLiveStatus} />}
+                          <div className="flex flex-col gap-1">
+                            <SyncStatusPill status={latest?.status || 'pending'} />
+                            {latest?.error_code && <span className="text-[10px] font-mono text-decision-clear">{latest.error_code}</span>}
                           </div>
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono">
-                          {typeof confidence === 'number' ? fmtPct(confidence * 100, 0) : currentLiveStatus === 'live' ? '—' : 'Sync'}
+                          {typeof confidence === 'number' ? fmtPct(confidence * 100, 0) : latest?.status === 'live' ? '—' : 'Sync'}
                         </td>
                         <td className="px-4 py-2.5 text-muted-foreground max-w-[180px] truncate">{suggested}</td>
                         <td className="px-4 py-2.5 text-muted-foreground max-w-[260px] truncate">{reason}</td>
@@ -521,7 +435,9 @@ export default function Queue() {
       </main>
 
       <RecommendationDrawer
-        sku={openSku ? skus.find((s) => s.sku_id === openSku) || null : null}
+        sku={openSkuItem}
+        systemDecision={openSystemDecision}
+        disableLiveFetch
         open={!!openSku}
         onClose={() => setOpenSku(null)}
       />
@@ -529,44 +445,57 @@ export default function Queue() {
   );
 }
 
-function isStaleClearCandidate(sku: SkuAnalysis) {
-  if (sku.decision !== 'CLEAR') return false;
-  const dos = Number(sku.days_of_supply);
-  const age = Number(sku.days_since_launch);
-  const margin = Number(sku.margin_pct);
-  return age < 90 || !Number.isFinite(dos) || dos < 180 || margin >= 35;
+function handleRunStarted(
+  run: SystemDecisionRun,
+  setActiveRunId: (runId: string | null) => void,
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  queryClient.invalidateQueries({ queryKey: ['system-decisions-latest'] });
+  if (run.total_count === 0 || !isRunActive(run)) {
+    toast.info('No SKUs need syncing', { description: 'The backend did not find any matching sync targets.' });
+    return;
+  }
+  setActiveRunId(run.id);
+  toast.success(run.already_running ? 'System sync already running' : 'System sync started', {
+    description: `${run.total_count} SKUs queued through EEP -> IE1 -> IE2.`,
+  });
 }
 
-function matchesQueueScope(sku: SkuAnalysis, brand: string, category: string, search: string) {
-  if (brand !== 'ALL' && sku.brand !== brand) return false;
-  if (category !== 'ALL' && sku.category !== category) return false;
-  if (search && !`${sku.sku_id} ${sku.product_name} ${sku.brand}`.toLowerCase().includes(search.toLowerCase())) return false;
-  return true;
+function queueSubtitle(mode: string, summary: { active_skus: number; live_count: number; error_count: number; unsynced_count: number } | undefined, run: SystemDecisionRun | null) {
+  if (mode !== 'eep-live') return 'report decisions shown in local mode';
+  if (run && isRunActive(run)) {
+    return `system sync ${run.completed_count}/${run.total_count} (${run.failed_count} errors)`;
+  }
+  if (!summary) return 'loading persisted system decisions';
+  return `${summary.live_count}/${summary.active_skus} live decisions · ${summary.error_count} errors · ${summary.unsynced_count} need sync`;
 }
 
-function systemSyncPriority(sku: SkuAnalysis) {
-  if (isStaleClearCandidate(sku)) return 0;
-  if (sku.decision === 'CLEAR') return 1;
-  if (Number(sku.days_since_launch) < 30) return 2;
-  if (sku.decision === 'MARKDOWN') return 3;
-  if (sku.decision === 'PROMOTE') return 4;
-  return 5;
-}
-
-function toRecommendationRequest(sku: SkuAnalysis): IE2Request {
+function resultFromLatest(item: SystemDecisionLatestItem): IE2Result | undefined {
+  if (item.status !== 'live' || !item.recommendation) return undefined;
+  const payload = item.decision_payload || {};
   return {
-    sku_id: sku.sku_id,
-    product_name: sku.product_name,
-    brand: sku.brand,
-    category: sku.category,
-    retail_price_usd: sku.retail_price_usd,
-    cost_price_usd: sku.cost_price_usd,
-    current_stock: sku.current_stock,
-    initial_stock: sku.initial_stock,
-    days_since_launch: sku.days_since_launch,
-    days_since_last_discount: sku.days_since_last_discount,
-    days_at_current_price: sku.days_at_current_price,
+    ...payload,
+    sku_id: item.sku_id,
+    product_name: item.product_name || payload.product_name,
+    recommendation: item.recommendation,
+    confidence: Number(item.confidence ?? payload.confidence ?? 0),
+    explanation: payload.explanation || '',
+    shap_top5: payload.shap_top5 || [],
+    rule_override: item.rule_override ?? payload.rule_override ?? null,
+    fallback_used: Boolean(item.fallback_used ?? payload.fallback_used),
+    suggested_discount_pct: item.suggested_discount_pct ?? payload.suggested_discount_pct,
+    suggested_price_usd: item.suggested_price_usd ?? payload.suggested_price_usd,
+    margin_after_action_pct: payload.margin_after_action_pct,
+    model_version: item.model_version || payload.model_version || 'unknown',
+    processing_time_ms: Number(payload.processing_time_ms ?? 0),
+    requires_human_approval: Boolean(item.requires_human_approval ?? payload.requires_human_approval),
+    competitor_signals_used: item.competitor_signals ?? payload.competitor_signals_used ?? null,
+    input_context: item.input_context ?? payload.input_context ?? null,
   };
+}
+
+function isRunActive(run?: SystemDecisionRun | null) {
+  return run?.status === 'queued' || run?.status === 'running';
 }
 
 function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (v: string) => void; options: string[]; label: string }) {
@@ -581,24 +510,32 @@ function FilterSelect({ value, onChange, options, label }: { value: string; onCh
   );
 }
 
-function SkuCard({ sku, band, liveStatus, onOpen, selected, onSelect, status }: {
+function SkuCard({ sku, band, latest, onOpen, selected, onSelect, status }: {
   sku: SkuAnalysis;
   band: QueueBand;
-  liveStatus?: SystemDecisionStatus;
+  latest?: SystemDecisionLatestItem;
   onOpen: () => void;
   selected: boolean;
   onSelect: () => void;
   status?: string;
 }) {
+  const isSyncing = latest?.status === 'syncing';
   return (
-    <div className={cn('group rounded-lg border bg-card p-3 hover:shadow-md-soft transition cursor-pointer', selected ? 'border-primary ring-1 ring-primary' : 'border-border')} onClick={onOpen}>
+    <div
+      className={cn(
+        'group rounded-lg border bg-card p-3 hover:shadow-md-soft transition cursor-pointer',
+        selected ? 'border-primary ring-1 ring-primary' : 'border-border',
+        isSyncing && 'border-amber-400/70 ring-1 ring-amber-400/40 bg-amber-500/[0.04]',
+      )}
+      onClick={onOpen}
+    >
       <div className="flex items-start gap-2">
         <input type="checkbox" checked={selected} onClick={(e) => e.stopPropagation()} onChange={onSelect} className="mt-1" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10.5px] text-muted-foreground">{sku.sku_id}</span>
             <BandBadge band={band} size="sm" />
-            {liveStatus && <LiveStatusPill status={liveStatus} />}
+            <SyncStatusPill status={latest?.status || 'pending'} />
             {status && status !== 'pending' && (
               <span className={cn('text-[9.5px] font-mono uppercase px-1.5 rounded', statusStyles[status as keyof typeof statusStyles])}>
                 {status}
@@ -607,6 +544,16 @@ function SkuCard({ sku, band, liveStatus, onOpen, selected, onSelect, status }: 
           </div>
           <div className="text-[13px] font-semibold leading-snug mt-0.5 truncate">{sku.product_name}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">{sku.brand} · {sku.category}</div>
+          {isSyncing && (
+            <div className="mt-2 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[10.5px] font-mono uppercase tracking-wider text-amber-200">
+              Syncing through IE1 matching to IE2 decision
+            </div>
+          )}
+          {latest?.status === 'error' && (
+            <div className="mt-2 rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1 text-[10.5px] text-red-300">
+              <span className="font-mono">{latest.error_stage || 'SYNC'} / {latest.error_code || 'ERROR'}:</span> {latest.error_detail || 'Decision sync failed.'}
+            </div>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border">
@@ -649,21 +596,20 @@ function bandStyles(band: QueueBand) {
   };
 }
 
-function LiveStatusPill({ status }: { status: SystemDecisionStatus }) {
+function SyncStatusPill({ status }: { status: SystemDecisionLatestStatus }) {
   return (
     <span className={cn(
-      'text-[9.5px] font-mono uppercase px-1.5 py-0.5 rounded border',
+      'inline-flex items-center gap-1 text-[9.5px] font-mono uppercase px-1.5 py-0.5 rounded border',
       status === 'live'
         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-        : status === 'checking'
+        : status === 'syncing'
           ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-          : status === 'queued'
-            ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-            : status === 'report'
-              ? 'border-muted-foreground/25 bg-muted/40 text-muted-foreground'
-              : 'border-red-500/30 bg-red-500/10 text-red-300',
+          : status === 'pending'
+            ? 'border-muted-foreground/25 bg-muted/40 text-muted-foreground'
+            : 'border-red-500/30 bg-red-500/10 text-red-300',
     )}>
-      {status}
+      {status === 'syncing' && <span className="h-1.5 w-1.5 rounded-full bg-amber-300 animate-pulse" />}
+      {status === 'pending' ? 'unsynced' : status}
     </span>
   );
 }

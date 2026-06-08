@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,9 @@ export default function Login() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-hero text-foreground px-6 py-10 grid place-items-center grain">
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+      <Link to="/" className="absolute left-6 top-6 z-20 inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="h-4 w-4" /> Back to dashboard
+      </Link>
       <div className="relative z-10 grid w-full max-w-5xl overflow-hidden rounded-2xl border border-primary/20 bg-card/70 shadow-lg-soft backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
         <section className="relative hidden min-h-[560px] overflow-hidden border-r border-primary/15 bg-gradient-sand p-8 lg:flex lg:flex-col lg:justify-center">
           <div className="absolute inset-0 bg-[radial-gradient(720px_380px_at_16%_12%,hsl(28_96%_56%/.34),transparent),radial-gradient(560px_320px_at_82%_78%,hsl(152_60%_48%/.22),transparent),radial-gradient(440px_240px_at_48%_98%,hsl(0_84%_60%/.13),transparent)]" />
@@ -62,9 +65,8 @@ export default function Login() {
         <section className="relative flex items-center p-8 sm:p-12 lg:p-16">
           <div className="absolute inset-0 bg-[radial-gradient(520px_320px_at_70%_10%,hsl(28_96%_56%/.16),transparent),radial-gradient(420px_260px_at_100%_90%,hsl(0_84%_60%/.10),transparent)]" />
           <div className="relative w-full">
-            <div className="mb-6 flex flex-col items-start gap-3">
-              <img src="/logo.png" alt="Retail Radar AI" className="h-44 w-44 object-contain drop-shadow-[0_0_26px_hsl(28_96%_56%/.55)]" />
-              <span className="font-display text-2xl font-bold tracking-tight">Retail Radar AI</span>
+            <div className="mb-5 h-20 w-20 rounded-xl overflow-hidden flex items-center justify-center shadow-glow-sm">
+              <img src="/logo.png" alt="Retail Radar AI" className="h-20 w-20 object-contain" />
             </div>
             <h2 className="font-display text-4xl font-bold tracking-tight">Log in</h2>
             <p className="mt-2 text-sm text-muted-foreground">Use your admin or shop owner account.</p>
