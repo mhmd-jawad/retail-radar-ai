@@ -56,9 +56,8 @@ export function AppSidebar() {
     <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
         <div className="flex items-center gap-2.5">
-          <div className="relative h-9 w-9 rounded-lg overflow-hidden shadow-glow flex items-center justify-center">
-            <img src="/logo.png" alt="Retail Radar AI" className="h-9 w-9 object-contain" />
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-decision-promote animate-pulse ring-2 ring-sidebar" />
+          <div className="relative h-10 w-10 rounded-lg overflow-hidden shadow-glow flex items-center justify-center">
+            <img src="/logo.png" alt="Retail Radar AI" className="h-10 w-10 object-contain" />
           </div>
           <div className="min-w-0">
             <div className="font-display font-bold text-sidebar-foreground text-[15px] leading-tight tracking-tight">

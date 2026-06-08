@@ -86,9 +86,8 @@ export default function Landing() {
       <header className="absolute top-0 inset-x-0 z-30">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 animate-fade-in-down">
-            <div className="relative h-12 w-12 rounded-xl overflow-hidden flex items-center justify-center shadow-glow-sm">
-              <img src="/logo.png" alt="Retail Radar AI" className="h-12 w-12 object-contain drop-shadow-[0_0_16px_hsl(28_96%_56%/.5)]" />
-              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-decision-promote ring-2 ring-background animate-pulse" />
+            <div className="relative h-14 w-14 rounded-xl overflow-hidden flex items-center justify-center shadow-glow-sm">
+              <img src="/logo.png" alt="Retail Radar AI" className="h-14 w-14 object-contain drop-shadow-[0_0_16px_hsl(28_96%_56%/.5)]" />
             </div>
             <div className="leading-tight">
               <div className="font-display font-bold text-[16px] tracking-tight">Retail Radar AI</div>
