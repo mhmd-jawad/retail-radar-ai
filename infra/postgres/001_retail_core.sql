@@ -410,6 +410,62 @@ create table if not exists marketing.recommendations (
     reviewed_at timestamptz
 );
 
+create table if not exists marketing.system_decision_runs (
+    id uuid primary key default gen_random_uuid(),
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    trigger text not null,
+    status text not null default 'queued'
+        check (status in ('queued', 'running', 'completed', 'partial', 'failed')),
+    total_count integer not null default 0,
+    completed_count integer not null default 0,
+    failed_count integer not null default 0,
+    summary_error text,
+    started_at timestamptz not null default now(),
+    finished_at timestamptz,
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_system_decision_runs_tenant_started
+    on marketing.system_decision_runs (tenant_id, started_at desc);
+
+create index if not exists idx_system_decision_runs_active
+    on marketing.system_decision_runs (tenant_id, status, started_at desc)
+    where status in ('queued', 'running');
+
+create table if not exists marketing.system_decision_latest (
+    tenant_id uuid not null references core.tenants(id) on delete cascade,
+    sku_id text not null,
+    variant_id uuid references core.sku_variants(id) on delete set null,
+    run_id uuid references marketing.system_decision_runs(id) on delete set null,
+    status text not null default 'pending'
+        check (status in ('pending', 'syncing', 'live', 'error')),
+    recommendation text check (recommendation in ('HOLD', 'MARKDOWN', 'PROMOTE', 'CLEAR')),
+    confidence numeric(6,4),
+    model_version text,
+    rule_override text,
+    fallback_used boolean not null default false,
+    requires_human_approval boolean not null default false,
+    suggested_price_usd numeric(12,2),
+    suggested_discount_pct numeric(6,2),
+    decision_payload jsonb,
+    input_context jsonb,
+    competitor_signals jsonb,
+    error_stage text,
+    error_code text,
+    error_detail text,
+    sync_trigger text,
+    synced_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (tenant_id, sku_id)
+);
+
+create index if not exists idx_system_decision_latest_tenant_status
+    on marketing.system_decision_latest (tenant_id, status, updated_at desc);
+
+create index if not exists idx_system_decision_latest_tenant_decision
+    on marketing.system_decision_latest (tenant_id, recommendation, updated_at desc);
+
 create table if not exists marketing.campaigns (
     id uuid primary key default gen_random_uuid(),
     tenant_id uuid not null references core.tenants(id) on delete cascade,

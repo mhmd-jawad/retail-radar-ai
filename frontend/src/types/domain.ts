@@ -424,6 +424,69 @@ export interface IE2Result {
   status_code?: number;
 }
 
+export type SystemDecisionLatestStatus = 'pending' | 'syncing' | 'live' | 'error';
+export type SystemDecisionRunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+
+export interface SystemDecisionLatestItem {
+  tenant_id?: string;
+  sku_id: string;
+  variant_id?: string | null;
+  run_id?: string | null;
+  status: SystemDecisionLatestStatus;
+  recommendation?: Decision | null;
+  confidence?: number | null;
+  model_version?: string | null;
+  rule_override?: string | null;
+  fallback_used?: boolean;
+  requires_human_approval?: boolean;
+  suggested_price_usd?: number | null;
+  suggested_discount_pct?: number | null;
+  decision_payload?: IE2Result | null;
+  input_context?: IE2Request | null;
+  competitor_signals?: CompetitorSignals | null;
+  error_stage?: string | null;
+  error_code?: string | null;
+  error_detail?: string | null;
+  sync_trigger?: string | null;
+  synced_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  product_name?: string | null;
+  brand?: string | null;
+  category?: string | null;
+}
+
+export interface SystemDecisionSummary {
+  active_skus: number;
+  tracked_skus: number;
+  live_count: number;
+  error_count: number;
+  syncing_count: number;
+  unsynced_count: number;
+  status_counts: Record<string, number>;
+}
+
+export interface SystemDecisionRun {
+  id: string;
+  tenant_id?: string;
+  trigger: string;
+  status: SystemDecisionRunStatus;
+  total_count: number;
+  completed_count: number;
+  failed_count: number;
+  summary_error?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at?: string | null;
+  already_running?: boolean;
+}
+
+export interface SystemDecisionLatestResponse {
+  items: SystemDecisionLatestItem[];
+  summary: SystemDecisionSummary;
+  latest_run?: SystemDecisionRun | null;
+}
+
 // EEP future
 export interface EEPRecommendationPackage {
   sku_id: string;
