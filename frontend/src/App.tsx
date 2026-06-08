@@ -21,7 +21,6 @@ import AdminAssistant from "./pages/admin/AdminAssistant";
 import Overview from "./pages/Overview";
 import Queue from "./pages/Queue";
 import Inventory from "./pages/Inventory";
-import Competitive from "./pages/Competitive";
 import Promotions from "./pages/Promotions";
 import Financial from "./pages/Financial";
 import Ops from "./pages/Ops";
@@ -63,7 +62,6 @@ const App = () => (
               <Route path="/overview" element={<Overview />} />
               <Route path="/queue" element={<Queue />} />
               <Route path="/inventory" element={<Inventory />} />
-              <Route path="/competitive" element={<Competitive />} />
               <Route path="/promotions" element={<Promotions />} />
               <Route path="/financial" element={<Financial />} />
               <Route path="/financial/balance-sheet" element={<FinancialBalanceSheet />} />
