@@ -257,9 +257,16 @@ pytest tests/ --cov=services --cov-report=html
 | `POST` | `/inventory/import` | Save validated inventory rows to PostgreSQL |
 | `GET` | `/recommendations` | List all pending recommendations |
 | `GET` | `/status/{sku_id}` | Get recommendation with confidence decay |
-| `PATCH` | `/review/{sku_id}` | Approve / Edit / Reject / Snooze |
+| `POST` | `/recommendations/{sku_id}/review` | **Human Validation** — accept / override / reject the system recommendation |
+| `GET` | `/recommendations/reviews` | List human reviews (ground-truth labels) |
+| `GET` | `/analytics/recommendation-reviews` | Acceptance / override / agreement rates + trend |
+| `GET` | `/admin/export/training-labels` | Export human-labeled retraining dataset (JSONL) |
 | `GET` | `/health` | Service health check |
 | `GET` | `/metrics` | Prometheus metrics |
+
+> **Human Validation Layer** — a final human-review stage that captures accept/override/reject
+> decisions as ground-truth labels for retraining, with full auditability and analytics, without
+> ever modifying the system recommendation. See [docs/HUMAN_VALIDATION_LAYER.md](./docs/HUMAN_VALIDATION_LAYER.md).
 
 ### Example: Get a Recommendation
 

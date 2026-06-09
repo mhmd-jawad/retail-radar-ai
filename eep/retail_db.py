@@ -34,6 +34,7 @@ ADDITIVE_SCHEMA_PATHS = [
     ROOT / "infra" / "postgres" / "003_recommendation_explainability.sql",
     ROOT / "infra" / "postgres" / "004_multi_tenant_scalability.sql",
     ROOT / "infra" / "postgres" / "008_financial_profiles.sql",
+    ROOT / "infra" / "postgres" / "008_human_validation.sql",
     ROOT / "infra" / "postgres" / "009_financial_line_items.sql",
     ROOT / "infra" / "postgres" / "010_chat_sessions.sql",
 ]

@@ -36,10 +36,20 @@ def _fixed_event_windows(year: int) -> list[RetailEventWindow]:
         year: The calendar year to build windows for.
 
     Returns:
-        List of :class:`RetailEventWindow` instances covering back-to-school,
-        pre-holiday, and holiday-gifting periods.
+        List of :class:`RetailEventWindow` instances covering Lebanon summer
+        peak, back-to-school, pre-holiday, and holiday-gifting periods.
     """
     return [
+        # Lebanon summer peak: June–July is peak tourism and beachwear season;
+        # retailers run summer promotions and Eid al-Adha falls in early June in
+        # recent years (2025-2026 window).
+        RetailEventWindow(
+            name="lebanon_summer_peak",
+            start_date=date(year, 6, 1),
+            peak_date=date(year, 6, 20),
+            end_date=date(year, 7, 31),
+            peak_score=0.85,
+        ),
         RetailEventWindow(
             name="back_to_school",
             start_date=date(year, 8, 15),
