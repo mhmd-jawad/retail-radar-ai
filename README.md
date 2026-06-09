@@ -1,438 +1,576 @@
-﻿# StylePulse AI
+# Retail Radar AI
 
-> **AI-Powered Pricing & Promotion Intelligence for Adidas Single-Brand Retailers**
+Retail Radar AI is a production-deployed, multi-service AI decision-support platform for small and mid-size  retailers. It combines live inventory management, competitor-price intelligence, rules-based and ML-based recommendations, campaign creative generation, financial monitoring, social account wiring, and an assistant interface into one cloud-hosted dashboard.
 
-[![Tests](https://img.shields.io/badge/tests-pending-lightgrey)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
-[![Python](https://img.shields.io/badge/python-3.11-blue)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green)]()
+The final deployed system runs on AWS using a two-node Kubernetes cluster, Amazon RDS PostgreSQL, Apify scraping/webhooks, GitHub Actions CI/CD, GHCR container images, a Lightsail load balancer, and the public domain:
 
-StylePulse AI is a multi-service decision-support system that monitors competitor prices daily, tracks inventory performance, understands Adidas seasonal patterns, and recommends exactly what to do with each product every week â€” **HOLD**, **MARKDOWN**, **PROMOTE**, or **CLEAR** â€” with every decision explained in plain English and requiring explicit human approval.
+- Production app: `https://www.retailradar.site/login`
+- Root domain: `https://retailradar.site`
+- Load balancer DNS: `e43c88ab0453c69b919ea0b68ffac616-860150828.eu-central-1.elb.amazonaws.com`
+- Main cloud region: AWS Europe, Frankfurt, `eu-central-1`
 
----
+This README is the high-level project and deployment reference. More focused runbooks are in `docs/`.
 
-## The Problem
+## Professor Access And Credentials
 
-A small Adidas retailer manages 150â€“500 products. Every week they must decide: Is this product priced correctly? Should I discount it? They have no idea what competitors are charging for the same item today. They don't know Black Friday is 3 weeks away and they should HOLD prices. They spend 4â€“6 hours per week on these decisions and get them wrong 40% of the time. Wrong decisions cost **$15,000â€“60,000 per year**.
+A dedicated read-only IAM user (`DrAmmar`) has been created for viewing purposes only. This account has access exclusively to **Amazon Lightsail** (servers, databases, networking, snapshots) — no other AWS services are accessible. No changes can be made through this account.
 
-## The Solution
+### AWS Console — Lightsail (Frankfurt Region)
 
-StylePulse AI replaces manual guesswork with an automated weekly intelligence system:
-
-| What it does | How |
+| Field | Value |
 |---|---|
-| Track competitor prices daily | Nightly scraper â†’ `competitor_prices` table |
-| Understand seasonal patterns | Adidas calendar engine with category-specific scores |
-| Recommend the right action | CatBoost ML model + 5 hard business rules |
-| Write campaign copy automatically | Claude API generates Instagram/Facebook/WhatsApp copy |
-| Explain every decision | SHAP values translated to plain English |
-| Require human approval | Every recommendation must be approved before action |
+| Sign-in URL | `https://431071878442.signin.aws.amazon.com/console` |
+| Account ID | `431071878442` |
+| IAM Username | `DrAmmar` |
+| Password | `Password@123` |
+| Region | Europe (Frankfurt) — `eu-central-1` |
+| Access scope | Lightsail only (view instances, databases, networking, snapshots) |
 
----
+After signing in, navigate directly to Lightsail via:
+`https://lightsail.aws.amazon.com/ls/webapp/eu-central-1/instances`
 
-## Architecture
+### Amazon RDS PostgreSQL (Frankfurt Region)
 
-```
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚                        MERCHANT                                  â”‚
-â”‚                    (Dashboard / API)                              â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                       â”‚
-                       â–¼
-              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-              â”‚  EEP (port 8000) â”‚  â† Orchestrator: auth, rate limit,
-              â”‚  External        â”‚     circuit breakers, confidence decay
-              â”‚  Endpoint        â”‚
-              â””â”€â”€â”€â”¬â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”¬â”€â”€â”˜
-                  â”‚    â”‚    â”‚
-          â”Œâ”€â”€â”€â”€â”€â”€â”€â”˜    â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€â”
-          â–¼            â–¼             â–¼
-   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-   â”‚ IE1 (8001) â”‚ â”‚ IE2 (8002)  â”‚ â”‚  IE3 (8003)    â”‚
-   â”‚ Market     â”‚ â”‚ Decision    â”‚ â”‚  Campaign       â”‚
-   â”‚ Intelligenceâ”‚ â”‚ Intelligenceâ”‚ â”‚  Creative       â”‚
-   â”‚            â”‚ â”‚             â”‚ â”‚  (only if       â”‚
-   â”‚ Competitor â”‚ â”‚ Hard Rules  â”‚ â”‚   PROMOTE)      â”‚
-   â”‚ signals,   â”‚ â”‚ + CatBoost  â”‚ â”‚                 â”‚
-   â”‚ seasonalityâ”‚ â”‚ + SHAP      â”‚ â”‚  Claude API     â”‚
-   â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”˜ â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜ â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-          â”‚              â”‚
-          â–¼              â–¼
-   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-   â”‚       PostgreSQL             â”‚
-   â”‚  8 tables: products,        â”‚
-   â”‚  inventory, sales, traffic, â”‚
-   â”‚  competitor_prices, features,â”‚
-   â”‚  recommendations, campaigns â”‚
-   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-```
-
----
-
-## The 4 Decisions
-
-| Decision | Badge | Meaning | When It Fires |
-|---|---|---|---|
-| **HOLD** | ðŸ”˜ Grey | Keep current price | Selling well, stock healthy, competitively priced |
-| **MARKDOWN** | ðŸŸ  Orange | Reduce price | Competitor cheaper, product aging, season ending |
-| **PROMOTE** | ðŸŸ¢ Green | Run marketing campaign | Season perfect, stock healthy, demand rising |
-| **CLEAR** | ðŸ”´ Red | Sell at any price | 90+ days unsold, season over, dead stock |
-
----
-
-## Local Development (How to Run)
-
-This section documents the **current local dev setup** â€” three processes run side-by-side without Docker.
-
-### Prerequisites
-
-- Python 3.11+ with a virtual env at `../.venv` (one level above the repo root)
-- Node.js 18+ **or** Bun â€” use `npx vite` if Bun is not installed
-- AWS RDS reachable (credentials in `.env` at repo root and `services/campaign_creative/.env`)
-
-### Required environment files
-
-**`retail-radar-ai/.env`** (repo root)
-```env
-DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
-```
-
-**`retail-radar-ai/frontend/.env.local`**
-```env
-VITE_API_BASE_URL=http://localhost:8000
-VITE_DATA_MODE=eep-live
-VITE_IE3_BASE_URL=http://localhost:8003
-```
-
-**`retail-radar-ai/services/campaign_creative/.env`**
-```env
-DATABASE_URL=postgresql://retail_admin:<password>@retail-radar-db.<region>.rds.amazonaws.com:5432/retail_radar?sslmode=require
-OPENROUTER_API_KEY=<your-openrouter-key>
-GEMINI_API_KEY=<your-gemini-key>
-FB_PAGE_ACCESS_TOKEN=<token>
-FB_PAGE_ID=<id>
-IG_USER_ID=<id>
-IG_ACCESS_TOKEN=<token>
-IMGBB_API_KEY=<key>
-```
-
-### Terminal 1 â€” EEP backend (port 8000)
-
-```powershell
-cd "c:\path\to\Radar Ai"
-.venv\Scripts\Activate.ps1
-cd retail-radar-ai
-uvicorn eep.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Verify: `curl http://localhost:8000/health`
-
-### Terminal 2 â€” IE3 Campaign Creative service (port 8003)
-
-```powershell
-cd "c:\path\to\Radar Ai"
-.venv\Scripts\Activate.ps1
-cd retail-radar-ai
-uvicorn services.campaign_creative.main:app --host 0.0.0.0 --port 8003 --reload
-```
-
-Verify: `curl http://localhost:8003/health`
-
-### Terminal 3 â€” React frontend (port 8082)
-
-```powershell
-cd "c:\path\to\Radar Ai\retail-radar-ai\frontend"
-npx vite --port 8082
-```
-
-> If port 8082 is already in use Vite auto-increments to 8083, etc.
-
-Open: http://localhost:8082
-
-### Key endpoints
-
-| URL | What it shows |
+| Field | Value |
 |---|---|
-| `http://localhost:8082/inventory` | Inventory management + Health analytics (live DB) |
-| `http://localhost:8082/promotions` | Promote / Markdown / Clearance / Hold decisions (live DB) |
-| `http://localhost:8000/report/live` | Live report JSON from RDS (inventory + promotion decisions) |
-| `http://localhost:8000/report` | Static report JSON |
-| `http://localhost:8000/docs` | FastAPI Swagger UI |
-| `http://localhost:8003/docs` | IE3 campaign service Swagger UI |
+| Host | `retail-radar-db.cbyyqyueehc2.eu-central-1.rds.amazonaws.com` |
+| Port | `5432` |
+| Database | `retail_radar` |
+| Username | `retail_admin` |
+| Password | `IbJZwWlG4FJJkFl49Loy` |
+| SSL | Required (`sslmode=require`) |
+
+Connection string:
+```
+postgresql://retail_admin:IbJZwWlG4FJJkFl49Loy@retail-radar-db.cbyyqyueehc2.eu-central-1.rds.amazonaws.com:5432/retail_radar?sslmode=require
+```
+
+Connect using any PostgreSQL client (DBeaver, pgAdmin, psql). The database is accessible from outside AWS — SSL is mandatory.
+
+### Database Schemas and Tables
+
+The database is named `retail_radar` and has four schemas:
+
+#### `core` — Retail operations backbone
+
+| Table | Purpose |
+|---|---|
+| `tenants` | One row per retailer account (multi-tenant root) |
+| `stores` | Physical store locations belonging to a tenant |
+| `app_users` | Login accounts (admin or shop role) |
+| `user_memberships` | Maps users to tenants with owner/manager/staff roles |
+| `auth_sessions` | Active login sessions and token hashes |
+| `shop_profiles` | Business details: name, address, contact, onboarding status |
+| `notifications` | In-app alerts sent to admin or shop users |
+| `suppliers` | Supplier directory per tenant |
+| `products` | Product catalog: brand, name, category, gender, season |
+| `sku_variants` | Individual SKUs with size, color, cost price, reorder levels |
+| `prices` | Retail and sale price history per SKU (current = `valid_to IS NULL`) |
+| `inventory_balances` | Current stock quantity per SKU per store |
+| `inventory_movements` | Audit log of every stock change (purchase, sale, adjustment, etc.) |
+| `purchase_orders` | PO headers per supplier |
+| `purchase_order_lines` | Line items per PO (quantities ordered vs received) |
+| `sales_transactions` | Sale header records |
+| `sales_transaction_lines` | Line items per sale (qty, price, cost, discount) |
+| `financial_profiles` | One row per tenant: assets, liabilities, opex, projected revenue, runway |
+| `audit_logs` | Full before/after state log for every entity change |
+
+#### `intel` — Competitor intelligence
+
+| Table | Purpose |
+|---|---|
+| `shops` | Known competitor shops (Adidas LB, Mike Sport, Tchooz, etc.) with Apify actor IDs |
+| `tenant_competitors` | Which competitors each tenant is tracking |
+| `competitor_requests` | Tenant requests to add a new competitor (pending/approved/rejected) |
+| `scrape_runs` | One row per Apify scrape run with status and item count |
+| `competitor_product_snapshots` | Full historical snapshot of every competitor product per run |
+| `competitor_products_latest` | Deduplicated latest price/availability per competitor product (fast reads) |
+
+#### `marketing` — Recommendations and campaigns
+
+| Table | Purpose |
+|---|---|
+| `recommendations` | AI/rule-based decisions per SKU: HOLD / MARKDOWN / PROMOTE / CLEAR with confidence score |
+| `system_decision_runs` | Batch run metadata (trigger, progress, status) |
+| `system_decision_latest` | Latest live decision per SKU (primary read target for the dashboard) |
+| `campaigns` | Campaign drafts and published posts linked to a recommendation |
+| `tenant_social_accounts` | Connected social channels per tenant (Facebook, Instagram, TikTok, Telegram) |
+
+#### `telegram` — Assistant bot
+
+| Table | Purpose |
+|---|---|
+| `registration_codes` | One-time codes retailers use to bind their Telegram chat to their tenant |
+| `conversations` | Active Telegram conversations per tenant+chat |
+| `processed_messages` | Deduplication log to avoid processing the same message twice |
 
 ---
 
-## Quick Start (Docker)
+## What Was Implemented
 
-### Prerequisites
+Retail Radar AI includes these major capabilities:
 
-- Python 3.11+
-- Docker & Docker Compose
-- Node.js 18+ (for dashboard)
-- Git
+| Area | Implemented capability |
+|---|---|
+| Authentication | Admin/shop login flow, JWT-style auth boundary, protected dashboard routes |
+| Inventory | CSV import, SKU management, stock levels, retail/cost price tracking, reorder flags |
+| Competitor intelligence | Apify-based competitor scraping, webhook ingestion, run tracking, latest competitor snapshots |
+| Decision intelligence | Business rules, event proximity, markdown/promotion/clearance signals, CatBoost-backed recommendation path, SHAP-style explainability support |
+| Campaign creative | Promotion/campaign copy generation, creative variants, social-ready messaging |
+| Financial monitoring | Finance page and data surfaces for retail decision support |
+| Social wiring | Social account/API endpoint wiring for campaign workflows |
+| Radar Assistant | Browser assistant and Telegram assistant service connected to the EEP and campaign services |
+| Observability | Prometheus and Grafana deployed inside Kubernetes |
+| CI/CD | GitHub Actions test, image build, GHCR push, and production k3s deployment |
+| Cloud deployment | AWS Lightsail load balancer, two k3s servers, RDS PostgreSQL, TLS domain |
 
-### 1. Clone & Configure
+## System Architecture
 
-```bash
-git clone https://github.com/your-team/stylepulse-ai.git
-cd stylepulse-ai
-cp .env.example .env
-# Edit .env with your API keys
+```
+Production Architecture: 2 Lightsail Servers + Separate Webhook Server + Amazon RDS
+─────────────────────────────────────────────────────────────────────────────────────
+
+  Public User Entry                k3s Kubernetes Cluster on AWS Lightsail
+  ─────────────────               ─────────────────────────────────────────────────────────
+                                   Traefik Ingress + Path Routing
+  Browser / Phone                  / → Frontend  |  /api → EEP  |  /ie1 → Market Intel
+       │                           /ie2 → ML Decision  |  /ie3 → Campaign Creative
+       ▼                          ┌───────────────────────────────────────────────────────┐
+  Spaceship DNS                   │  SERVER 1 — rr-node-1          SERVER 2 — rr-node-2  │
+  retailradar.site                │  4 GB RAM · 2 vCPU             4 GB RAM · 2 vCPU     │
+       │                          │  k3s control-plane + etcd      k3s worker node        │
+       ▼                          │  ┌──────────┬──────────┐      ┌──────────┬──────────┐ │
+  AWS Lightsail Load Balancer ───▶│  │ Frontend │  EEP API │      │ Frontend │  EEP API │ │
+  rr-lb (HTTPS + TLS cert)        │  ├──────────┼──────────┤      ├──────────┼──────────┤ │
+                                  │  │ IE1 Mkt  │ IE2 ML   │      │ IE1 Mkt  │ IE2 ML   │ │
+                                  │  │ Intel    │ Decision │      │ Intel    │ Decision │ │
+  Separate Webhook Server         │  ├──────────┼──────────┤      ├──────────┼──────────┤ │
+  ───────────────────────         │  │ IE3 Camp │PgBouncer │      │ IE3 Camp │PgBouncer │ │
+  retail-radar-webhook            │  │ Creative │          │      │ Creative │          │ │
+  2 GB RAM · Lightsail            │  └──────────┴──────────┘      └──────────┴──────────┘ │
+  (NOT in k8s cluster)            └───────────────────────┬───────────────────────────────┘
+       │                                                   │
+  Apify Scrapers                                           │
+  Webhook Server ─────────────────────────────────────────▼
+  (receives Apify webhooks,                  Amazon RDS PostgreSQL
+   writes competitor data                    retail-radar-db · Frankfurt
+   directly to RDS)                          Stores: products, inventory,
+                                             recommendations, competitor data,
+                                             users, tenants, financial data
+                                             ──────────────────────────────
+                                             Access: via PgBouncer inside k8s
+                                             pods → pgbouncer :6432 → RDS :5432
 ```
 
-### 2. Start the Docker App Stack
+```mermaid
+flowchart TB
+    subgraph Public["Public Entry"]
+        User["Browser / Phone"]
+        DNS["Spaceship DNS\nretailradar.site"]
+        LB["AWS Lightsail Load Balancer\nrr-lb · HTTPS + TLS"]
+    end
 
-```bash
-docker compose -f infra/docker-compose.yml up -d --build
+    subgraph K8s["k3s Kubernetes Cluster — 2 × 4 GB Lightsail Servers"]
+        direction TB
+        Traefik["Traefik Ingress\n/ → Frontend | /api → EEP | /ie1 /ie2 /ie3"]
+        subgraph N1["rr-node-1 (control-plane + worker)"]
+            F1["Frontend"] 
+            E1["EEP API"]
+            M1["IE1 Market Intel"]
+            D1["IE2 ML Decision"]
+            C1["IE3 Campaign Creative"]
+            PB1["PgBouncer"]
+        end
+        subgraph N2["rr-node-2 (worker)"]
+            F2["Frontend"]
+            E2["EEP API"]
+            M2["IE1 Market Intel"]
+            D2["IE2 ML Decision"]
+            C2["IE3 Campaign Creative"]
+            PB2["PgBouncer"]
+        end
+    end
+
+    subgraph Webhook["Separate Webhook Server\nretail-radar-webhook · 2 GB Lightsail"]
+        Apify["Apify Scrapers"]
+        WH["Webhook Handler"]
+    end
+
+    subgraph DB["Amazon RDS PostgreSQL\neu-central-1 Frankfurt"]
+        RDS[("retail_radar DB\ncore · intel · marketing · telegram")]
+    end
+
+    User --> DNS --> LB --> Traefik
+    Traefik --> N1
+    Traefik --> N2
+    PB1 --> RDS
+    PB2 --> RDS
+    Apify --> WH --> RDS
 ```
 
-This starts EEP (8000), IE1 (8001), IE2 (8002), IE3 (8003), the dashboard (4173), Prometheus (9090), Grafana (3001), and uses `DATABASE_URL` from the repo root `.env`.
+## Cloud Resources
 
-Local PostgreSQL and Adminer are optional now. Start them only when your `.env` points to a local database:
+### AWS Lightsail Servers
 
-```bash
-docker compose -f infra/docker-compose.yml --profile local-db up -d postgres adminer
+The current AWS setup has three Lightsail server assets in the project history: one older webhook server and two active Kubernetes nodes. The production dashboard/API is served by the two k3s nodes.
+
+| Server | Public IPv4 | Private IPv4 | Current role | Size |
+|---|---:|---:|---|---|
+| `retail-radar-webhook` / Box A | Verify in AWS Lightsail | Verify in AWS Lightsail | Legacy/optional 2 GB Apify webhook server from the earlier RDS webhook deployment | 2 GB class in the original plan |
+| `rr-node-1` / Box B | `18.192.240.243` | `172.26.11.208` | Active k3s control-plane, etcd, and worker | 4 GB RAM, 2 vCPU, 80 GB SSD |
+| `rr-node-2` / Box C | `18.185.239.195` | `172.26.7.42` | Active k3s worker | 4 GB RAM, 2 vCPU, 80 GB SSD |
+
+
+### Why Two Servers Instead Of One
+
+Two servers make the deployment stronger than a single VPS:
+
+- The workload is split across two machines, so CPU and memory pressure is lower.
+- Kubernetes can schedule replicas across nodes, which reduces the chance that one overloaded node takes the whole app down.
+- If a worker pod dies, Kubernetes can recreate it.
+- If one node becomes unavailable, some replicas can continue running on the other node, depending on which pods were scheduled there.
+- The Lightsail load balancer can send traffic to both instances.
+
+`rr-node-1` is still special because it hosts the k3s control plane and embedded etcd. This means the cluster is more resilient than one plain Docker host, but it is not a fully high-availability Kubernetes control plane. A true HA control plane would require three server/control-plane nodes.
+
+### Amazon RDS PostgreSQL
+
+The database is Amazon RDS PostgreSQL. Application pods do not store persistent production data locally. They connect to PostgreSQL through PgBouncer inside Kubernetes:
+
+```text
+Application pod -> pgbouncer.retail-radar.svc.cluster.local:6432 -> Amazon RDS PostgreSQL with SSL
 ```
 
-For the Lightsail/RDS deployment flow, see `docs/full-stack-docker-deployment.md`.
+Main database areas:
 
-### 3. Seed the Database
+| Schema / area | Purpose |
+|---|---|
+| `core` | Tenants, stores, products, SKU variants, inventory balances, prices, suppliers, sales, audit logs |
+| `intel` | Apify scrape runs, competitor product snapshots, latest competitor products |
+| `marketing` | Recommendations, campaigns, promotion artifacts |
+| auth/admin tables | Login, shop/admin identity, protected access |
+| financial/social tables | Financial snapshots, social account wiring, campaign publishing support |
 
-```bash
-# Generate synthetic data
-python data/scripts/generate_synthetic.py
+PgBouncer keeps database connections under control. This is important because Kubernetes may run many pods, and opening direct PostgreSQL connections from every pod can overload a small RDS instance.
 
-# Load into PostgreSQL
-python data/scripts/seed_database.py
-```
+### Domain, DNS, TLS, And Load Balancing
 
-### 4. Train the ML Model
+The public domain is managed in Spaceship:
 
-```bash
-python -m ml_pipeline.features.engineer
-python -m ml_pipeline.training.train
-python -m ml_pipeline.evaluation.promote
-```
-
-### 5. Verify
-
-```bash
-# Health checks
-curl http://localhost:8000/health
-curl http://localhost:8001/health
-curl http://localhost:8002/health
-curl http://localhost:8003/health
-
-# API docs
-open http://localhost:8000/docs
-
-# MLflow dashboard
-open http://localhost:5000
-
-# Grafana
-open http://localhost:3001
-```
-
-### 6. Run Tests
-
-```bash
-# All tests
-pytest tests/ -v
-
-# Golden scenarios only
-pytest tests/integration/golden/ -v
-
-# With coverage
-pytest tests/ --cov=services --cov-report=html
-```
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
+| DNS name | Type | Target |
 |---|---|---|
-| `POST` | `/recommend/{sku_id}` | Get recommendation for a single SKU |
-| `POST` | `/recommend/batch` | Up to 50 SKUs in one call |
-| `POST` | `/inventory/import` | Save validated inventory rows to PostgreSQL |
-| `GET` | `/recommendations` | List all pending recommendations |
-| `GET` | `/status/{sku_id}` | Get recommendation with confidence decay |
-| `POST` | `/recommendations/{sku_id}/review` | **Human Validation** — accept / override / reject the system recommendation |
-| `GET` | `/recommendations/reviews` | List human reviews (ground-truth labels) |
-| `GET` | `/analytics/recommendation-reviews` | Acceptance / override / agreement rates + trend |
-| `GET` | `/admin/export/training-labels` | Export human-labeled retraining dataset (JSONL) |
-| `GET` | `/health` | Service health check |
-| `GET` | `/metrics` | Prometheus metrics |
+| `www.retailradar.site` | CNAME | Lightsail load balancer DNS |
+| `retailradar.site` | Redirect or DNS target | Redirects/points to the production site |
+| AWS validation CNAMEs | CNAME | AWS ACM certificate validation records |
 
-> **Human Validation Layer** — a final human-review stage that captures accept/override/reject
-> decisions as ground-truth labels for retraining, with full auditability and analytics, without
-> ever modifying the system recommendation. See [docs/HUMAN_VALIDATION_LAYER.md](./docs/HUMAN_VALIDATION_LAYER.md).
+The Lightsail load balancer `rr-lb` terminates HTTPS using the AWS certificate for:
 
-### Example: Get a Recommendation
+- `retailradar.site`
+- `www.retailradar.site`
 
-```bash
-curl -X POST http://localhost:8000/recommend/SKU-001 \
-  -H "X-API-Key: dev-key-123" \
-  -H "Content-Type: application/json"
+Traffic path:
+
+```text
+Browser
+  -> retailradar.site / www.retailradar.site
+  -> Spaceship DNS
+  -> AWS Lightsail load balancer rr-lb
+  -> rr-node-1 or rr-node-2 on port 80
+  -> lb-node-proxy DaemonSet
+  -> Traefik NodePort 30080
+  -> Kubernetes service and pod
 ```
 
-Response:
-```json
-{
-  "sku_id": "SKU-001",
-  "product_name": "Adidas Ultraboost 23",
-  "recommendation": "MARKDOWN",
-  "confidence": 0.74,
-  "effective_confidence": 0.71,
-  "explanation": "You are 12% more expensive than JD Sports. Sales slowed 49% vs last month. 3 competitors are discounting this product.",
-  "requires_human_approval": true,
-  "campaign_creative": null,
-  "suggested_price": 152.00,
-  "margin_after_action": 0.25
-}
-```
+The `lb-node-proxy` DaemonSet exists because the Lightsail load balancer forwards to instance port `80`, while k3s Traefik exposes HTTP through NodePort `30080`. The proxy binds host port `80` on each node and forwards traffic to Traefik.
 
----
+## Kubernetes Deployment
 
-## Project Structure
+Kubernetes manifests live in `infra/k8s/`.
 
-```
-stylepulse-ai/
-â”œâ”€â”€ services/
-â”‚   â”œâ”€â”€ eep/                    # Orchestrator (port 8000)
-â”‚   â”œâ”€â”€ market_intelligence/    # IE1 â€” Competitor signals (port 8001)
-â”‚   â”œâ”€â”€ decision_intelligence/  # IE2 â€” ML + Rules (port 8002)
-â”‚   â”œâ”€â”€ campaign_creative/      # IE3 â€” LLM copy gen (port 8003)
-â”‚   â””â”€â”€ shared/                 # Database models, metrics
-â”œâ”€â”€ ml_pipeline/
-â”‚   â”œâ”€â”€ features/               # Feature engineering + validation
-â”‚   â”œâ”€â”€ training/               # CatBoost + baseline training
-â”‚   â””â”€â”€ evaluation/             # Model comparison + promotion
-â”œâ”€â”€ dashboard/                  # React frontend
-â”œâ”€â”€ data/
-â”‚   â”œâ”€â”€ synthetic/              # Generated training data
-â”‚   â””â”€â”€ scripts/                # Data gen + DB seeding
-â”œâ”€â”€ infra/
-â”‚   â”œâ”€â”€ k8s/                    # Kubernetes manifests
-â”‚   â””â”€â”€ monitoring/             # Prometheus + Grafana configs
-â”œâ”€â”€ tests/
-â”‚   â”œâ”€â”€ unit/
-â”‚   â”œâ”€â”€ integration/
-â”‚   â”‚   â””â”€â”€ golden/             # 6 mandatory golden scenarios
-â”‚   â””â”€â”€ e2e/
-â”œâ”€â”€ docs/
-â”‚   â”œâ”€â”€ technical/
-â”‚   â”œâ”€â”€ business/
-â”‚   â””â”€â”€ mlops/
-â”œâ”€â”€ docker-compose.yml
-â”œâ”€â”€ Makefile
-â”œâ”€â”€ PLAN.md
-â””â”€â”€ CHANGELOG.md
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
+| File | Purpose |
 |---|---|
-| Backend | Python 3.11, FastAPI, Pydantic v2 |
-| Database | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
-| ML | CatBoost, SHAP, MLflow, pandas, pandera |
-| LLM | Anthropic Claude API |
-| Frontend | React 18, TypeScript, Tailwind CSS, Vite |
-| Infrastructure | Docker, Docker Compose, Kubernetes, Minikube |
-| Monitoring | Prometheus, Grafana |
-| CI/CD | GitHub Actions |
-| Cloud | Railway.app / Render.com |
+| `00-config.yaml` | Namespace, ConfigMaps, shared non-secret configuration |
+| `10-pgbouncer.yaml` | PgBouncer deployment and service |
+| `20-backends.yaml` | EEP, IE1, IE2, IE3 deployments/services and autoscaling |
+| `30-frontend-telegram.yaml` | Frontend and Telegram/Radar Assistant deployments/services |
+| `40-ingress.yaml` | Traefik ingress routing rules |
+| `50-monitoring.yaml` | Prometheus and Grafana |
+| `60-lb-node-proxy.yaml` | Node-level port 80 proxy for Lightsail LB |
+| `kustomization.yaml` | Image tag pinning and full stack apply target |
 
----
+Production namespace:
 
-## 15-Day Timeline
+```text
+retail-radar
+```
 
-| Phase | Days | What Gets Done |
+Main Kubernetes services:
+
+| Service | Port | Role |
+|---|---:|---|
+| `frontend` | 80 | React dashboard served by Nginx |
+| `eep` | 8000 | Public API, orchestration, auth, inventory, Apify ingest |
+| `ie1` | 8001 | Market/competitor intelligence API |
+| `ie2` | 8002 | Decision intelligence API and model/rules engine |
+| `ie3` | 8003 | Campaign creative API |
+| `telegram` | 8004 | Radar Assistant and Telegram webhook service |
+| `pgbouncer` | 6432 | PostgreSQL connection pool |
+| `prometheus` | 9090 | Metrics collection |
+| `grafana` | 3000 | Monitoring dashboards |
+
+Traefik routes:
+
+| Public path | Target service | Behavior |
 |---|---|---|
-| **1. Foundation** | 1â€“3 | Repo, DB schema, synthetic data, all services return `/health` |
-| **2. Core Services** | 4â€“8 | IE1 + IE2 + IE3 fully working, ML model trained in MLflow |
-| **3. Integration + Dashboard** | 9â€“11 | EEP orchestration, 6 golden tests, React dashboard |
-| **4. Infra + Polish** | 12â€“13 | Docker Compose full stack, K8s manifests, Prometheus + Grafana, CI/CD |
-| **5. Docs + Deploy + Demo** | 14â€“15 | Cloud deploy, all docs, demo rehearsal, submission |
+| `/` | `frontend:80` | SPA dashboard |
+| `/api/*` | `eep:8000` | Strips `/api` before forwarding |
+| `/apify/*` | `eep:8000` | Apify/webhook route, no strip |
+| `/webhooks/*` | `eep:8000` | Apify webhook route, no strip |
+| `/assistant-api/*` | `telegram:8004` | Browser assistant API |
+| `/webhook/telegram/*` | `telegram:8004` | Telegram webhook route |
+| `/ie1/*` | `ie1:8001` | Market intelligence direct API |
+| `/ie2/*` | `ie2:8002` | Decision intelligence direct API |
+| `/ie3/*` | `ie3:8003` | Campaign creative direct API |
 
-> See [PLAN.md](./PLAN.md) for the full breakdown with daily task checklists.
+## EEP And IEP Responsibilities
 
----
+The project follows an External Endpoint plus Internal Endpoint architecture.
 
-## Team
+### EEP - External Endpoint
 
-| Member | Primary Ownership |
-|---|---|
-| **Hassan Fouani** | IE2 (Decision Intelligence), ML Pipeline, Synthetic Data |
-| **Mohammad Jawad** | IE1 (Market Intelligence), IE3 (Campaign Creative) |
-| **Mohammad Farhat** | EEP (Orchestrator), Dashboard, Infrastructure, Deployment |
+Location: `eep/`
 
----
+The EEP is the public API boundary and orchestration layer. It handles:
 
-## Testing
+- Authentication and dashboard API calls.
+- Inventory CRUD/import workflows.
+- Recommendation orchestration.
+- Apify webhook ingestion.
+- RDS reads/writes through PgBouncer.
+- Public health/metrics endpoints.
+- Coordination with IE1, IE2, IE3, and the assistant service.
 
-### Golden Scenarios (must always pass)
+### IE1 - Market Intelligence
 
-| # | Scenario | Expected |
-|---|---|---|
-| 1 | Dead stock (150 days, 8% sell-through) | â†’ CLEAR |
-| 2 | Low margin (12%, below 15% floor) | â†’ NOT MARKDOWN |
-| 3 | Low stock (8 units) | â†’ HOLD only |
-| 4 | Recent discount (14 days ago) | â†’ NOT MARKDOWN |
-| 5 | PROMOTE decision | â†’ Campaign creative generated |
-| 6 | Stale competitor data (36h old) | â†’ Confidence degraded |
+Location: `services/market_intelligence/`
 
-### Test Counts
+IE1 focuses on competitor and market signals:
 
-| Layer | Target |
-|---|---|
-| Unit tests | 60+ |
-| Integration tests | 15+ |
-| Golden scenarios | 6 |
-| E2E tests | 5+ |
-| **Total** | **80+** |
+- Competitor price matching.
+- Scraped data processing.
+- Market intelligence endpoints.
+- Signals consumed by the decision layer.
 
----
+### IE2 - Decision Intelligence
 
-## Monitoring
+Location: `services/decision_intelligence/`
 
-- **Prometheus:** http://localhost:9090 â€” service metrics
-- **Grafana:** http://localhost:3001 â€” observability dashboard
-- **MLflow:** http://localhost:5000 â€” experiment tracking, model registry
+IE2 is the decision engine:
 
-See [Prometheus and Grafana Monitoring](./docs/monitoring-prometheus-grafana.md) for the current EEP monitoring setup.
+- Rule engine for HOLD, MARKDOWN, PROMOTE, CLEAR.
+- Event proximity and seasonality signals.
+- CatBoost-backed recommendation support.
+- Explainability output and model metrics.
+- Horizontal Pod Autoscaler in Kubernetes, with multiple replicas.
 
----
+### IE3 - Campaign Creative
 
-## Environment Variables
+Location: `services/campaign_creative/`
 
-```env
-# Database
-DATABASE_URL=postgresql+asyncpg://stylepulse:stylepulse@localhost:5432/stylepulse
+IE3 generates campaign support:
 
-# Service URLs (for EEP â†’ IE1/IE2/IE3 communication)
-IE1_URL=http://localhost:8001
-IE2_URL=http://localhost:8002
-IE3_URL=http://localhost:8003
+- Promotional copy.
+- Creative variants.
+- Campaign messaging.
+- Social-ready outputs for products that should be promoted.
 
-# API Keys
-API_KEY=dev-key-123
-APIFY_TOKEN=your-apify-token
-ANTHROPIC_API_KEY=your-anthropic-key
+### Telegram / Radar Assistant
 
-# MLflow
-MLFLOW_TRACKING_URI=http://localhost:5000
+Location: `services/telegram_assistant/`
+
+This service powers:
+
+- Browser assistant at `/assistant`.
+- Assistant API through `/assistant-api`.
+- Telegram webhook integration through `/webhook/telegram`.
+- EEP and IE3 calls for data-backed assistant responses.
+
+It intentionally runs as a single active replica because bot/webhook services can duplicate messages if multiple instances process the same update.
+
+## Apify Integration
+
+Apify is used for competitor scraping. Scheduled Apify actor runs collect competitor data, then notify the deployed application through webhooks.
+
+Flow:
+
+```text
+Apify scheduled actor
+  -> actor run succeeds
+  -> Apify sends webhook to Retail Radar
+  -> EEP verifies webhook secret
+  -> EEP fetches run/dataset data from Apify API
+  -> EEP normalizes records
+  -> EEP writes scrape run and product snapshots to RDS
+  -> dashboard and IE services use updated competitor intelligence
 ```
 
----
+Important EEP webhook paths:
+
+```text
+POST /webhooks/apify/run-succeeded?shop=SHOP_CODE
+POST /apify/webhook?shop=SHOP_CODE
+POST /webhooks/apify/replay-run?shop=SHOP_CODE&run_id=APIFY_RUN_ID
+```
+
+Security:
+
+- Apify requests use `APIFY_WEBHOOK_SECRET`.
+- EEP uses `APIFY_TOKEN` to fetch actor run/dataset data.
+- Tokens are stored as secrets, not committed to git.
+
+## CI/CD
+
+CI/CD is implemented with GitHub Actions in `.github/workflows/deploy.yml`.
+
+Trigger:
+
+- Push to `dev`: run tests and build/push images.
+- Push/merge to `main`: run tests, build/push images, then deploy to production k3s.
+- Manual run: supported by `workflow_dispatch`.
+
+Pipeline:
+
+```mermaid
+flowchart LR
+    Push["Push to dev or main"] --> Test["Run Python tests and frontend build"]
+    Test --> Build["Build Docker images"]
+    Build --> GHCR["Push images to GHCR"]
+    GHCR --> Gate{"Branch is main?"}
+    Gate -- "No" --> Stop["Stop after build"]
+    Gate -- "Yes" --> SCP["Copy k8s manifests to rr-node-1"]
+    SCP --> Kustomize["Pin image tags to git short SHA"]
+    Kustomize --> Apply["kubectl apply -k"]
+    Apply --> Rollout["Wait for rollouts and health checks"]
+```
+
+Images pushed to GHCR:
+
+```text
+ghcr.io/mhmd-jawad/retail-radar-eep:<git-sha>
+ghcr.io/mhmd-jawad/retail-radar-ie1:<git-sha>
+ghcr.io/mhmd-jawad/retail-radar-ie2:<git-sha>
+ghcr.io/mhmd-jawad/retail-radar-ie3:<git-sha>
+ghcr.io/mhmd-jawad/retail-radar-frontend:<git-sha>
+ghcr.io/mhmd-jawad/retail-radar-telegram:<git-sha>
+```
+
+Required GitHub Actions secrets:
+
+| Secret | Purpose |
+|---|---|
+| `GHCR_TOKEN` | Push/pull private GHCR images |
+| `BOX_B_HOST` | Public IP/host of the production k3s control-plane node |
+| `BOX_B_USER` | SSH user, usually `ubuntu` |
+| `BOX_B_SSH_KEY` | Private SSH key for CI deployment |
+| `VITE_API_KEY` | Frontend build-time API key if required |
+| `VITE_GRAFANA_URL` | Frontend Grafana link |
+
+## Capacity And Scaling
+
+The cluster has two Lightsail nodes, each with 2 vCPU and about 4 GB RAM. Kubernetes reports a theoretical pod limit of about 110 pods per node, or about 220 pods total. That number is a networking/scheduler maximum, not the practical application capacity.
+
+Practical capacity is limited by RAM, CPU, model memory, and database connection limits. With the current services, the realistic target is approximately 25 to 35 application pods before resizing, depending on workload and traffic.
+
+Current resource pattern:
+
+- `rr-node-1` hosts the control plane plus worker pods.
+- `rr-node-2` hosts worker pods.
+- IE2 can run multiple replicas because it is the most important model-serving component.
+- Telegram/Radar Assistant should remain a single active replica.
+- PgBouncer runs multiple replicas to protect RDS from too many direct connections.
+- Prometheus and Grafana are stateful monitoring services and should be treated carefully.
+
+If production traffic grows, the next improvements are:
+
+1. Move to larger Lightsail instances or EC2/EKS.
+2. Add a third control-plane node for true control-plane HA.
+3. Move monitoring to managed services or a larger node.
+4. Increase RDS size and tune PgBouncer pool limits.
+5. Add resource requests/limits based on observed Prometheus data.
+
+
+
+## Repository Structure
+
+```text
+.
+|-- .github/workflows/          GitHub Actions CI/CD
+|-- apify/                      Apify actor/task related code
+|-- catboost_info/              Model training/output metadata
+|-- data/                       Local/sample data
+|-- docs/                       Deployment, rubric, database, and architecture docs
+|-- eep/                        External Endpoint FastAPI service
+|-- frontend/                   React/Vite dashboard
+|-- infra/
+|   |-- k8s/                    Kubernetes production manifests
+|   |-- monitoring/             Prometheus/Grafana configuration
+|   `-- postgres/               PostgreSQL schema/migration SQL
+|-- mlartifacts/                Model artifacts and evaluation outputs
+|-- services/
+|   |-- market_intelligence/    IE1
+|   |-- decision_intelligence/  IE2
+|   |-- campaign_creative/      IE3
+|   `-- telegram_assistant/     Radar Assistant and Telegram service
+|-- stylepulse/                 Shared/domain package code
+|-- tests/                      Unit and integration tests
+`-- README.md                   This file
+```
+
+## Security Model
+
+The project uses several layers of security:
+
+- HTTPS at the Lightsail load balancer.
+- DNS validation through AWS certificate records.
+- Kubernetes secrets for production credentials.
+- GitHub Actions secrets for CI/CD credentials.
+- PgBouncer between services and RDS.
+- RDS access kept out of public browser traffic.
+- Webhook secrets for Apify and Telegram.
+- App authentication for dashboard users.
+
+Known production-hardening recommendations:
+
+- Rotate any credential that was ever pasted into a chat, screenshot, or terminal recording.
+- Keep `.env`, `k8s.env`, `pgbouncer.env`, kubeconfigs, SSH keys, and tokens out of git.
+- Use read-only credentials for professor/database inspection.
+- Enable MFA on AWS and GitHub.
+- Add stricter EEP rate limiting for public endpoints.
+- Consider AWS WAF or CloudFront if public traffic grows.
+- Move from two-node k3s to managed EKS or a three-control-plane design if this becomes a real production business.
+
+## Key Tradeoffs
+
+The main engineering tradeoffs are documented in `docs/TRADEOFFS.md`. Summary:
+
+| Tradeoff | Choice made | Reason |
+|---|---|---|
+| Rule-gated model vs. pure ML | Rule-gated CatBoost path | Business safety and explainability are more important than unrestricted model autonomy |
+| Heuristic labels vs. waiting for real outcomes | Start with heuristic labels | Allows a working system before long-term sales outcome data exists |
+| In-process IE2 support vs. only service calls | Hybrid approach | Reduces latency and memory pressure on small Lightsail machines while keeping IE2 as its own service |
+| Daily Apify batch vs. real-time scraping | Daily/scheduled Apify scraping | Predictable cost and lower scraping risk; freshness is surfaced through features |
+| Two k3s nodes vs. one server | Two nodes | Better scheduling, capacity, and partial failure tolerance |
+
+## Useful Documentation
+
+- `docs/PRODUCTION_DEPLOYMENT_ARCHITECTURE.md` - detailed production architecture
+- `docs/KUBERNETES_DEPLOYMENT.md` - step-by-step k3s deployment guide
+- `docs/RUBRIC_COMPLIANCE_REVIEW.md` - project/rubric readiness review
+- `docs/TRADEOFFS.md` - engineering tradeoffs
+- `docs/rds-database-logic.md` - RDS schema and data logic
+- `docs/aws-rds-apify-webhook.md` - Apify/RDS webhook runbook
+- `docs/full-stack-docker-deployment.md` - Docker deployment reference
 
 ## License
 
-MIT
-
----
-
-*StylePulse AI â€” Team: Hassan Fouani Â· Mohammad Jawad Â· Mohammad Farhat*
+This project is for academic and demonstration use unless a separate license file states otherwise.
