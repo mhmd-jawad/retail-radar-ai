@@ -25,8 +25,13 @@ class _FakeCursor:
             self._result = []
         elif "from marketing.system_decision_latest" in q:
             self._result = self._system_decisions
+        elif "from intel.competitor_products_latest" in q:
+            self._result = [{"competitor_records": 0, "shops_covered": 0, "data_freshness_hours": None}]
         else:
             raise AssertionError(f"Unexpected query: {query}")
+
+    def fetchone(self):
+        return self._result[0] if self._result else {}
 
     def fetchall(self):
         return self._result
