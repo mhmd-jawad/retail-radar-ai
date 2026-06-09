@@ -180,14 +180,13 @@ function CampaignPanel({ creative, item, onRegenerate, isPending }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: number; onGenerated?: () => void }) {
-  const { campaignCache, setCampaign, whatsappNumber, mode } = useSettings();
+  const { campaignCache, setCampaign, mode } = useSettings();
   const tenantScope = useTenantScopeKey();
   const campaignKey = scopedSkuKey(item.sku_id, tenantScope);
   const [creative, setCreative] = useState<CampaignCreative | null>(
     campaignCache[campaignKey] ?? item.creative ?? null,
   );
   const [expanded, setExpanded] = useState(false);
-  void whatsappNumber;
 
   void mode;
 

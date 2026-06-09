@@ -514,7 +514,7 @@ def build_frontend_report() -> dict[str, Any]:
                 "category": _friendly_category(item.get("category") or sku.get("category")),
                 "reason": item.get("reason", ""),
                 "expected_lift_pct": expected_lift,
-                "channels": ["Instagram", "WhatsApp", "In-store window"],
+                "channels": ["Instagram", "Facebook", "In-store window"],
             }
         )
 
