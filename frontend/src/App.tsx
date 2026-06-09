@@ -21,7 +21,6 @@ import Inventory from "./pages/Inventory";
 import Promotions from "./pages/Promotions";
 import Financial from "./pages/Financial";
 import Ops from "./pages/Ops";
-import ClosedLoopOutcomes from "./pages/ClosedLoopOutcomes";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -54,7 +53,6 @@ const App = () => (
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/promotions" element={<Promotions />} />
               <Route path="/financial" element={<Financial />} />
-              <Route path="/closed-loop" element={<ClosedLoopOutcomes />} />
               <Route path="/upload" element={<Navigate to="/inventory" replace />} />
               <Route path="/audit" element={<Navigate to="/overview" replace />} />
               <Route path="/ops" element={<Ops />} />

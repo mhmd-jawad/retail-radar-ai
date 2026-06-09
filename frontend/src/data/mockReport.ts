@@ -236,10 +236,9 @@ export const MOCK_REPORT: Report = {
   },
   competitor: {
     market_overview: {
-      skus_tracked: 200, competitor_records: 37102, shops_covered: 7,
-      avg_price_gap_pct: round(positions.reduce((s, x) => s + x.price_gap_pct, 0) / positions.length, 1),
-      overpriced_skus: 52, underpriced_skus: 44,
-      at_market_skus: 200 - 52 - 44, data_freshness_hours: 6,
+      skus_tracked: 200, competitor_records: null, shops_covered: null,
+      avg_price_gap_pct: null, overpriced_skus: null, underpriced_skus: null,
+      at_market_skus: null, data_freshness_hours: null, status: 'not_connected',
     },
     sku_positioning: positions,
     brand_summary: brandSummary,

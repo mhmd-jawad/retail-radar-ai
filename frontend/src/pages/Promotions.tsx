@@ -16,12 +16,11 @@ import { cn } from '@/lib/utils';
 import { useSettings } from '@/store/settings';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
-import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, fetchOutcomesBySku, persistCampaign } from '@/lib/adapter';
+import { generateAndPublishCampaign, patchInventoryPrice, recordDecision, persistCampaign } from '@/lib/adapter';
 import type {
   CampaignCreative, ClearanceItem, HoldPricingItem,
-  MarkdownItem, PromoteItem, OutcomeSnapshot,
+  MarkdownItem, PromoteItem,
 } from '@/types/domain';
-import { OutcomeChip } from '@/components/outcomes/OutcomePanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Micro-components
@@ -190,14 +189,7 @@ function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: nu
   const [expanded, setExpanded] = useState(false);
   void whatsappNumber;
 
-  const isLive = mode === 'eep-live';
-  const { data: outcomes = [] } = useQuery<OutcomeSnapshot[]>({
-    queryKey: ['outcomes-by-sku', tenantScope, item.sku_id],
-    queryFn: () => fetchOutcomesBySku(item.sku_id),
-    enabled: isLive,
-    staleTime: 5 * 60_000,
-  });
-  const latestOutcome = outcomes[0] ?? null;
+  void mode;
 
   useEffect(() => {
     setCreative(campaignCache[campaignKey] ?? item.creative ?? null);
@@ -256,11 +248,6 @@ function PromoteRow({ item, index, onGenerated }: { item: PromoteItem; index: nu
             <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0 hidden md:inline">{item.sku_id}</span>
           </div>
           <p className="text-[11px] text-muted-foreground truncate mt-0.5">{item.reason}</p>
-          {isPosted && latestOutcome && (
-            <div className="mt-1">
-              <OutcomeChip snapshot={latestOutcome} />
-            </div>
-          )}
         </div>
         <div className="text-emerald-400 font-bold text-[12.5px] tabular-nums shrink-0 inline-flex items-center gap-0.5">
           <TrendingUp className="h-3 w-3" />+{item.expected_lift_pct}%

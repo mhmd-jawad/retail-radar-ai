@@ -9,7 +9,7 @@ import { fmtPct, fmtUSD, fmtNum, relativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   TrendingUp, DollarSign, Boxes, AlertTriangle, Bot, ShieldAlert,
-  BarChart2, ArrowRight, Settings, Save, Plus, Pencil, Trash2, X, Check, Info,
+  BarChart2, Settings, Save, Plus, Pencil, Trash2, X, Check, Info,
   CheckCircle2, XCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -30,7 +30,7 @@ import type { FinancialProfileInput, FinancialLineItem } from '@/types/domain';
 
 const MARGIN_HEALTHY = 45;
 const MARGIN_FLOOR = 35;
-const FINANCIAL_PROMPT = "Give me a financial health summary for my store — focus on margin, cash runway, and any risks I should know about.";
+const FINANCIAL_PROMPT = "Give me a financial balance sheet summary for my store. List my assets and their costs, my liabilities and their costs, net equity, margin, cash runway, and any risks I should know about.";
 
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
@@ -347,6 +347,16 @@ export default function Financial() {
   const displayLiabilities = liabilities.length > 0 ? userLiabilityTotal : (storedLiabilities ?? 0);
   const displayEquity = displayAssets - displayLiabilities;
   const displayCurrentRatio = liabilities.length > 0 ? computedCurrentRatio : currentRatio;
+  const equityShare = displayAssets > 0 ? (displayEquity / displayAssets) * 100 : 0;
+  const liabilityShare = displayAssets > 0 ? (displayLiabilities / displayAssets) * 100 : 0;
+  const profileAssetRemainder =
+    assets.length === 0 && storedAssets != null && Math.abs(storedAssets - inventoryCostUSD) > 1
+      ? storedAssets - inventoryCostUSD
+      : null;
+  const profileLiabilityTotal =
+    liabilities.length === 0 && storedLiabilities != null && storedLiabilities > 0
+      ? storedLiabilities
+      : null;
 
   const blendedMargin = m.blended_margin_pct;
   const marginHealth =
@@ -562,7 +572,7 @@ export default function Financial() {
         {/* ── Balance Sheet ──────────────────────────────────────────────── */}
         <Section
           title="Balance Sheet"
-          subtitle="Itemized assets and liabilities — edit inline, add new rows, or remove"
+          subtitle="Clear view of what the retailer owns, what it owes, and the resulting equity"
           action={
             <div className="flex items-center gap-1.5">
               <Info className="h-3.5 w-3.5 text-muted-foreground" />
@@ -570,160 +580,226 @@ export default function Financial() {
             </div>
           }
         >
-          <div className="grid lg:grid-cols-2 gap-6 mt-1">
+          <div className="grid md:grid-cols-3 gap-3 mb-5">
+            <div className="rounded-lg border border-decision-promote/25 bg-decision-promote-bg/30 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider font-mono text-decision-promote">Total Assets</div>
+              <div className="mt-1 text-[24px] font-display font-bold text-foreground">{fmtUSD(displayAssets, { compact: true })}</div>
+              <div className="mt-1 text-[11.5px] text-muted-foreground">Inventory at cost plus added asset rows</div>
+            </div>
+            <div className="rounded-lg border border-decision-clear/25 bg-decision-clear-bg/25 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider font-mono text-decision-clear">Total Liabilities</div>
+              <div className="mt-1 text-[24px] font-display font-bold text-foreground">{fmtUSD(displayLiabilities, { compact: true })}</div>
+              <div className="mt-1 text-[11.5px] text-muted-foreground">Supplier, debt, rent, tax, or other owed amounts</div>
+            </div>
+            <div className="rounded-lg border border-border bg-accent/20 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider font-mono text-muted-foreground">Net Equity</div>
+              <div className={cn(
+                'mt-1 text-[24px] font-display font-bold',
+                displayEquity >= 0 ? 'text-decision-promote' : 'text-decision-clear'
+              )}>
+                {fmtUSD(displayEquity, { compact: true })}
+              </div>
+              <div className="mt-1 text-[11.5px] text-muted-foreground">Assets minus liabilities</div>
+            </div>
+          </div>
 
-            {/* Assets column */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] uppercase tracking-wider font-mono text-decision-promote font-semibold">Assets</span>
+          <div className="grid lg:grid-cols-2 gap-6 mt-1">
+            <div className="rounded-lg border border-border bg-background overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-accent/20">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider font-mono text-decision-promote font-semibold">Assets</span>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">What the retailer owns and its cost/value</p>
+                </div>
                 <span className="text-[11px] font-mono text-muted-foreground">
                   Total: <span className="text-foreground font-semibold">{fmtUSD(displayAssets, { compact: true })}</span>
                 </span>
               </div>
 
-              {/* Live inventory row — non-editable */}
-              <div className="flex items-center gap-2 py-1.5 px-1 rounded-md bg-accent/10">
-                <span className="flex-1 text-[13px] text-foreground truncate">Inventory at Cost</span>
-                <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">live</span>
-                <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
-                  {fmtUSD(inventoryCostUSD, { compact: true })}
-                </span>
-                <span className="h-6 w-6 shrink-0" />
-                <span className="h-6 w-6 shrink-0" />
+              <div className="grid grid-cols-[1fr_auto] gap-3 px-4 py-2 border-b border-border text-[10px] uppercase tracking-wider font-mono text-muted-foreground">
+                <span>Asset</span>
+                <span>Cost</span>
               </div>
 
-              {/* User-added asset rows */}
-              {assets.map((item) => (
-                <LineItemRow
-                  key={item.id}
-                  item={item}
-                  onSave={(id, label, amount_usd) =>
-                    updateItemMutation.mutate({ id, label, amount_usd, item_type: 'asset' })
-                  }
-                  onDelete={(id) => deleteItemMutation.mutate(id)}
-                  isSaving={updateItemMutation.isPending}
-                  isDeleting={deleteItemMutation.isPending}
-                />
-              ))}
+              <div className="px-4 py-2">
+                <div className="flex items-center gap-2 py-2 px-2 rounded-md bg-decision-promote-bg/25 border border-decision-promote/15">
+                  <span className="flex-1 text-[13px] text-foreground truncate">Inventory at Cost</span>
+                  <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">live</span>
+                  <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
+                    {fmtUSD(inventoryCostUSD, { compact: true })}
+                  </span>
+                  <span className="h-6 w-6 shrink-0" />
+                  <span className="h-6 w-6 shrink-0" />
+                </div>
+                {profileAssetRemainder != null && (
+                  <div className="flex items-center gap-2 py-2 px-2 rounded-md bg-accent/10">
+                    <span className="flex-1 text-[13px] text-foreground truncate">Other Assets from Profile</span>
+                    <span className="text-[10px] font-mono bg-accent text-muted-foreground px-1.5 py-0.5 rounded shrink-0">profile</span>
+                    <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
+                      {fmtUSD(profileAssetRemainder, { compact: true })}
+                    </span>
+                    <span className="h-6 w-6 shrink-0" />
+                    <span className="h-6 w-6 shrink-0" />
+                  </div>
+                )}
 
-              {/* Add asset form */}
-              {addingType === 'asset' ? (
-                <AddItemRow
-                  itemType="asset"
-                  onAdd={(label, amount_usd) =>
-                    createItemMutation.mutate({ label, amount_usd, item_type: 'asset' })
-                  }
-                  onCancel={() => setAddingType(null)}
-                  isSaving={createItemMutation.isPending}
-                />
-              ) : (
-                <button
-                  onClick={() => setAddingType('asset')}
-                  className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add asset
-                </button>
-              )}
-
-              {/* Formula */}
-              <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono">
-                <span className="text-foreground font-semibold">How calculated: </span>
-                Inventory ({fmtUSD(inventoryCostUSD, { compact: true })}, live)
-                {assets.map((a) => (
-                  <span key={a.id}> + {a.label} ({fmtUSD(a.amount_usd, { compact: true })})</span>
+                {assets.map((item) => (
+                  <LineItemRow
+                    key={item.id}
+                    item={item}
+                    onSave={(id, label, amount_usd) =>
+                      updateItemMutation.mutate({ id, label, amount_usd, item_type: 'asset' })
+                    }
+                    onDelete={(id) => deleteItemMutation.mutate(id)}
+                    isSaving={updateItemMutation.isPending}
+                    isDeleting={deleteItemMutation.isPending}
+                  />
                 ))}
-                {' '}<span className="text-decision-promote">= {fmtUSD(displayAssets, { compact: true })}</span>
+
+                {addingType === 'asset' ? (
+                  <AddItemRow
+                    itemType="asset"
+                    onAdd={(label, amount_usd) =>
+                      createItemMutation.mutate({ label, amount_usd, item_type: 'asset' })
+                    }
+                    onCancel={() => setAddingType(null)}
+                    isSaving={createItemMutation.isPending}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setAddingType('asset')}
+                    className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add asset
+                  </button>
+                )}
+
+                <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono">
+                  <span className="text-foreground font-semibold">Assets: </span>
+                  Inventory ({fmtUSD(inventoryCostUSD, { compact: true })}, live)
+                  {profileAssetRemainder != null && (
+                    <span> + Other profile assets ({fmtUSD(profileAssetRemainder, { compact: true })})</span>
+                  )}
+                  {assets.map((a) => (
+                    <span key={a.id}> + {a.label} ({fmtUSD(a.amount_usd, { compact: true })})</span>
+                  ))}
+                  {' '}<span className="text-decision-promote">= {fmtUSD(displayAssets, { compact: true })}</span>
+                </div>
               </div>
             </div>
 
-            {/* Liabilities column */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] uppercase tracking-wider font-mono text-decision-clear font-semibold">Liabilities</span>
+            <div className="rounded-lg border border-border bg-background overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-accent/20">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider font-mono text-decision-clear font-semibold">Liabilities</span>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">What the retailer owes and its cost</p>
+                </div>
                 <span className="text-[11px] font-mono text-muted-foreground">
                   Total: <span className="text-foreground font-semibold">{fmtUSD(displayLiabilities, { compact: true })}</span>
                 </span>
               </div>
 
-              {/* User-added liability rows */}
-              {liabilities.length === 0 && addingType !== 'liability' && (
-                <p className="text-[12.5px] text-muted-foreground py-2">No liabilities added yet.</p>
-              )}
-              {liabilities.map((item) => (
-                <LineItemRow
-                  key={item.id}
-                  item={item}
-                  onSave={(id, label, amount_usd) =>
-                    updateItemMutation.mutate({ id, label, amount_usd, item_type: 'liability' })
-                  }
-                  onDelete={(id) => deleteItemMutation.mutate(id)}
-                  isSaving={updateItemMutation.isPending}
-                  isDeleting={deleteItemMutation.isPending}
-                />
-              ))}
+              <div className="grid grid-cols-[1fr_auto] gap-3 px-4 py-2 border-b border-border text-[10px] uppercase tracking-wider font-mono text-muted-foreground">
+                <span>Liability</span>
+                <span>Cost</span>
+              </div>
 
-              {/* Add liability form */}
-              {addingType === 'liability' ? (
-                <AddItemRow
-                  itemType="liability"
-                  onAdd={(label, amount_usd) =>
-                    createItemMutation.mutate({ label, amount_usd, item_type: 'liability' })
-                  }
-                  onCancel={() => setAddingType(null)}
-                  isSaving={createItemMutation.isPending}
-                />
-              ) : (
-                <button
-                  onClick={() => setAddingType('liability')}
-                  className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add liability
-                </button>
-              )}
-
-              {/* Formula + net equity */}
-              <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono space-y-1">
-                {liabilities.length > 0 ? (
-                  <div>
-                    <span className="text-foreground font-semibold">How calculated: </span>
-                    {liabilities.map((l, i) => (
-                      <span key={l.id}>{i > 0 ? ' + ' : ''}{l.label} ({fmtUSD(l.amount_usd, { compact: true })})</span>
-                    ))}
-                    {' '}<span className="text-decision-clear">= {fmtUSD(displayLiabilities, { compact: true })}</span>
+              <div className="px-4 py-2">
+                {profileLiabilityTotal != null && (
+                  <div className="flex items-center gap-2 py-2 px-2 rounded-md bg-decision-clear-bg/20 border border-decision-clear/15">
+                    <span className="flex-1 text-[13px] text-foreground truncate">Profile Liabilities Total</span>
+                    <span className="text-[10px] font-mono bg-accent text-muted-foreground px-1.5 py-0.5 rounded shrink-0">profile</span>
+                    <span className="text-[13px] font-mono font-semibold text-foreground shrink-0">
+                      {fmtUSD(profileLiabilityTotal, { compact: true })}
+                    </span>
+                    <span className="h-6 w-6 shrink-0" />
+                    <span className="h-6 w-6 shrink-0" />
                   </div>
-                ) : (
-                  <div>Add liabilities to see the formula.</div>
                 )}
-                <div className="border-t border-border pt-1.5 text-foreground font-semibold">
-                  Net Equity = {fmtUSD(displayAssets, { compact: true })} − {fmtUSD(displayLiabilities, { compact: true })}{' '}
-                  <span className={displayEquity >= 0 ? 'text-decision-promote' : 'text-decision-clear'}>
-                    = {fmtUSD(displayEquity, { compact: true })}
-                  </span>
+                {liabilities.length === 0 && profileLiabilityTotal == null && addingType !== 'liability' && (
+                  <div className="rounded-md border border-dashed border-border bg-accent/10 px-3 py-3 text-[12.5px] text-muted-foreground">
+                    No liabilities added yet. Add supplier payables, loans, rent due, tax payable, or any other amount owed.
+                  </div>
+                )}
+                {liabilities.map((item) => (
+                  <LineItemRow
+                    key={item.id}
+                    item={item}
+                    onSave={(id, label, amount_usd) =>
+                      updateItemMutation.mutate({ id, label, amount_usd, item_type: 'liability' })
+                    }
+                    onDelete={(id) => deleteItemMutation.mutate(id)}
+                    isSaving={updateItemMutation.isPending}
+                    isDeleting={deleteItemMutation.isPending}
+                  />
+                ))}
+
+                {addingType === 'liability' ? (
+                  <AddItemRow
+                    itemType="liability"
+                    onAdd={(label, amount_usd) =>
+                      createItemMutation.mutate({ label, amount_usd, item_type: 'liability' })
+                    }
+                    onCancel={() => setAddingType(null)}
+                    isSaving={createItemMutation.isPending}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setAddingType('liability')}
+                    className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add liability
+                  </button>
+                )}
+
+                <div className="mt-4 rounded-lg bg-accent/20 px-3 py-2.5 text-[11.5px] text-muted-foreground leading-relaxed font-mono space-y-1">
+                  {liabilities.length > 0 ? (
+                    <div>
+                      <span className="text-foreground font-semibold">Liabilities: </span>
+                      {liabilities.map((l, i) => (
+                        <span key={l.id}>{i > 0 ? ' + ' : ''}{l.label} ({fmtUSD(l.amount_usd, { compact: true })})</span>
+                      ))}
+                      {' '}<span className="text-decision-clear">= {fmtUSD(displayLiabilities, { compact: true })}</span>
+                    </div>
+                  ) : profileLiabilityTotal != null ? (
+                    <div>
+                      <span className="text-foreground font-semibold">Liabilities: </span>
+                      Profile liabilities total ({fmtUSD(profileLiabilityTotal, { compact: true })}){' '}
+                      <span className="text-decision-clear">= {fmtUSD(displayLiabilities, { compact: true })}</span>
+                    </div>
+                  ) : (
+                    <div>Liabilities = {fmtUSD(0, { compact: true })}. Add rows if the retailer owes money.</div>
+                  )}
+                  <div className="border-t border-border pt-1.5 text-foreground font-semibold">
+                    Net Equity = {fmtUSD(displayAssets, { compact: true })} - {fmtUSD(displayLiabilities, { compact: true })}{' '}
+                    <span className={displayEquity >= 0 ? 'text-decision-promote' : 'text-decision-clear'}>
+                      = {fmtUSD(displayEquity, { compact: true })}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {displayLiabilities > 0 && displayAssets > 0 && (
-            <div className="mt-4 space-y-1.5">
+          {displayAssets > 0 && (
+            <div className="mt-5 rounded-lg border border-border bg-accent/10 px-4 py-3 space-y-2">
               <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
-                <span>Equity {fmtPct((displayEquity / displayAssets) * 100, 0)}</span>
-                <span>Liabilities {fmtPct((displayLiabilities / displayAssets) * 100, 0)}</span>
+                <span>Equity {fmtPct(equityShare, 0)}</span>
+                <span>Liabilities {fmtPct(liabilityShare, 0)}</span>
               </div>
-              <div className="h-2 rounded-full bg-accent overflow-hidden flex">
+              <div className="h-2.5 rounded-full bg-accent overflow-hidden flex">
                 <div
                   className="h-full bg-decision-promote transition-all"
-                  style={{ width: `${Math.min(100, Math.max(0, (displayEquity / displayAssets) * 100))}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, equityShare))}%` }}
                 />
                 <div
                   className="h-full bg-decision-clear"
-                  style={{ width: `${Math.min(100, (displayLiabilities / displayAssets) * 100)}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, liabilityShare))}%` }}
                 />
               </div>
-              <div className="text-[11px] font-mono text-muted-foreground text-center">
+              <div className="text-[11px] font-mono text-muted-foreground">
                 {displayCurrentRatio != null
-                  ? `${displayCurrentRatio.toFixed(2)}x current ratio · equity/asset leverage`
-                  : 'Add liabilities to compute leverage ratio'}
+                  ? `${displayCurrentRatio.toFixed(2)}x current ratio · Assets ${fmtUSD(displayAssets, { compact: true })} / Liabilities ${fmtUSD(displayLiabilities, { compact: true })}`
+                  : 'No liabilities entered, so leverage/current ratio is not applicable yet.'}
               </div>
             </div>
           )}
@@ -947,44 +1023,6 @@ export default function Financial() {
             </span>
           </div>
         </Section>
-
-        {/* Radar Assistant CTA */}
-        <div className="relative panel-dark rounded-2xl overflow-hidden shadow-lg-soft">
-          <div className="absolute inset-0 opacity-25" style={{
-            background: 'radial-gradient(600px 200px at 90% 50%, hsl(218 92% 60% / 0.5), transparent)',
-          }} />
-          <div className="relative p-6 lg:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-6">
-            <div className="h-12 w-12 rounded-xl bg-primary-glow/20 border border-primary/30 flex items-center justify-center shrink-0">
-              <Bot className="h-6 w-6 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-mono uppercase tracking-[0.16em] text-panel-muted mb-1">Radar Assistant</div>
-              <h3 className="font-display text-[18px] font-semibold text-panel-foreground">
-                Ask financial questions in plain language
-              </h3>
-              <p className="text-panel-muted text-[13.5px] mt-1 max-w-xl">
-                "What's dragging my margin down?", "Which categories are most profitable?",
-                "How much cash is locked in dead stock?" — Radar AI answers from live data.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
-              <Link
-                to="/assistant"
-                state={{ initialMessage: FINANCIAL_PROMPT }}
-                className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow"
-              >
-                Open Radar Assistant <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-              <Link
-                to="/queue"
-                className="inline-flex items-center gap-2 h-10 px-5 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition"
-              >
-                <BarChart2 className="h-3.5 w-3.5" />
-                Review recommendations
-              </Link>
-            </div>
-          </div>
-        </div>
 
       </main>
 

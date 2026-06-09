@@ -103,7 +103,6 @@ from eep.retail_db import (
     fail_stale_system_decision_runs,
     get_active_system_decision_run,
     get_system_decision_run,
-    get_variant_id_for_sku,
     import_inventory,
     list_active_inventory_sku_ids,
     list_inventory_items,
@@ -142,10 +141,6 @@ class RetailerDecisionPayload(BaseModel):
     notes: str | None = None
     recommendation_id: str | None = None
     cost_price_usd: float = 0.0
-
-
-class OutcomeMeasurePayload(BaseModel):
-    window_days: Literal[7, 14] = 7
 
 
 class NotificationStatusPayload(BaseModel):
@@ -521,11 +516,6 @@ def admin_impersonate(tenant_id: str, request: Request) -> dict[str, Any]:
 
 # â”€â”€â”€ Admin Platform Operations Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class AdminTriggerMeasurementPayload(BaseModel):
-    snapshot_id: int
-    window_days: Literal[7, 14] = 7
-
-
 class CampaignPersistPayload(BaseModel):
     variant_id: str | None = None
     recommendation_id: str | None = None
@@ -545,31 +535,6 @@ class AdminAssistantPayload(BaseModel):
 class RetailerChatPayload(BaseModel):
     message: str
     session_id: str | None = None
-
-
-@app.get("/admin/outcomes/aggregate")
-def admin_outcomes_aggregate(request: Request) -> dict[str, Any]:
-    """Cross-tenant model accuracy and outcome measurement aggregate."""
-    _required_admin(request)
-    try:
-        from eep.admin_analytics_db import get_outcomes_aggregate
-        return get_outcomes_aggregate()
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.post("/admin/outcomes/trigger")
-def admin_outcomes_trigger(payload: AdminTriggerMeasurementPayload, request: Request) -> dict[str, Any]:
-    """Admin triggers a 7d/14d measurement for any tenant's snapshot."""
-    _required_admin(request)
-    try:
-        from eep.admin_analytics_db import admin_trigger_measurement
-        return admin_trigger_measurement(payload.snapshot_id, payload.window_days)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
 
 
 @app.get("/admin/campaigns/overview")
@@ -618,7 +583,6 @@ async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request)
     try:
         from eep.admin_analytics_db import (
             get_admin_assistant_context,
-            get_outcomes_aggregate,
             get_campaigns_overview,
         )
         from eep.auth_db import admin_list_tenants, admin_list_competitor_requests
@@ -633,16 +597,10 @@ async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request)
             "You have access to real-time cross-tenant data. "
             f"Current platform snapshot: {ctx_summary['tenant_count']} active shops, "
             f"{ctx_summary['pending_competitor_requests']} pending competitor requests, "
-            f"{ctx_summary['pending_outcome_measurements']} outcome measurements due, "
             "Answer concisely and accurately. Use tools to fetch live data before answering data questions."
         )
 
         tools = [
-            {
-                "name": "get_platform_outcomes",
-                "description": "Get cross-tenant recommendation accuracy, pending measurements, revenue impact, and accuracy trend.",
-                "input_schema": {"type": "object", "properties": {}, "required": []},
-            },
             {
                 "name": "get_campaigns_activity",
                 "description": "Get campaign generation activity across all shops â€” volumes, channels, fallback rate, recent campaigns.",
@@ -691,9 +649,7 @@ async def admin_assistant_chat(payload: AdminAssistantPayload, request: Request)
                     continue
                 tools_used.append(block.name)
                 try:
-                    if block.name == "get_platform_outcomes":
-                        data = get_outcomes_aggregate()
-                    elif block.name == "get_campaigns_activity":
+                    if block.name == "get_campaigns_activity":
                         data = get_campaigns_overview()
                     elif block.name == "list_tenants":
                         import eep.auth_db as _adb
@@ -793,7 +749,7 @@ async def retailer_assistant_chat(payload: RetailerChatPayload, request: Request
             f"Today is {_date.today().isoformat()}. "
             f"Competitors being tracked: {competitor_str}.\n\n"
 
-            "TOOLS: You have 14 live-data tools. Always call the relevant tool(s) BEFORE answering "
+            "TOOLS: You have live-data tools. Always call the relevant tool(s) BEFORE answering "
             "any question about inventory, pricing, recommendations, competitors, or financials. "
             "Never answer data questions from memory — always fetch fresh data first.\n\n"
 
@@ -880,8 +836,6 @@ async def retailer_assistant_chat(payload: RetailerChatPayload, request: Request
                         data = assistant_db.reject_recommendation(
                             tenant_id_str, inp["recommendation_id"], inp["sku_id"]
                         )
-                    elif block.name == "get_decision_progress":
-                        data = assistant_db.get_decision_progress(tenant_id_str)
                     elif block.name == "get_roadmap_summary":
                         data = assistant_db.get_roadmap_summary(tenant_id_str)
                     elif block.name == "get_recommendation_detail":
@@ -962,6 +916,24 @@ def retailer_chat_history(request: Request, session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"History error: {exc}") from exc
+
+
+@app.get("/chat/sessions")
+def retailer_chat_sessions(request: Request) -> dict[str, Any]:
+    """
+    List all past chat sessions for the authenticated retailer, most recent first.
+
+    Used by the frontend history panel to show past conversations.
+    """
+    ctx = _required_shop(request)
+    try:
+        from eep import chat_db
+        sessions = chat_db.list_sessions(str(ctx.tenant_id), limit=30)
+        return {"sessions": sessions}
+    except DatabaseUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Sessions error: {exc}") from exc
 
 
 @app.post("/webhooks/apify/run-succeeded")
@@ -1193,6 +1165,50 @@ def _tenant_competitor_latest(tenant_id: str, limit: int) -> list[dict[str, Any]
     ]
 
 
+def _tenant_competitor_market_overview(cur: Any, tenant_id: str, skus_tracked: int) -> dict[str, Any]:
+    cur.execute(
+        """
+        select
+            count(*)::int as competitor_records,
+            count(distinct cpl.shop_code)::int as shops_covered,
+            avg(extract(epoch from (now() - cpl.last_seen_at)) / 3600.0) as data_freshness_hours
+        from intel.competitor_products_latest cpl
+        join intel.tenant_competitors tc
+            on tc.shop_code = cpl.shop_code
+           and tc.tenant_id = %s
+           and tc.is_active = true
+        """,
+        (tenant_id,),
+    )
+    row = cur.fetchone() or {}
+    competitor_records = int(row.get("competitor_records") or 0)
+    if competitor_records <= 0:
+        return {
+            "skus_tracked": skus_tracked,
+            "competitor_records": None,
+            "shops_covered": None,
+            "avg_price_gap_pct": None,
+            "overpriced_skus": None,
+            "underpriced_skus": None,
+            "at_market_skus": None,
+            "data_freshness_hours": None,
+            "status": "not_connected",
+        }
+
+    freshness = row.get("data_freshness_hours")
+    return {
+        "skus_tracked": skus_tracked,
+        "competitor_records": competitor_records,
+        "shops_covered": int(row.get("shops_covered") or 0),
+        "avg_price_gap_pct": None,
+        "overpriced_skus": None,
+        "underpriced_skus": None,
+        "at_market_skus": None,
+        "data_freshness_hours": round(float(freshness), 1) if freshness is not None else None,
+        "status": "connected",
+    }
+
+
 @app.get("/evaluation/live-rds/metrics")
 def live_rds_evaluation_metrics() -> Response:
     from services.decision_intelligence.evaluation.live_rds_metrics import render_prometheus_metrics
@@ -1251,29 +1267,16 @@ def record_inventory_movement_route(sku_id: str, payload: InventoryMovementPaylo
 def patch_inventory_item_price(
     sku_id: str,
     payload: "PriceDecisionPayload",
-    background_tasks: BackgroundTasks,
     request: Request,
 ) -> dict[str, Any]:
     try:
-        result = patch_inventory_price(
+        return patch_inventory_price(
             sku_id,
             payload.retail_price_usd,
             payload.decision_type,
             payload.notes,
             tenant_id=_tenant_id_from_request(request),
         )
-        # Map clearance â†’ CLEAR, markdown â†’ MARKDOWN, hold â†’ HOLD
-        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
-        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
-        background_tasks.add_task(
-            _snapshot_in_background,
-            sku_id=sku_id,
-            decision_type=decision_upper,
-            recommendation_id=payload.recommendation_id,
-            cost_price_usd=payload.cost_price_usd,
-            tenant_id=_tenant_id_from_request(request),
-        )
-        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {sku_id}") from exc
     except DatabaseUnavailable as exc:
@@ -1283,176 +1286,19 @@ def patch_inventory_item_price(
 @app.post("/decisions")
 def record_decision_route(
     payload: "RetailerDecisionPayload",
-    background_tasks: BackgroundTasks,
     request: Request,
 ) -> dict[str, Any]:
     try:
-        result = record_retailer_decision(
+        return record_retailer_decision(
             payload.sku_id,
             payload.decision_type,
             payload.notes,
             tenant_id=_tenant_id_from_request(request),
         )
-        _decision_map = {"clearance": "CLEAR", "markdown": "MARKDOWN", "hold": "HOLD", "promote": "PROMOTE"}
-        decision_upper = _decision_map.get(payload.decision_type, payload.decision_type.upper())
-        background_tasks.add_task(
-            _snapshot_in_background,
-            sku_id=payload.sku_id,
-            decision_type=decision_upper,
-            recommendation_id=payload.recommendation_id,
-            cost_price_usd=payload.cost_price_usd,
-            tenant_id=_tenant_id_from_request(request),
-        )
-        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"SKU not found: {payload.sku_id}") from exc
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _snapshot_in_background(
-    sku_id: str,
-    decision_type: str,
-    recommendation_id: str | None,
-    cost_price_usd: float,
-    tenant_id: str,
-) -> None:
-    try:
-        variant_id = get_variant_id_for_sku(sku_id, tenant_id=tenant_id)
-        if not variant_id:
-            return
-        from eep.outcome_tracking import snapshot_decision
-        snapshot_decision(
-            sku_id=sku_id,
-            variant_id=variant_id,
-            decision_type=decision_type,
-            recommendation_id=recommendation_id,
-            cost_price_usd=cost_price_usd,
-            tenant_id=tenant_id,
-        )
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).error("Background snapshot failed for %s: %s", sku_id, exc)
-
-
-# â”€â”€â”€ Outcome Tracking Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-@app.post("/outcomes/snapshot")
-def create_outcome_snapshot(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    background_tasks: BackgroundTasks = None,
-) -> dict[str, Any]:
-    """Manually trigger a snapshot for a given variant_id + decision_type."""
-    from eep.outcome_tracking import snapshot_decision
-    variant_id = payload.get("variant_id")
-    sku_id = payload.get("sku_id", "")
-    decision_type = (payload.get("decision_type") or "").upper()
-    if not variant_id or not decision_type:
-        raise HTTPException(status_code=400, detail="variant_id and decision_type are required")
-    tenant_id = _tenant_id_from_request(request)
-    try:
-        snapshot_id = snapshot_decision(
-            sku_id=sku_id,
-            variant_id=variant_id,
-            decision_type=decision_type,
-            recommendation_id=payload.get("recommendation_id"),
-            cost_price_usd=float(payload.get("cost_price_usd") or 0),
-            tenant_id=tenant_id,
-        )
-        return {"snapshot_id": snapshot_id, "ok": snapshot_id is not None}
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.get("/outcomes")
-def list_all_outcomes(
-    request: Request,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-) -> list[dict[str, Any]]:
-    """Return all outcome snapshots for the authenticated tenant with product info joined."""
-    from eep.outcome_tracking import get_all_outcomes
-    try:
-        return get_all_outcomes(
-            tenant_id=_tenant_id_from_request(request),
-            limit=limit,
-            offset=offset,
-        )
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.post("/outcomes/measure-all-due")
-def measure_all_due_route(request: Request) -> dict[str, Any]:
-    """Measure all due snapshots for the authenticated tenant in one call."""
-    from eep.outcome_tracking import measure_all_due
-    try:
-        return measure_all_due(tenant_id=_tenant_id_from_request(request))
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/outcomes/by-sku/{sku_id}")
-def get_outcomes_by_sku(sku_id: str, request: Request) -> list[dict[str, Any]]:
-    """Return outcome snapshots for a sku_id (resolves variant_id internally)."""
-    from eep.outcome_tracking import get_outcomes_for_sku
-    try:
-        tenant_id = _tenant_id_from_request(request)
-        variant_id = get_variant_id_for_sku(sku_id, tenant_id=tenant_id)
-        if not variant_id:
-            return []
-        return get_outcomes_for_sku(variant_id, tenant_id=tenant_id)
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/outcomes/{variant_id}")
-def get_outcomes(variant_id: str, request: Request) -> list[dict[str, Any]]:
-    """Return all outcome snapshots + measurements for a variant."""
-    from eep.outcome_tracking import get_outcomes_for_sku
-    try:
-        return get_outcomes_for_sku(variant_id, tenant_id=_tenant_id_from_request(request))
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.post("/outcomes/{snapshot_id}/measure")
-def trigger_measurement(snapshot_id: int, payload: "OutcomeMeasurePayload", request: Request) -> dict[str, Any]:
-    """Trigger a measurement for a snapshot (7 or 14 day window)."""
-    from eep.outcome_tracking import measure_outcome
-    try:
-        return measure_outcome(snapshot_id, payload.window_days, tenant_id=_tenant_id_from_request(request))
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/outcomes/{snapshot_id}/daily-series")
-def get_daily_series(snapshot_id: int, request: Request) -> list[dict[str, Any]]:
-    """Return daily sales series for velocity timeline chart (7d before + 14d after)."""
-    from eep.outcome_tracking import get_daily_series
-    try:
-        return get_daily_series(snapshot_id, tenant_id=_tenant_id_from_request(request))
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/outcomes/portfolio/accuracy")
-def portfolio_accuracy(
-    request: Request,
-    decision_type: str | None = Query(default=None),
-) -> dict[str, Any]:
-    """Aggregate accuracy stats across all completed measurements."""
-    from eep.outcome_tracking import get_accuracy
-    try:
-        return get_accuracy(decision_type, tenant_id=_tenant_id_from_request(request))
-    except DatabaseUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
 
 @app.delete("/inventory/items/{sku_id}")
 def archive_inventory_item_route(sku_id: str, request: Request) -> dict[str, Any]:
@@ -2320,6 +2166,7 @@ def report_live(request: Request) -> dict[str, Any]:
                     str(r["sku_id"])
                     for r in (cur.fetchall() or [])
                 }
+                market_overview = _tenant_competitor_market_overview(cur, tenant_id, len(sku_rows))
 
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -2549,16 +2396,7 @@ def report_live(request: Request) -> dict[str, Any]:
             "alerts": [],
         },
         "competitor": {
-            "market_overview": {
-                "skus_tracked": len(inventory_skus),
-                "competitor_records": 0,
-                "shops_covered": 0,
-                "avg_price_gap_pct": 0.0,
-                "overpriced_skus": 0,
-                "underpriced_skus": 0,
-                "at_market_skus": len(inventory_skus),
-                "data_freshness_hours": 0.0,
-            },
+            "market_overview": market_overview,
             "sku_positioning": [],
             "brand_summary": {},
             "category_summary": {},

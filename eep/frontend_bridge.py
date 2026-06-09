@@ -725,18 +725,23 @@ def build_competitor_latest(limit: int = 50) -> list[dict[str, Any]]:
         (limit,),
     )
     if database_rows is not None:
+        def _price_usd(row: dict[str, Any]) -> float:
+            if "competitor_price" in row:
+                return effective_competitor_price_usd(
+                    row.get("competitor_price"),
+                    row.get("competitor_sale_price"),
+                    row.get("currency"),
+                    row.get("is_on_sale"),
+                ) or 0.0
+            return _to_float(row.get("price_usd"), 0.0)
+
         return [
             {
                 "shop": row["shop_code"],
                 "external_id": row["competitor_product_id"] or row["product_key"],
                 "product_name": row["product_name"],
                 "brand": row["brand_name"] or "Unknown",
-                "price_usd": effective_competitor_price_usd(
-                    row["competitor_price"],
-                    row["competitor_sale_price"],
-                    row["currency"],
-                    row["is_on_sale"],
-                ) or 0.0,
+                "price_usd": _price_usd(row),
                 "on_sale": bool(row["is_on_sale"]),
                 "in_stock": str(row["availability"] or "").lower() == "in_stock",
                 "url": row["source_url"] or "",

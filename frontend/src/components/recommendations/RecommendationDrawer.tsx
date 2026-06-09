@@ -2,13 +2,13 @@ import { useMemo, useState } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import type { SkuAnalysis, IE2Result } from '@/types/domain';
 import { useQuery } from '@tanstack/react-query';
-import { recommend, fetchPortfolioAccuracy } from '@/lib/adapter';
+import { recommend } from '@/lib/adapter';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtDos, fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
-import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity, Target } from 'lucide-react';
+import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,7 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
   const { data: report } = useReport();
   const tenantScope = useTenantScopeKey();
   const [discount, setDiscount] = useState(15);
-  const isLive = mode === 'eep-live';
+  void mode;
 
   const { data: liveIe2 } = useQuery({
     queryKey: ['ie2', tenantScope, sku?.sku_id],
@@ -43,13 +43,6 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
       }),
   });
   const ie2 = systemDecision ?? liveIe2;
-
-  const { data: accuracy } = useQuery({
-    queryKey: ['portfolio-accuracy', tenantScope, ie2?.recommendation],
-    queryFn: () => fetchPortfolioAccuracy(ie2?.recommendation),
-    enabled: isLive && !!ie2?.recommendation,
-    staleTime: 5 * 60_000,
-  });
 
   const promo = useMemo(() => sku && report ? report.promotions.promote.find((p) => p.sku_id === sku.sku_id) : null, [sku, report]);
   const status = sku ? recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status || 'pending' : 'pending';
@@ -172,7 +165,10 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
                           <SignalCell label="Cheapest" value={ie2.competitor_signals_used.cheapest_competitor_name || 'unknown'} />
                           <SignalCell label="Min price" value={fmtUSD(ie2.competitor_signals_used.competitor_min_price, { decimals: 2 })} />
                           <SignalCell label="Price gap" value={fmtPct(ie2.competitor_signals_used.price_gap_pct * 100, 1)} />
-                          <SignalCell label="Freshness" value={`${ie2.competitor_signals_used.data_freshness_hours}h`} />
+                          <SignalCell
+                            label="Freshness"
+                            value={ie2.competitor_signals_used.fallback_used ? 'N/A' : `${ie2.competitor_signals_used.data_freshness_hours}h`}
+                          />
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
                           <SignalCell label="Matches" value={`${ie2.competitor_signals_used.num_competitors_tracked}`} />
@@ -226,22 +222,6 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
                 </div>
               )}
             </div>
-
-            {/* Portfolio accuracy signal */}
-            {isLive && accuracy && accuracy.decision_count >= 3 && ie2 && (
-              <div className="mx-4 mb-3 flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-500/5 border border-indigo-500/15 text-[11.5px]">
-                <Target className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
-                <span className="text-muted-foreground">Past accuracy for</span>
-                <span className="font-semibold text-indigo-300">{ie2.recommendation}</span>
-                <span className="text-muted-foreground">decisions:</span>
-                <span className="font-bold text-indigo-400 ml-0.5">
-                  {accuracy.by_type[ie2.recommendation] != null
-                    ? `${accuracy.by_type[ie2.recommendation]}%`
-                    : `${accuracy.avg_accuracy ?? '—'}%`}
-                </span>
-                <span className="text-muted-foreground ml-auto">({accuracy.decision_count} tracked)</span>
-              </div>
-            )}
 
             {/* Sticky actions */}
             <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur p-4 flex items-center gap-2">

@@ -29,9 +29,6 @@ import type {
   CampaignCreative,
   CompetitorRequest,
   CompetitorOption,
-  OutcomeSnapshot,
-  DailySalesPoint,
-  PortfolioAccuracy,
   ShopProfile,
   ShopProfileInput,
   ShopSignupInput,
@@ -762,7 +759,7 @@ function defaultCompetitorSignals(skuId: string) {
     num_competitors_tracked: 0,
     cheapest_competitor_name: 'none',
     price_trend_direction: 'flat' as const,
-    data_freshness_hours: 0,
+    data_freshness_hours: Number.NaN,
     confidence_score: 0,
     fallback_used: true,
     fallback_reason: 'No live competitor signal provided.',
@@ -797,73 +794,6 @@ async function apiError(response: Response, label: string) {
   } catch {
     return `${label} ${response.status}: ${response.statusText}`;
   }
-}
-
-// ─── Outcome Tracking ─────────────────────────────────────────────────────────
-
-export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes/${encodeURIComponent(variantId)}`, { headers: apiHeaders() });
-  if (r.status === 503) return [];
-  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${variantId}`));
-  return r.json();
-}
-
-export async function fetchOutcomesBySku(skuId: string): Promise<OutcomeSnapshot[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes/by-sku/${encodeURIComponent(skuId)}`, { headers: apiHeaders() });
-  if (r.status === 503) return [];
-  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/by-sku/${skuId}`));
-  return r.json();
-}
-
-export async function triggerMeasurement(
-  snapshotId: number,
-  windowDays: 7 | 14,
-): Promise<unknown> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes/${snapshotId}/measure`, {
-    method: 'POST',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ window_days: windowDays }),
-  });
-  if (!r.ok) throw new Error(await apiError(r, `EEP POST /outcomes/${snapshotId}/measure`));
-  return r.json();
-}
-
-export async function fetchDailySeries(snapshotId: number): Promise<DailySalesPoint[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes/${snapshotId}/daily-series`, { headers: apiHeaders() });
-  if (r.status === 503) return [];
-  if (!r.ok) throw new Error(await apiError(r, `EEP /outcomes/${snapshotId}/daily-series`));
-  return r.json();
-}
-
-export async function fetchPortfolioAccuracy(decisionType?: string): Promise<PortfolioAccuracy> {
-  const { base } = settings();
-  const params = decisionType ? `?decision_type=${encodeURIComponent(decisionType)}` : '';
-  const r = await fetch(`${base}/outcomes/portfolio/accuracy${params}`, { headers: apiHeaders() });
-  if (r.status === 503) return { avg_accuracy: null, decision_count: 0, by_type: {} };
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /outcomes/portfolio/accuracy'));
-  return r.json();
-}
-
-export async function fetchAllOutcomes(limit = 50, offset = 0): Promise<import('@/types/domain').OutcomeRow[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes?limit=${limit}&offset=${offset}`, { headers: apiHeaders() });
-  if (r.status === 503) return [];
-  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /outcomes'));
-  return r.json();
-}
-
-export async function measureAllDue(): Promise<{ measured: number; skipped: number; errors: number; results: unknown[] }> {
-  const { base } = settings();
-  const r = await fetch(`${base}/outcomes/measure-all-due`, {
-    method: 'POST',
-    headers: apiHeaders(),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP POST /outcomes/measure-all-due'));
-  return r.json();
 }
 
 // Admin Platform Operations ────────────────────────────────────────────────

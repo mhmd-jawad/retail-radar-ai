@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import {
   Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone,
   ListChecks, ChevronLeft, ChevronRight, Database,
-  CircleDot, Pause, TrendingUp, Tag, Flame, Target, Wallet,
+  CircleDot, Pause, TrendingUp, Tag, Flame, Wallet,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
 import { cn } from '@/lib/utils';
@@ -300,7 +300,6 @@ export default function Landing() {
                 { to: '/inventory', icon: Boxes, title: 'Inventory & Stock', desc: 'Add SKUs, bulk import inventory, and track stock health.' },
                 { to: '/promotions', icon: Megaphone, title: 'Promotions & Campaigns', desc: 'Markdown ladders and creative previews.' },
                 { to: '/financial', icon: Wallet, title: 'Financial Health', desc: 'Cash runway, liquidity, OPEX coverage.' },
-                { to: '/closed-loop', icon: Target, title: 'Closed Loop', desc: 'Track approved decisions and measure real pricing outcomes.' },
               ].map((m, i) => (
                 <Link key={m.to} to={m.to} className="group glass rounded-2xl p-7 hover-glow animate-fade-in-up flex items-start gap-5" style={{ animationDelay: `${i * 70}ms` }}>
                   <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-data flex items-center justify-center shadow-glow-sm">

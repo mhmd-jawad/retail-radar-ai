@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, Boxes, Radar, Megaphone,
-  Target, TrendingUp,
+  TrendingUp, Bot,
   User, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ const sections: { label: string; items: { to: string; label: string; icon: any; 
     items: [
       { to: '/overview', label: 'Overview', icon: LayoutDashboard },
       { to: '/queue', label: 'Recommendations', icon: ListChecks, badge: 'queue' },
-      { to: '/closed-loop', label: 'Closed Loop', icon: Target },
+      { to: '/assistant', label: 'Radar Assistant', icon: Bot },
     ],
   },
   {

@@ -6,7 +6,7 @@ import { PageSkeleton } from '@/components/shared/Skeleton';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtDos, fmtUSD, fmtPct, fmtNum, isUnknownDos, relativeTime } from '@/lib/format';
 import {
-  Boxes, Radar, DollarSign, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database, Target,
+  Boxes, Radar, DollarSign, AlertTriangle, TrendingUp, Calendar, ArrowRight, Database,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -21,6 +21,17 @@ const decisionGradients: Record<Decision, string> = {
   MARKDOWN: 'bg-gradient-markdown',
   CLEAR: 'bg-gradient-clear',
 };
+
+function fmtNullableNum(value: number | null | undefined) {
+  return value == null ? 'N/A' : fmtNum(value);
+}
+
+function competitorHint(records: number | null, shops: number | null, freshness: number | null) {
+  if (records == null || shops == null || freshness == null) {
+    return 'Competitor feed not connected';
+  }
+  return `${fmtNum(shops)} shops · ${freshness}h freshness`;
+}
 
 export default function Overview() {
   const { data: report, isLoading } = useReport();
@@ -95,9 +106,6 @@ export default function Overview() {
                 <Link to="/queue" className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-primary-glow text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition shadow-glow">
                   Open recommendations queue
                 </Link>
-                <Link to="/closed-loop" className="inline-flex items-center gap-2 h-10 px-4 rounded-md border border-panel-border text-panel-foreground text-[13px] font-medium hover:bg-white/5 transition">
-                  Closed-loop results
-                </Link>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -121,12 +129,16 @@ export default function Overview() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Inventory @ Cost" icon={Boxes} value={fmtUSD(inventory.metrics.inventory_value_at_cost_usd, { compact: true })}
             hint={`${fmtNum(inventory.metrics.total_units)} units · ${medianDosHint}`} />
-          <KpiCard label="Competitor Records" icon={Radar} variant="data" value={fmtNum(competitor.market_overview.competitor_records)}
-            hint={`${competitor.market_overview.shops_covered} shops · ${competitor.market_overview.data_freshness_hours}h freshness`} />
+          <KpiCard label="Competitor Records" icon={Radar} variant="data" value={fmtNullableNum(competitor.market_overview.competitor_records)}
+            hint={competitorHint(
+              competitor.market_overview.competitor_records,
+              competitor.market_overview.shops_covered,
+              competitor.market_overview.data_freshness_hours,
+            )} />
           <KpiCard label="Blended Margin" icon={TrendingUp} variant="success" value={fmtPct(inventory.metrics.blended_margin_pct)}
-            hint="Healthy band ≥ 45%" trend={{ value: '+0.6pp', direction: 'up' }} />
-          <KpiCard label="Closed Loop" icon={Target} variant="data" value="7d / 14d"
-            hint="Track decision lift, revenue delta, and accuracy" />
+            hint="Healthy band ≥ 45%" />
+          <KpiCard label="Actionable Queue" icon={DollarSign} variant="data" value={fmtNum(actionableCount)}
+            hint="PROMOTE / MARKDOWN / CLEAR signals awaiting review" />
         </div>
 
         {/* Decision distribution + Directives */}

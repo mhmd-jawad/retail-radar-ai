@@ -1,5 +1,5 @@
-﻿"""
-Telegram AI Assistant â€” LLM-orchestrated conversation engine.
+"""
+Telegram AI Assistant — LLM-orchestrated conversation engine.
 Port: 8004
 
 Run:
@@ -30,11 +30,6 @@ from psycopg.rows import dict_row
 from eep.auth_db import AuthError, authenticate_token, token_from_authorization
 from services.telegram_assistant.ai_engine import AIEngine
 from services.telegram_assistant.business_data_service import BusinessDataService
-from services.telegram_assistant.outcome_tracking import (
-    due_progress_notifications,
-    ensure_closed_loop_tables,
-    mark_progress_notification_sent,
-)
 from services.telegram_assistant.conversation_store import (
     DEFAULT_DATABASE_URL,
     ConversationManager,
@@ -45,7 +40,7 @@ from services.telegram_assistant.telegram_client import TelegramClient
 from services.telegram_assistant.alert_dispatcher import AlertDispatcher, ensure_alert_tables
 from services.telegram_assistant.recommendation_roadmap import ensure_roadmap_tables, roadmap_followup_loop
 
-# â”€â”€ Load .env â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Load .env ─────────────────────────────────────────────────────────────────
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -63,7 +58,7 @@ def _env_enabled(name: str, default: bool = False) -> bool:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
-# â”€â”€ Required env vars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Required env vars ─────────────────────────────────────────────────────────
 _REQUIRED_ENV_VARS: list[tuple[str, str]] = [
     ("ANTHROPIC_API_KEY",   "Anthropic API key for the LLM agent"),
     ("DATABASE_URL",        "PostgreSQL connection string"),
@@ -76,7 +71,7 @@ def _validate_env_vars() -> None:
     if missing:
         lines = "\n".join(f"  {k}: {desc}" for k, desc in missing)
         raise RuntimeError(
-            f"Service cannot start â€” missing required environment variables:\n{lines}\n"
+            f"Service cannot start — missing required environment variables:\n{lines}\n"
             "Set them in .env or your deployment config."
         )
     _polling_enabled = os.environ.get("TELEGRAM_POLLING_ENABLED", "true").strip().lower()
@@ -87,12 +82,12 @@ def _validate_env_vars() -> None:
         logger.warning("TELEGRAM_BOT_TOKEN is not set - Telegram polling will stay disabled.")
     if not _webhook_secret:
         logger.warning(
-            "TELEGRAM_WEBHOOK_SECRET is not set â€” webhook secret verification is DISABLED. "
+            "TELEGRAM_WEBHOOK_SECRET is not set — webhook secret verification is DISABLED. "
             "Set it before enabling the public Telegram webhook."
         )
 
 
-# â”€â”€ Prometheus metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Prometheus metrics ────────────────────────────────────────────────────────
 telegram_inbound_messages_total = Counter(
     "telegram_inbound_messages_total",
     "Inbound Telegram text messages received by the assistant",
@@ -135,7 +130,7 @@ radar_inventory_value_usd = Gauge(
     "Inventory value at cost visible to the assistant",
 )
 
-# â”€â”€ Module-level singletons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Module-level singletons ───────────────────────────────────────────────────
 _telegram_client: TelegramClient | None = None
 # Per-request override so per-tenant webhook responses use the right bot token
 _active_telegram_client: contextvars.ContextVar[TelegramClient | None] = contextvars.ContextVar(
@@ -149,7 +144,7 @@ _db_url: str = ""                                  # set once at startup, read o
 _background_tasks: list[asyncio.Task[Any]] = []    # tracked so lifespan can cancel cleanly
 _start_time: float = time.time()                   # service start timestamp for /status
 
-# â”€â”€ Rate limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Rate limiting ─────────────────────────────────────────────────────────────
 _RATE_LIMIT_MAX = 20       # messages per minute per chat_id
 _rate_limit_windows: dict[str, collections.deque] = {}
 
@@ -165,7 +160,7 @@ def _is_rate_limited(chat_id: str) -> bool:
     return False
 
 
-# â”€â”€ Webhook security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Webhook security ──────────────────────────────────────────────────────────
 
 def _verify_telegram_secret(request: Request) -> None:
     """Verify X-Telegram-Bot-Api-Secret-Token header if TELEGRAM_WEBHOOK_SECRET is configured."""
@@ -174,11 +169,11 @@ def _verify_telegram_secret(request: Request) -> None:
         return
     token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
     if token != secret:
-        logger.warning("Webhook secret mismatch â€” possible spoofed request")
+        logger.warning("Webhook secret mismatch — possible spoofed request")
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
 
-# â”€â”€ Tenant resolution helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Tenant resolution helpers ─────────────────────────────────────────────────
 
 async def _resolve_tenant_for_chat(chat_id: str) -> tuple[UUID | None, str, str]:
     """Return (tenant_id, role, shop_name) for a registered chat, or (None, '', '') if not registered."""
@@ -241,7 +236,7 @@ async def _get_all_active_tenant_chats() -> list[dict]:
 
 
 async def _handle_register_command(chat_id: str, code: str) -> None:
-    """Process /register <code> â€” bind chat_id to a tenant via a one-time registration code."""
+    """Process /register <code> — bind chat_id to a tenant via a one-time registration code."""
     conn = await psycopg.AsyncConnection.connect(_db_url, row_factory=dict_row)
     try:
         async with conn.cursor() as cur:
@@ -260,7 +255,7 @@ async def _handle_register_command(chat_id: str, code: str) -> None:
         if not row:
             await _send_and_count(
                 chat_id,
-                "âŒ Invalid or expired registration code. Please generate a new one from your dashboard.",
+                "❌ Invalid or expired registration code. Please generate a new one from your dashboard.",
             )
             return
 
@@ -287,43 +282,40 @@ async def _handle_register_command(chat_id: str, code: str) -> None:
 
         await _send_and_count(
             chat_id,
-            f"âœ… You're connected to *{business_name}* as *owner*.\n\n"
+            f"✅ You're connected to *{business_name}* as *owner*.\n\n"
             "*Three things to try first:*\n"
-            "â€¢ \"How is my inventory?\" â€” stock overview\n"
-            "â€¢ \"Show me pending recommendations\" â€” AI decisions waiting for your call\n"
-            "â€¢ \"What should I do today?\" â€” prioritized action list\n\n"
+            "• \"How is my inventory?\" — stock overview\n"
+            "• \"Show me pending recommendations\" — AI decisions waiting for your call\n"
+            "• \"What should I do today?\" — prioritized action list\n\n"
             "Type /help for the full list of what I can do.",
         )
         logger.info("Registered chat_id=%s for tenant_id=%s", chat_id, tenant_id)
     except Exception as exc:
         logger.error("Register command failed for chat_id=%s: %s", chat_id, exc)
-        await _send_and_count(chat_id, "Registration failed â€” please try again.")
+        await _send_and_count(chat_id, "Registration failed — please try again.")
     finally:
         await conn.close()
 
 
 _HELP_TEXT = """\
-ðŸ“– *What I can do for you:*
+📖 *What I can do for you:*
 
-*ðŸ·ï¸ Pricing & Competitors*
-â€¢ "What are competitors charging?" â€” price gaps vs 7 Lebanese retailers
-â€¢ "Which category is doing best?" â€” sales performance by category
+*🏷️ Pricing & Competitors*
+• "What are competitors charging?" — price gaps vs 7 Lebanese retailers
+• "Which category is doing best?" — sales performance by category
 
-*ðŸ¤– AI Decisions*
-â€¢ "Show me pending recommendations" â€” awaiting your approval
-â€¢ "Approve" / "Reject" / "Modify 20% instead" â€” act on a recommendation
-â€¢ "Show all active decisions" â€” full lifecycle roadmap
-â€¢ "What should I do today?" â€” priority action list
+*🤖 AI Decisions*
+• "Show me pending recommendations" — awaiting your approval
+• "Approve" / "Reject" / "Modify 20% instead" — act on a recommendation
+• "Show all active decisions" — full lifecycle roadmap
+• "What should I do today?" — priority action list
 
-*ðŸ“Š Outcome Tracking*
-â€¢ "How did my last decisions perform?" â€” 7-day and 14-day results
+*⚙️ Commands*
+• /help — this menu
+• /status — service health check
+• /unregister — disconnect this chat from your store
 
-*âš™ï¸ Commands*
-â€¢ /help â€” this menu
-â€¢ /status â€” service health check
-â€¢ /unregister â€” disconnect this chat from your store
-
-_Ask in plain English or Arabic â€” I understand both._"""
+_Ask in plain English or Arabic — I understand both._"""
 
 
 async def _handle_help_command(chat_id: str) -> None:
@@ -350,12 +342,12 @@ async def _handle_status_command(chat_id: str) -> None:
     webhook_secured = bool(os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip())
 
     lines = [
-        "âš™ï¸ *Radar AI â€” Service Status*\n",
-        f"â€¢ Database: {'âœ… connected' if db_ok else 'âŒ unreachable'}",
-        f"â€¢ AI engine: {'âœ… configured' if ai_ok else 'âŒ not configured'}",
-        f"â€¢ Webhook secret: {'âœ… enforced' if webhook_secured else 'âš ï¸ not set (dev mode)'}",
-        f"â€¢ Uptime: {uptime_str}",
-        "\n_Pollers: promote/5 min Â· alerts/30 min Â· roadmap/60 min Â· outcomes/15 min_",
+        "⚙️ *Radar AI — Service Status*\n",
+        f"• Database: {'✅ connected' if db_ok else '❌ unreachable'}",
+        f"• AI engine: {'✅ configured' if ai_ok else '❌ not configured'}",
+        f"• Webhook secret: {'✅ enforced' if webhook_secured else '⚠️ not set (dev mode)'}",
+        f"• Uptime: {uptime_str}",
+        "\n_Pollers: promote/5 min · alerts/30 min · roadmap/60 min_",
     ]
     await _send_and_count(chat_id, "\n".join(lines))
 
@@ -364,7 +356,7 @@ _pending_unregister: set[str] = set()
 
 
 async def _handle_unregister_command(chat_id: str, args: str) -> None:
-    """Handle /unregister â€” requires /unregister YES to confirm."""
+    """Handle /unregister — requires /unregister YES to confirm."""
     if args.strip().upper() == "YES":
         if chat_id not in _pending_unregister:
             await _send_and_count(
@@ -383,13 +375,13 @@ async def _handle_unregister_command(chat_id: str, args: str) -> None:
             await conn.commit()
         except Exception as exc:
             logger.error("Unregister failed for chat_id=%s: %s", chat_id, exc)
-            await _send_and_count(chat_id, "Failed to unregister â€” please try again.")
+            await _send_and_count(chat_id, "Failed to unregister — please try again.")
             return
         finally:
             await conn.close()
         await _send_and_count(
             chat_id,
-            "âœ… This chat has been disconnected from Radar AI.\n\n"
+            "✅ This chat has been disconnected from Radar AI.\n\n"
             "You will no longer receive alerts or recommendations here. "
             "Use /register <code> to reconnect.",
         )
@@ -397,13 +389,13 @@ async def _handle_unregister_command(chat_id: str, args: str) -> None:
         _pending_unregister.add(chat_id)
         await _send_and_count(
             chat_id,
-            "âš ï¸ *Are you sure you want to disconnect?*\n\n"
-            "You will stop receiving all alerts, recommendations, and outcome reports on this chat.\n\n"
+            "⚠️ *Are you sure you want to disconnect?*\n\n"
+            "You will stop receiving all alerts and recommendations on this chat.\n\n"
             "Send /unregister YES to confirm, or send any other message to cancel.",
         )
 
 
-# â”€â”€ Deduplication helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Deduplication helpers ─────────────────────────────────────────────────────
 
 async def _is_duplicate(db_url: str, tenant_id: UUID, message_id: str) -> bool:
     """Return True if this (tenant, message_id) was already processed."""
@@ -442,7 +434,7 @@ async def _mark_processed(db_url: str, tenant_id: UUID, message_id: str) -> None
         await conn.close()
 
 
-# â”€â”€ Send helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Send helper ───────────────────────────────────────────────────────────────
 
 async def _send_and_count(chat_id: str, reply: str) -> None:
     client = _active_telegram_client.get() or _telegram_client
@@ -456,106 +448,7 @@ async def _send_and_count(chat_id: str, reply: str) -> None:
         raise
 
 
-# â”€â”€ Background pollers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-def _build_outcome_notification(item: dict, measurement: dict | None) -> str:
-    """Build a rich Telegram notification for a completed outcome measurement."""
-    window_days = int(item.get("window_days", 7))
-    decision_type = item.get("decision_type", "")
-    brand = item.get("brand") or ""
-    product_name = item.get("product_name") or ""
-    sku_id = item.get("sku_id") or ""
-
-    if measurement and measurement.get("data_available"):
-        lift = measurement.get("velocity_lift_pct")
-        rev_delta = float(measurement.get("revenue_delta_usd") or 0)
-        accuracy = measurement.get("accuracy_score")
-        narrative = (measurement.get("narrative") or "").strip()
-
-        lift_val = float(lift) if lift is not None else None
-        if lift_val is not None and lift_val > 5:
-            verdict = "âœ… Good call"
-        elif lift_val is not None and lift_val < -5:
-            verdict = "âš ï¸ Below target"
-        else:
-            verdict = "âž¡ï¸ Neutral"
-
-        lift_str = f"{lift_val:+.1f}%" if lift_val is not None else "?"
-        acc_str = f"{float(accuracy) * 100:.0f}%" if accuracy is not None else "?"
-
-        lines = [
-            f"ðŸ“Š *{window_days}-Day Outcome â€” {verdict}*",
-            f"{decision_type} â€º {brand} {product_name} ({sku_id})\n",
-            f"â€¢ Velocity lift: *{lift_str}*",
-            f"â€¢ Revenue delta: *${rev_delta:+,.0f}*",
-            f"â€¢ Model accuracy: *{acc_str}*",
-        ]
-        if narrative:
-            lines.append(f"\n_{narrative[:300]}_")
-        lines.append("\nAsk *decision progress* for full analysis.")
-        return "\n".join(lines)
-
-    # No sales data available
-    return (
-        f"ðŸ“Š *{window_days}-Day Check â€” No Data*\n"
-        f"{decision_type} â€º {brand} {product_name} ({sku_id})\n\n"
-        "Insufficient sales data is available for this window. "
-        "Connect your POS feed to enable automatic outcome tracking.\n\n"
-        "Ask *decision progress* to see all tracked decisions."
-    )
-
-
-async def _closed_loop_notification_loop(db_url: str) -> None:
-    """Auto-measure due snapshots and notify registered retailers with rich results."""
-    while True:
-        await asyncio.sleep(int(os.environ.get("CLOSED_LOOP_POLL_SECONDS", "900")))
-        try:
-            tenant_chats = await _get_all_active_tenant_chats()
-            for tc in tenant_chats:
-                chat_id = tc["chat_id"]
-                tenant_id = tc["tenant_id"]
-                try:
-                    notifications = await due_progress_notifications(db_url, tenant_id, chat_id)
-                    for item in notifications:
-                        snapshot_id = int(item["snapshot_id"])
-                        window_days = int(item["window_days"])
-
-                        # Auto-measure before notifying
-                        measurement: dict | None = None
-                        try:
-                            def _do_measure(sid: int, wd: int, tid: Any) -> dict:
-                                from eep.outcome_tracking import measure_outcome
-                                return measure_outcome(sid, wd, tenant_id=tid)
-
-                            measurement = await asyncio.to_thread(_do_measure, snapshot_id, window_days, tenant_id)
-                        except Exception as exc:
-                            logger.warning(
-                                "Auto-measure snapshot %d failed: %s â€” will still notify",
-                                snapshot_id, exc,
-                            )
-
-                        message = _build_outcome_notification(item, measurement)
-
-                        try:
-                            await _send_and_count(chat_id, message)
-                            await mark_progress_notification_sent(
-                                db_url,
-                                tenant_id,
-                                chat_id,
-                                snapshot_id,
-                                window_days,
-                                message,
-                            )
-                            telegram_agent_tool_uses_total.labels(tool="closed_loop_notify").inc()
-                        except Exception as exc:
-                            logger.error("Closed-loop send to chat %s failed: %s", chat_id, exc)
-                except Exception as exc:
-                    logger.error("Closed-loop poll for tenant %s failed: %s", tenant_id, exc)
-        except Exception as exc:
-            logger.error("Closed-loop notification poll error: %s", exc, exc_info=True)
-
-
-# â”€â”€ App lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Background pollers ────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -583,13 +476,12 @@ async def lifespan(app: FastAPI):
         business_data_service=_business_data_service,
     )
 
-    # DB migrations â€” all idempotent
-    await ensure_closed_loop_tables(_db_url)
+    # DB migrations — all idempotent
     await ensure_conversation_tables(_db_url)
     await ensure_alert_tables(_db_url)
     await ensure_roadmap_tables(_db_url)
 
-    # Multi-tenant pollers â€” self-discover all registered tenants from DB on each cycle
+    # Multi-tenant pollers — self-discover all registered tenants from DB on each cycle
     direct_notifications_enabled = _env_enabled("TELEGRAM_DIRECT_ALERTS_ENABLED", False)
     _background_tasks = [
         asyncio.create_task(
@@ -601,11 +493,6 @@ async def lifespan(app: FastAPI):
         _background_tasks.append(asyncio.create_task(
             _multi_tenant_promote_loop(_promote_flow),
             name="promote_poller",
-        ))
-    if direct_notifications_enabled or _env_enabled("TELEGRAM_CLOSED_LOOP_NOTIFICATIONS_ENABLED", False):
-        _background_tasks.append(asyncio.create_task(
-            _closed_loop_notification_loop(_db_url),
-            name="closed_loop_poller",
         ))
     if direct_notifications_enabled or _env_enabled("TELEGRAM_BUSINESS_ALERTS_ENABLED", False):
         _background_tasks.append(asyncio.create_task(
@@ -633,7 +520,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Graceful shutdown â€” cancel background pollers and wait for them to finish
+    # Graceful shutdown — cancel background pollers and wait for them to finish
     for task in _background_tasks:
         task.cancel()
     if _background_tasks:
@@ -641,7 +528,7 @@ async def lifespan(app: FastAPI):
         logger.info("Background pollers stopped.")
 
 
-# â”€â”€ Multi-tenant poller wrappers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Multi-tenant poller wrappers ──────────────────────────────────────────────
 
 async def _multi_tenant_promote_loop(promote_flow: PromoteFlow) -> None:
     """Poll all registered tenants every 5 min for new recommendations and expiry warnings."""
@@ -675,7 +562,7 @@ async def _telegram_polling_loop() -> None:
         return
     if os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip():
         logger.warning(
-            "TELEGRAM_WEBHOOK_SECRET is set â€” polling disabled to prevent duplicate message processing. "
+            "TELEGRAM_WEBHOOK_SECRET is set — polling disabled to prevent duplicate message processing. "
             "Set TELEGRAM_POLLING_ENABLED=false to suppress this warning."
         )
         return
@@ -798,7 +685,7 @@ async def _multi_tenant_roadmap_loop(
         await asyncio.sleep(interval_seconds)
 
 
-# â”€â”€ App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Telegram AI Assistant",
     description="LLM-orchestrated Telegram Bot conversation engine.",
@@ -823,7 +710,7 @@ app.add_middleware(
 app.mount("/metrics", make_asgi_app())
 
 
-# â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
@@ -842,7 +729,7 @@ async def receive_webhook(request: Request):
     if _telegram_client is None or _ai_engine is None or _business_data_service is None:
         raise HTTPException(status_code=503, detail="Service not ready")
 
-    # â‘  Verify Telegram webhook secret
+    # ① Verify Telegram webhook secret
     _verify_telegram_secret(request)
     body = _json.loads(await request.body())
     return await _process_telegram_update(body)
@@ -928,16 +815,16 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         telegram_ignored_webhooks_total.inc()
         return {"ok": True}
 
-    # â‘¡ Validate message length (Telegram max = 4096 chars)
+    # ② Validate message length (Telegram max = 4096 chars)
     if len(inbound.text) > 4096:
-        logger.warning("Message from %s is %d chars â€” truncating", inbound.chat_id, len(inbound.text))
-        inbound = inbound.model_copy(update={"text": inbound.text[:4000] + "â€¦"})
+        logger.warning("Message from %s is %d chars — truncating", inbound.chat_id, len(inbound.text))
+        inbound = inbound.model_copy(update={"text": inbound.text[:4000] + "…"})
 
     started_at = time.perf_counter()
     telegram_inbound_messages_total.inc()
     chat_id = inbound.chat_id
 
-    # â‘¢ Handle commands that work before tenant resolution
+    # ③ Handle commands that work before tenant resolution
     cmd_text = inbound.text.strip()
     if cmd_text.startswith("/register"):
         parts = cmd_text.split(maxsplit=1)
@@ -957,12 +844,12 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         await _handle_unregister_command(chat_id, args)
         return {"ok": True}
 
-    # â‘£ Resolve which tenant owns this chat (also returns role)
+    # ④ Resolve which tenant owns this chat (also returns role)
     tenant_id, role, shop_name = await _resolve_tenant_for_chat(chat_id)
     if tenant_id is None:
         await _send_and_count(
             chat_id,
-            "ðŸ‘‹ Welcome to Radar AI!\n\n"
+            "👋 Welcome to Radar AI!\n\n"
             "To get started, send /register <code> using the registration code from your dashboard.\n\n"
             "Type /help to see what I can do once you're connected.",
         )
@@ -973,26 +860,26 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         await _handle_status_command(chat_id)
         return {"ok": True}
 
-    # â‘¤ Rate limiting â€” 20 messages per minute per chat
+    # ⑤ Rate limiting — 20 messages per minute per chat
     if _is_rate_limited(chat_id):
         await _send_and_count(
             chat_id,
-            "â³ Slow down â€” I'm still processing your last request. Please wait a moment.",
+            "⏳ Slow down — I'm still processing your last request. Please wait a moment.",
         )
         return {"ok": True}
 
     # Cancel pending unregister if user sends any other message
     _pending_unregister.discard(chat_id)
 
-    # â‘¥ Deduplicate â€” Telegram retries on timeout; prevent duplicate LLM calls
+    # ⑥ Deduplicate — Telegram retries on timeout; prevent duplicate LLM calls
     if await _is_duplicate(_db_url, tenant_id, inbound.message_id):
         telegram_duplicate_messages_total.inc()
-        logger.info("Duplicate message_id=%s from chat_id=%s â€” skipped", inbound.message_id, chat_id)
+        logger.info("Duplicate message_id=%s from chat_id=%s — skipped", inbound.message_id, chat_id)
         return {"ok": True}
 
     try:
         if _conv_manager is None:
-            logger.warning("No conversation manager â€” skipping")
+            logger.warning("No conversation manager — skipping")
             return {"ok": True}
 
         session = await _conv_manager.get_or_create_session(chat_id, tenant_id)
@@ -1002,7 +889,7 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
             radar_pending_recommendations.set(len(ctx.get("pending_recommendations") or []))
             radar_inventory_value_usd.set(float(ctx.get("total_inventory_value_usd") or 0))
 
-        # â‘¦ Single LLM entry point â€” Claude decides what tools to call and how to reply
+        # ⑦ Single LLM entry point — Claude decides what tools to call and how to reply
         reply, tools_used = await _ai_engine.chat(
             chat_id=chat_id,
             user_text=inbound.text,
@@ -1019,11 +906,11 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         await _conv_manager.append_message(chat_id, "user", inbound.text, tenant_id=tenant_id)
         await _conv_manager.append_message(chat_id, "assistant", reply, tenant_id=tenant_id)
         await _send_and_count(chat_id, reply)
-        # Mark processed only after a successful send â€” Telegram retries are safe until then
+        # Mark processed only after a successful send — Telegram retries are safe until then
         await _mark_processed(_db_url, tenant_id, inbound.message_id)
 
         telegram_response_latency_seconds.observe(time.perf_counter() - started_at)
-        logger.info("Replied to chat_id=%s â€” tools=%s chars=%d", chat_id, tools_used, len(reply))
+        logger.info("Replied to chat_id=%s — tools=%s chars=%d", chat_id, tools_used, len(reply))
 
     except Exception as exc:
         telegram_ai_errors_total.inc()
@@ -1032,7 +919,7 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
         try:
             await _send_and_count(
                 chat_id,
-                "âš ï¸ Something went wrong on my end â€” please try again in a moment.\n\n"
+                "⚠️ Something went wrong on my end — please try again in a moment.\n\n"
                 "If this keeps happening, type /status to check if all systems are up.",
             )
         except Exception:
@@ -1043,7 +930,7 @@ async def _process_telegram_update(body: dict[str, Any]) -> dict[str, bool]:
 
 @app.post("/chat")
 async def web_chat(request: Request):
-    """Web chat endpoint â€” used by the React dashboard to talk to the AI assistant."""
+    """Web chat endpoint — used by the React dashboard to talk to the AI assistant."""
     if _ai_engine is None or _conv_manager is None:
         raise HTTPException(status_code=503, detail="Service not ready")
 
@@ -1092,7 +979,7 @@ async def web_chat(request: Request):
     except Exception as exc:
         logger.error("Web chat error for tenant=%s: %s", tenant_id, exc, exc_info=True)
         telegram_ai_errors_total.inc()
-        raise HTTPException(status_code=500, detail="AI processing failed â€” please try again")
+        raise HTTPException(status_code=500, detail="AI processing failed — please try again")
 
 
 @app.post("/internal/promote-notify")

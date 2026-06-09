@@ -72,7 +72,7 @@ Translate the top 2–3 `model_signals` SHAP features into one plain-English sen
 Name the cheapest competitor and their exact price. Calculate the dollar gap, not just the percentage. State how many of your tracked competitors are currently on sale and how many are out of stock. Example: "KIX is your cheapest tracked competitor at $89 — you are $17 above them (16% gap). 3 of your 5 tracked shops are running sales right now. Mike Sport is out of stock — that is a live demand window you can capture."
 
 *4. WHAT HAPPENS IF YOU ACT (with the suggested numbers)*
-State: the new price after the suggested discount, the margin after discount and whether it clears the 35% floor, the number of units that need to sell to recover any margin given up, and what velocity lift past comparable decisions produced. If outcome data exists, cite it.
+State: the new price after the suggested discount, the margin after discount and whether it clears the 35% floor, and the number of units that need to sell to recover any margin given up.
 
 *5. WHAT HAPPENS IF YOU WAIT*
 Connect the risk to specific numbers and a time horizon. Example: "If you wait two more weeks you'll be at 108 days of supply — deep in dead-stock territory. KIX's current sale ends in roughly that window, which means you'd be discounting into a normalized market instead of riding the competitive pressure."
@@ -105,8 +105,7 @@ The owner uses you to compete and protect their capital. Every interaction shoul
 When asked "what should I focus on today?" — call get_next_actions and get_inventory_overview in parallel, then give a ranked list with the one highest-impact action first.
 
 ## RECOMMENDATION PIPELINE
-Every recommendation moves through a lifecycle:
-  🔍 Discovery → 💡 Ready → ⏳ Awaiting Approval → ✅ Approved → ⚙️ Executing → 📊 Monitoring → 📋 Reviewing → 🏁 Completed
+Every recommendation moves through a lifecycle: Discovery -> Ready -> Awaiting Approval -> Approved -> Executing -> Completed
 
 Use get_roadmap_summary for a pipeline overview.
 Use get_recommendation_detail for deep analysis of a specific recommendation — it includes live_inventory_now so you can compare what the data showed when the recommendation was generated vs right now.
@@ -121,13 +120,6 @@ The owner won't type formal commands. Understand intent:
 - "let's try 20% instead" → approve_recommendation with modified_discount_pct=20.0
 
 Before approving, confirm product name and discount once if anything is ambiguous.
-
-## OUTCOMES
-When reviewing completed items, connect what happened to what was predicted:
-- "Velocity lifted 34% vs the 20% projection — the promotion worked well."
-- "Revenue delta was $1,200 — model was 12% optimistic. Worth noting for next time."
-
-Use past outcomes to calibrate current recommendations when relevant.
 
 ## GROUND RULES
 - Never invent numbers. If a tool returns nothing, say so and suggest what to do next.
@@ -376,16 +368,11 @@ class AIEngine:
             "reject_recommendation": lambda inp: self._action_reject(
                 inp["recommendation_id"], inp["sku_id"], tenant_id, chat_id,
             ),
-            "get_decision_progress": lambda _: self._get_decision_progress(tenant_id),
             "get_roadmap_summary": lambda _: self._get_roadmap_summary(tenant_id),
             "get_recommendation_detail": _recommendation_detail,
             "get_next_actions": lambda _: self._get_next_actions(tenant_id),
             "get_financial_health": lambda _: self._bds.get_financial_health(tid),
         }
-
-    async def _get_decision_progress(self, tenant_id: UUID) -> Any:
-        from services.telegram_assistant.outcome_tracking import get_closed_loop_summary
-        return await get_closed_loop_summary(self._db_url, tenant_id)
 
     async def _get_roadmap_summary(self, tenant_id: UUID) -> Any:
         from services.telegram_assistant.recommendation_roadmap import get_roadmap_summary
@@ -498,15 +485,6 @@ class AIEngine:
                 campaign_status = f"failed: {exc}"
                 logger.error("IE3 campaign failed for sku=%s: %s", sku_id, exc)
 
-        from services.telegram_assistant.outcome_tracking import record_decision_snapshot
-        snapshot_id = await record_decision_snapshot(
-            sku_id=sku_id,
-            decision_type=rec_type,
-            recommendation_id=recommendation_id,
-            cost_price_usd=float(rec.get("cost_price_usd") or 0),
-            tenant_id=tenant_id,
-        )
-
         # Try to update notification outcome if a notification exists for this recommendation
         await _update_notification_outcome_if_exists(self._db_url, recommendation_id, "approved")
 
@@ -520,10 +498,6 @@ class AIEngine:
                 await advance_stage(self._db_url, roadmap_id, "approved", actor="retailer")
                 await advance_stage(self._db_url, roadmap_id, "executing", actor="system",
                                     notes="Campaign generation triggered via chat")
-                if snapshot_id:
-                    await advance_stage(self._db_url, roadmap_id, "monitoring", actor="system",
-                                        notes=f"Outcome tracking started — snapshot #{snapshot_id}",
-                                        extra_updates={"outcome_snapshot_id": snapshot_id})
         except Exception as exc:
             logger.warning("Roadmap advance on approve (agent) failed: %s", exc)
 
@@ -537,7 +511,6 @@ class AIEngine:
             "recommendation_type": rec_type,
             "discount_pct": discount_pct,
             "campaign_status": campaign_status,
-            "snapshot_id": snapshot_id,
         }
 
     async def _action_reject(

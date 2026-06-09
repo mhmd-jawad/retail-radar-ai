@@ -10,7 +10,6 @@ Alert categories:
   COMPETITOR — competitor sale started, competitor price undercut
 
 Approval/recommendation alerts are handled by promotion_approval_flow.py (poll every 5 min).
-Decision progress alerts are handled by outcome_tracking.py (poll every 15 min).
 """
 from __future__ import annotations
 

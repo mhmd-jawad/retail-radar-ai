@@ -22,8 +22,6 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
-from services.telegram_assistant.outcome_tracking import record_decision_snapshot
-
 if TYPE_CHECKING:
     from services.telegram_assistant.conversation_store import ConversationManager
     from services.telegram_assistant.telegram_client import TelegramClient
@@ -44,12 +42,12 @@ SKU: {sku_id}  |  Stock: *{current_stock} units*
 *What the AI suggests:*
 • Discount: *{suggested_discount}% off* → new price *${new_price:.2f}*
 • Confidence: *{confidence}%* {confidence_context}
-• Est. outcome: sell {units_low}–{units_high} units in 3 weeks, +${gross_profit:.0f} gross
+• Estimated campaign impact: sell {units_low}–{units_high} units in 3 weeks, +${gross_profit:.0f} gross
 
 *If you approve, Radar will:*
 1. Generate Instagram + Facebook ad copy and image
 2. Publish to your StylePulse social accounts
-3. Track results at 7 and 14 days
+3. Log your decision in the recommendation queue
 
 Reply:
 ✅ *APPROVE* — run it as suggested
@@ -176,7 +174,7 @@ class PromoteFlow:
         elif confidence >= 75:
             confidence_context = "(strong — inventory, price, and competitor signals converge)"
         elif confidence >= 60:
-            confidence_context = "(moderate — worth acting on with monitoring)"
+            confidence_context = "(moderate - worth reviewing carefully)"
         else:
             confidence_context = "(weak signal — review carefully before approving)"
 
@@ -436,28 +434,14 @@ class PromoteFlow:
         except Exception as exc:
             logger.warning("Roadmap advance on approve failed: %s", exc)
 
-        snapshot_id = await record_decision_snapshot(
-            sku_id=sku_id,
-            decision_type=recommendation,
-            recommendation_id=context.get("recommendation_id"),
-            cost_price_usd=float(context.get("cost_price") or 0),
-            tenant_id=context.get("tenant_id"),
-        )
         await self._update_notification_outcome(context["notification_id"], "approved")
         await self._conv.clear_flow(chat_id, tenant_id=context.get("tenant_id"))
 
-        tracking = (
-            f"Closed-loop tracking started: snapshot *#{snapshot_id}*.\n"
-            if snapshot_id
-            else "Closed-loop tracking could not start because baseline data was unavailable.\n"
-        )
         return (
-            "✅ *Campaign is live!*\n\n"
+            "Approved. Campaign is live.\n\n"
             "Instagram and Facebook posts published.\n"
-            f"{tracking}"
-            "I'll notify you at the 7-day and 14-day progress checks."
+            "Your approval has been logged in the recommendation queue."
         )
-
     # ── Modify ────────────────────────────────────────────────────────────────
 
     async def _handle_modify(

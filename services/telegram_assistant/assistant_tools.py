@@ -126,7 +126,7 @@ TOOLS: list[dict] = [
         "name": "approve_recommendation",
         "description": (
             "Approves a pending PROMOTE or MARKDOWN recommendation. Triggers campaign generation "
-            "for PROMOTE actions via IE3 and starts closed-loop outcome tracking. "
+            "for PROMOTE actions via IE3. "
             "Call this when the retailer confirms they want to proceed — natural phrases like "
             "'sounds good', 'do it', 'yalla', 'go ahead', 'yes run it', or 'ok approve'."
         ),
@@ -175,26 +175,12 @@ TOOLS: list[dict] = [
         },
     },
     {
-        "name": "get_decision_progress",
-        "description": (
-            "Returns closed-loop tracking summary: decisions being tracked, 7-day and 14-day "
-            "outcome measurements, velocity lifts, revenue deltas, and model accuracy. "
-            "Use for questions like 'how are my decisions performing?', 'did that promotion work?', "
-            "'show me campaign results'."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
         "name": "get_roadmap_summary",
         "description": (
             "Returns a management-level view of ALL active recommendation roadmaps — every "
             "recommendation's current lifecycle stage, reasoning, expected impact, modification "
-            "history, and outcome results. Groups by stage: awaiting approval, approved, executing, "
-            "monitoring, completed, blocked. "
+            "history, and current execution status. Groups by stage: awaiting approval, approved, "
+            "executing, completed, blocked. "
             "Use for questions like 'what is the status of our recommendations?', 'what is in the "
             "pipeline?', 'show me all active decisions', 'what stage is each recommendation at?', "
             "'give me a full progress report', 'what has been done and what is pending?'"
@@ -231,7 +217,7 @@ TOOLS: list[dict] = [
         "description": (
             "Returns a prioritised action list for management: what needs immediate attention, "
             "pending approvals, modified recommendations waiting re-approval, blocked items, "
-            "overdue performance reviews, and recently completed actions with outcomes. "
+            "and blocked recommendation work. "
             "Use for questions like 'what should I do today?', 'what is waiting for my approval?', "
             "'what needs my attention?', 'what should management focus on?', 'what is blocked?', "
             "'what are the next recommended actions?', 'give me a daily brief on decisions'."

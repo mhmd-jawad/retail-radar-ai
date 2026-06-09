@@ -500,13 +500,13 @@ def approve_recommendation(
     sku_id: str,
     modified_discount_pct: float | None = None,
 ) -> dict[str, Any]:
-    """Approve a pending recommendation and create an outcome tracking snapshot."""
+    """Approve a pending recommendation."""
     with _connect() as conn:
         with conn.cursor() as cur:
             # Verify ownership before updating
             cur.execute(
                 """
-                SELECT r.id, r.recommendation, r.suggested_discount_pct, sv.id AS variant_id
+                SELECT r.id, r.recommendation, r.suggested_discount_pct
                 FROM marketing.recommendations r
                 JOIN core.sku_variants sv ON sv.id = r.variant_id
                 WHERE r.id = %s::uuid AND r.tenant_id = %s::uuid AND sv.sku_id = %s
@@ -530,33 +530,12 @@ def approve_recommendation(
                 """,
                 (final_discount if modified_discount_pct is not None else None, recommendation_id),
             )
-
-            # Create outcome snapshot for closed-loop tracking
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO outcome_tracking.decision_snapshots
-                        (tenant_id, variant_id, decision_type, ie2_confidence, approved_at,
-                         check_7d_at, check_14d_at)
-                    SELECT %s::uuid, %s::uuid, %s,
-                           COALESCE(r.confidence, 0),
-                           NOW(),
-                           NOW() + interval '7 days',
-                           NOW() + interval '14 days'
-                    FROM marketing.recommendations r WHERE r.id = %s::uuid
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (tenant_id, str(row["variant_id"]), row["recommendation"], recommendation_id),
-                )
-            except Exception:
-                pass  # Outcome tracking is best-effort
-
     return {
         "status": "approved",
         "recommendation_id": recommendation_id,
         "sku_id": sku_id,
         "final_discount_pct": final_discount,
-        "message": f"Recommendation approved. Outcome will be measured at 7 and 14 days.",
+        "message": "Recommendation approved and logged.",
     }
 
 
@@ -591,87 +570,6 @@ def reject_recommendation(tenant_id: str, recommendation_id: str, sku_id: str) -
 
 
 # ── decision progress / outcome tracking ──────────────────────────────────────
-
-def get_decision_progress(tenant_id: str) -> dict[str, Any]:
-    """Closed-loop tracking: decisions being tracked, 7d/14d outcomes, revenue deltas."""
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    ds.id AS snapshot_id,
-                    ds.decision_type,
-                    ds.ie2_confidence,
-                    ds.approved_at,
-                    ds.check_7d_at,
-                    ds.check_14d_at,
-                    sv.sku_id,
-                    p.name AS product_name,
-                    p.brand,
-                    om7.accuracy_score  AS accuracy_7d,
-                    om7.revenue_delta_usd AS revenue_7d,
-                    om7.measured_at AS measured_7d_at,
-                    om14.accuracy_score AS accuracy_14d,
-                    om14.revenue_delta_usd AS revenue_14d,
-                    om14.measured_at AS measured_14d_at
-                FROM outcome_tracking.decision_snapshots ds
-                JOIN core.sku_variants sv ON sv.id = ds.variant_id
-                JOIN core.products p ON p.id = sv.product_id
-                LEFT JOIN outcome_tracking.outcome_measurements om7
-                    ON om7.snapshot_id = ds.id AND om7.window_days = 7
-                LEFT JOIN outcome_tracking.outcome_measurements om14
-                    ON om14.snapshot_id = ds.id AND om14.window_days = 14
-                WHERE ds.tenant_id = %s::uuid
-                ORDER BY ds.approved_at DESC
-                LIMIT 20
-                """,
-                (tenant_id,),
-            )
-            rows = cur.fetchall()
-
-    snapshots = []
-    for r in rows:
-        snapshots.append({
-            "snapshot_id": str(r["snapshot_id"]),
-            "decision_type": r["decision_type"],
-            "sku_id": r["sku_id"],
-            "product_name": r["product_name"],
-            "brand": r["brand"],
-            "ie2_confidence": _f(r["ie2_confidence"]),
-            "approved_at": r["approved_at"].isoformat() if r["approved_at"] else None,
-            "check_7d_at": r["check_7d_at"].isoformat() if r["check_7d_at"] else None,
-            "check_14d_at": r["check_14d_at"].isoformat() if r["check_14d_at"] else None,
-            "outcome_7d": {
-                "accuracy_score": _f(r["accuracy_7d"]),
-                "revenue_delta_usd": _f(r["revenue_7d"]),
-                "measured_at": r["measured_7d_at"].isoformat() if r["measured_7d_at"] else None,
-            } if r["accuracy_7d"] is not None else None,
-            "outcome_14d": {
-                "accuracy_score": _f(r["accuracy_14d"]),
-                "revenue_delta_usd": _f(r["revenue_14d"]),
-                "measured_at": r["measured_14d_at"].isoformat() if r["measured_14d_at"] else None,
-            } if r["accuracy_14d"] is not None else None,
-        })
-
-    total_revenue_impact = sum(
-        (_f(s["outcome_14d"]["revenue_delta_usd"]) if s["outcome_14d"] else 0)
-        + (_f(s["outcome_7d"]["revenue_delta_usd"]) if s["outcome_7d"] and not s["outcome_14d"] else 0)
-        for s in snapshots
-    )
-    pending_7d = sum(
-        1 for s in snapshots
-        if s["outcome_7d"] is None and s["check_7d_at"] and s["check_7d_at"] <= datetime.utcnow().isoformat()
-    )
-
-    return {
-        "tracked_decisions": len(snapshots),
-        "pending_7d_measurements": pending_7d,
-        "total_revenue_impact_usd": round(total_revenue_impact, 2),
-        "snapshots": snapshots,
-    }
-
-
-# ── roadmap / pipeline ─────────────────────────────────────────────────────────
 
 def get_roadmap_summary(tenant_id: str) -> dict[str, Any]:
     """Management-level view of all active recommendations grouped by lifecycle stage."""
@@ -847,7 +745,7 @@ def get_recommendation_detail(tenant_id: str, roadmap_id: str) -> dict[str, Any]
 
 
 def get_next_actions(tenant_id: str) -> dict[str, Any]:
-    """Prioritised action list: pending approvals, overdue measurements, blocked items."""
+    """Prioritised action list for pending recommendation approvals."""
     with _connect() as conn:
         with conn.cursor() as cur:
             # Pending recommendations
@@ -865,32 +763,6 @@ def get_next_actions(tenant_id: str) -> dict[str, Any]:
             )
             pending_recs = cur.fetchall()
 
-            # Overdue outcome measurements
-            cur.execute(
-                """
-                SELECT ds.id, ds.decision_type, sv.sku_id, p.name AS product_name,
-                       ds.check_7d_at, ds.check_14d_at,
-                       om7.snapshot_id IS NOT NULL AS has_7d,
-                       om14.snapshot_id IS NOT NULL AS has_14d
-                FROM outcome_tracking.decision_snapshots ds
-                JOIN core.sku_variants sv ON sv.id = ds.variant_id
-                JOIN core.products p ON p.id = sv.product_id
-                LEFT JOIN outcome_tracking.outcome_measurements om7
-                    ON om7.snapshot_id = ds.id AND om7.window_days = 7
-                LEFT JOIN outcome_tracking.outcome_measurements om14
-                    ON om14.snapshot_id = ds.id AND om14.window_days = 14
-                WHERE ds.tenant_id = %s::uuid
-                  AND (
-                      (om7.snapshot_id IS NULL AND ds.check_7d_at <= NOW())
-                   OR (om14.snapshot_id IS NULL AND ds.check_14d_at <= NOW())
-                  )
-                ORDER BY ds.check_7d_at ASC
-                LIMIT 5
-                """,
-                (tenant_id,),
-            )
-            overdue = cur.fetchall()
-
     approval_items = [
         {
             "priority": "high",
@@ -903,27 +775,11 @@ def get_next_actions(tenant_id: str) -> dict[str, Any]:
         }
         for r in pending_recs
     ]
-    measurement_items = [
-        {
-            "priority": "medium",
-            "action": "Review outcome measurement",
-            "snapshot_id": str(r["id"]),
-            "decision_type": r["decision_type"],
-            "sku_id": r["sku_id"],
-            "product_name": r["product_name"],
-            "overdue_window": "7d" if not r["has_7d"] else "14d",
-        }
-        for r in overdue
-    ]
 
     return {
         "pending_approvals": len(approval_items),
-        "overdue_measurements": len(measurement_items),
-        "action_items": approval_items + measurement_items,
-        "summary": (
-            f"{len(approval_items)} recommendation(s) awaiting your decision, "
-            f"{len(measurement_items)} outcome measurement(s) overdue."
-        ),
+        "action_items": approval_items,
+        "summary": f"{len(approval_items)} recommendation(s) awaiting your decision.",
     }
 
 

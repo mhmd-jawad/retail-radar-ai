@@ -94,15 +94,24 @@ def append_messages(session_id: str, tenant_id: str, messages: list[dict[str, An
 
 
 def list_sessions(tenant_id: str, limit: int = 20) -> list[dict[str, Any]]:
-    """Return recent chat sessions for a tenant (most recent first)."""
+    """Return recent chat sessions for a tenant (most recent first).
+
+    Timestamps are returned as ISO-8601 text to avoid datetime serialisation
+    differences across Python / FastAPI versions.
+    """
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT session_id::text, title, last_message_at, created_at
+                SELECT session_id::text,
+                       title,
+                       to_char(last_message_at AT TIME ZONE 'UTC',
+                               'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_message_at,
+                       to_char(created_at AT TIME ZONE 'UTC',
+                               'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
                 FROM core.chat_sessions
                 WHERE tenant_id = %s::uuid
-                ORDER BY last_message_at DESC
+                ORDER BY core.chat_sessions.last_message_at DESC
                 LIMIT %s
                 """,
                 (tenant_id, limit),
