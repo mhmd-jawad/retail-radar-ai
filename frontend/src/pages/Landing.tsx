@@ -19,7 +19,7 @@ const SERVICES = [
   { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Promotions JSON' },
   { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend' },
   { name: 'IE1 — Forecasting', status: 'planned', desc: 'Demand & seasonality forecasts (in design)' },
-  { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy, IG/FB/WhatsApp variants' },
+  { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy and Instagram/Facebook variants' },
   { name: 'EEP — Orchestrator', status: 'partial', desc: 'Unified API on :8000 for report, ops, and recommendation delivery' },
   { name: 'Competitor Scraping Pipeline', status: 'live', desc: '7 shops · 37,102 records · Supabase-ready' },
 ];
@@ -27,7 +27,7 @@ const SERVICES = [
 const SHOP_SERVICES = [
   { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, and promotion signals in one workspace.' },
   { name: 'Decision Recommendations', status: 'live', desc: 'SKU-level hold, markdown, promote, and clearance guidance.' },
-  { name: 'Campaign Creative', status: 'live', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
+  { name: 'Campaign Creative', status: 'live', desc: 'Ad copy and Facebook campaign variants for approved promotions.' },
   { name: 'Tenant Data Sync', status: 'live', desc: 'Live shop data connected to the dashboard and recommendation queue.' },
   { name: 'Competitor Tracking', status: 'live', desc: 'Market snapshots across selected Lebanese sportswear competitors.' },
 ];

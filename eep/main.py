@@ -2274,6 +2274,7 @@ def report_live(request: Request) -> dict[str, Any]:
     from statistics import median as _median
 
     generated_at = datetime.now(timezone.utc).isoformat()
+    system_decision_map: dict[str, dict[str, Any]] = {}
 
     try:
         request_tenant_id = _tenant_id_from_request(request)
@@ -2357,6 +2358,30 @@ def report_live(request: Request) -> dict[str, Any]:
                     for r in (cur.fetchall() or [])
                 }
                 market_overview = _tenant_competitor_market_overview(cur, tenant_id, len(sku_rows))
+                cur.execute(
+                    """
+                    SELECT
+                        sku_id,
+                        status,
+                        recommendation,
+                        confidence,
+                        suggested_price_usd,
+                        suggested_discount_pct,
+                        decision_payload,
+                        input_context,
+                        competitor_signals,
+                        synced_at
+                    FROM marketing.system_decision_latest
+                    WHERE tenant_id = %s
+                      AND status = 'live'
+                      AND recommendation IN ('PROMOTE', 'MARKDOWN', 'CLEAR', 'HOLD')
+                    """,
+                    (tenant_id,),
+                )
+                system_decision_map = {
+                    str(r["sku_id"]): dict(r)
+                    for r in (cur.fetchall() or [])
+                }
 
     except DatabaseUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -2369,6 +2394,33 @@ def report_live(request: Request) -> dict[str, Any]:
             "kids": "Kids", "lifestyle": "Lifestyle",
         }
         return labels.get((c or "").lower(), (c or "Other").title())
+
+    def _system_payload(sku_id: str) -> dict[str, Any]:
+        latest = system_decision_map.get(str(sku_id), {})
+        payload = latest.get("decision_payload")
+        return payload if isinstance(payload, dict) else {}
+
+    def _system_float(sku_id: str, key: str) -> float | None:
+        latest = system_decision_map.get(str(sku_id), {})
+        payload = _system_payload(sku_id)
+        for source in (latest, payload):
+            value = source.get(key)
+            if value is None:
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if number == number:
+                return number
+        return None
+
+    def _system_reason(sku_id: str, fallback: str) -> str:
+        payload = _system_payload(sku_id)
+        explanation = payload.get("explanation")
+        if isinstance(explanation, str) and explanation.strip():
+            return explanation.strip()
+        return fallback
 
     now = datetime.now(timezone.utc)
     inventory_skus: list[dict] = []
@@ -2441,6 +2493,10 @@ def report_live(request: Request) -> dict[str, Any]:
             else:                        # bottom tier â€” recover capital
                 decision = "CLEAR"
 
+        system_decision = system_decision_map.get(str(row["sku_id"]))
+        if system_decision and system_decision.get("recommendation") in {"PROMOTE", "MARKDOWN", "CLEAR", "HOLD"}:
+            decision = str(system_decision["recommendation"])
+
         if str(row["sku_id"]) in handled_skus:
             continue
 
@@ -2506,7 +2562,7 @@ def report_live(request: Request) -> dict[str, Any]:
         unknown_dos = s["days_of_supply"] >= 999
         if s["decision"] == "PROMOTE":
             lift = round(max(s["margin_pct"] - 35, 0) / 5 + 10, 1)
-            reason = (
+            default_reason = (
                 f"Good margin ({s['margin_pct']:.0f}%) with {s['current_stock']} units on hand. No sales history yet; push visibility and start measuring velocity."
                 if unknown_dos
                 else f"Good margin ({s['margin_pct']:.0f}%) and sufficient stock ({int(s['days_of_supply'])} DOS). Push this now."
@@ -2516,21 +2572,33 @@ def report_live(request: Request) -> dict[str, Any]:
                 "product_name": s["product_name"],
                 "brand": s["brand"],
                 "category": s["category"],
-                "reason": reason,
+                "reason": _system_reason(s["sku_id"], default_reason),
                 "expected_lift_pct": lift,
-                "channels": ["Instagram", "WhatsApp", "In-store window"],
+                "channels": ["Instagram", "Facebook", "In-store window"],
             })
         elif s["decision"] == "MARKDOWN":
-            discount = 15 if s["margin_pct"] > 40 else 20 if s["margin_pct"] > 30 else 10
-            margin_after = round(s["margin_pct"] - discount * (s["retail_price_usd"] / max(s["retail_price_usd"], 0.01)), 1)
-            margin_after = round(s["margin_pct"] * (1 - discount / 100), 1)
-            suggested_price = round(s["retail_price_usd"] * (1 - discount / 100), 2)
+            discount = _system_float(s["sku_id"], "suggested_discount_pct")
+            if discount is None:
+                discount = 15 if s["margin_pct"] > 40 else 20 if s["margin_pct"] > 30 else 10
+            discount = max(0.0, min(float(discount), 80.0))
+            suggested_price = _system_float(s["sku_id"], "suggested_price_usd")
+            if suggested_price is None or suggested_price <= 0:
+                suggested_price = round(s["retail_price_usd"] * (1 - discount / 100), 2)
+            else:
+                suggested_price = round(suggested_price, 2)
+            payload_margin_after = _system_float(s["sku_id"], "margin_after_action_pct")
+            if payload_margin_after is not None:
+                margin_after = round(payload_margin_after, 1)
+            elif suggested_price > 0:
+                margin_after = round((suggested_price - s["cost_price_usd"]) / suggested_price * 100, 1)
+            else:
+                margin_after = round(s["margin_pct"] * (1 - discount / 100), 1)
             if unknown_dos:
-                reason = f"No sales history yet and margin is lower than stronger SKUs. A controlled {discount}% markdown can test demand."
+                default_reason = f"No sales history yet and margin is lower than stronger SKUs. A controlled {discount:.0f}% markdown can test demand."
                 urgency = "medium"
             else:
                 dos_disp = int(s["days_of_supply"])
-                reason = f"Slow-moving stock ({dos_disp} DOS). A {discount}% markdown accelerates sell-through."
+                default_reason = f"Slow-moving stock ({dos_disp} DOS). A {discount:.0f}% markdown accelerates sell-through."
                 urgency = "high" if s["days_of_supply"] > 180 else "medium" if s["days_of_supply"] > 120 else "low"
             markdown_items.append({
                 "sku_id": s["sku_id"],
@@ -2540,12 +2608,15 @@ def report_live(request: Request) -> dict[str, Any]:
                 "suggested_discount_pct": float(discount),
                 "suggested_price_usd": suggested_price,
                 "margin_after_pct": margin_after,
-                "reason": reason,
+                "reason": _system_reason(s["sku_id"], default_reason),
                 "urgency": urgency,
             })
         elif s["decision"] == "CLEAR":
-            discount = 50
-            suggested_price = round(s["retail_price_usd"] * 0.5, 2) if s["retail_price_usd"] > 0 else round(s["cost_price_usd"] * 0.5, 2)
+            suggested_price = _system_float(s["sku_id"], "suggested_price_usd")
+            if suggested_price is None or suggested_price <= 0:
+                suggested_price = round(s["retail_price_usd"] * 0.5, 2) if s["retail_price_usd"] > 0 else round(s["cost_price_usd"] * 0.5, 2)
+            else:
+                suggested_price = round(suggested_price, 2)
             recovered = round(suggested_price * s["current_stock"], 2)
             clearance_items.append({
                 "sku_id": s["sku_id"],
@@ -2558,11 +2629,12 @@ def report_live(request: Request) -> dict[str, Any]:
                 "urgency": "high" if unknown_dos else "critical" if s["days_of_supply"] > 365 else "high",
             })
         else:  # HOLD
+            default_reason = "Healthy velocity and margin. Maintain current pricing."
             hold_items.append({
                 "sku_id": s["sku_id"],
                 "product_name": s["product_name"],
                 "brand": s["brand"],
-                "reason": "Healthy velocity and margin. Maintain current pricing.",
+                "reason": _system_reason(s["sku_id"], default_reason),
                 "margin_pct": s["margin_pct"],
                 "velocity": s["velocity_units_per_day"],
             })
