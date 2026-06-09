@@ -1,4 +1,4 @@
-"""
+﻿"""
 Alert Dispatcher — proactive retailer notifications via Telegram.
 
 Polls for business conditions every 30 minutes and sends formatted alerts when
@@ -6,7 +6,6 @@ thresholds are crossed. Each alert type has an independent cooldown to prevent s
 
 Alert categories:
   INVENTORY  — stockout imminent, reorder triggered, dead stock high-value
-  FINANCIAL  — cash runway critical, low margin
   REVENUE    — weekly revenue drop, revenue milestone
   COMPETITOR — competitor sale started, competitor price undercut
 
@@ -54,17 +53,6 @@ ALERT_TYPES: dict[str, tuple[str, str, int]] = {
         "Dead Stock — Capital Tied Up",
         "SKU has had no sales for 30+ days with >$500 in inventory cost",
         72,
-    ),
-    # FINANCIAL
-    "cash_runway_critical": (
-        "Cash Runway Critical",
-        "Cash runway dropped below 2 months at current OPEX burn",
-        24,
-    ),
-    "low_blended_margin": (
-        "Low Margin Warning",
-        "Blended gross margin fell below 25%",
-        48,
     ),
     # REVENUE
     "revenue_drop_weekly": (
@@ -141,15 +129,12 @@ class AlertDispatcher:
         telegram_client: "TelegramClient",
         retailer_chat_id: str,
         tenant_id: UUID,
-        financial_data_path: str,
     ) -> None:
         self._db_url = db_url
         self._telegram = telegram_client
         self._chat_id = retailer_chat_id
         self._tenant_id = tenant_id
         self._tid = str(tenant_id)
-        from pathlib import Path
-        self._data_dir = Path(financial_data_path)
 
     # ── Main entry point ──────────────────────────────────────────────────────
 
@@ -160,8 +145,6 @@ class AlertDispatcher:
             self._check_stockout_imminent,
             self._check_reorder_triggered,
             self._check_dead_stock,
-            self._check_cash_runway,
-            self._check_low_margin,
             self._check_revenue_drop,
         ]
         competitor_alerts = os.environ.get("TELEGRAM_COMPETITOR_ALERTS_ENABLED", "false").strip().lower()
@@ -317,63 +300,6 @@ class AlertDispatcher:
             if await self._send_if_new("dead_stock_value", r["sku_id"], msg, cooldown_hours=72):
                 sent += 1
         return sent
-
-    # ── FINANCIAL ALERTS ──────────────────────────────────────────────────────
-
-    async def _check_cash_runway(self) -> int:
-        """Send alert when cash runway drops below 2 months."""
-        try:
-            import json as _json
-            fp_path = self._data_dir / "financial_profile.json"
-            with open(fp_path, encoding="utf-8") as f:
-                fp = _json.load(f)
-            runway = float(fp.get("cashflow_summary", {}).get("cash_runway_months", 0))
-            opex = float(fp.get("cashflow_summary", {}).get("monthly_fixed_opex_usd", 0))
-        except Exception:
-            return 0
-
-        if runway <= 0 or runway >= 2:
-            return 0
-
-        msg = (
-            f"*🚨 URGENT — Cash Runway: {runway:.1f} Months*\n\n"
-            f"At your current fixed burn of *${opex:,.0f}/month*, "
-            f"you have *{runway:.1f} months* of cash remaining.\n\n"
-            f"*Immediate actions:*\n"
-            f"• Review non-essential OPEX line items\n"
-            f"• Accelerate payment collections\n"
-            f"• Consider markdown on dead stock to generate cash\n\n"
-            f"Ask Radar: \"show me financials\" for the full picture."
-        )
-        sent = await self._send_if_new("cash_runway_critical", "", msg, cooldown_hours=24)
-        return 1 if sent else 0
-
-    async def _check_low_margin(self) -> int:
-        """Send alert when blended gross margin falls below 25%."""
-        try:
-            import json as _json
-            fp_path = self._data_dir / "financial_profile.json"
-            with open(fp_path, encoding="utf-8") as f:
-                fp = _json.load(f)
-            margin = float(fp.get("inventory_summary", {}).get("blended_margin_pct", 0))
-        except Exception:
-            return 0
-
-        if margin <= 0 or margin >= 25:
-            return 0
-
-        msg = (
-            f"*⚠️ Low Margin Warning — {margin:.1f}%*\n\n"
-            f"Your blended gross margin has dropped to *{margin:.1f}%*, "
-            f"below the healthy threshold of 25%.\n\n"
-            f"*Common causes:*\n"
-            f"• Excessive markdowns eroding margins\n"
-            f"• Competitor pressure forcing price cuts\n"
-            f"• High-cost SKUs selling more than high-margin ones\n\n"
-            f"Ask Radar: \"which category has the lowest margin?\" to pinpoint the issue."
-        )
-        sent = await self._send_if_new("low_blended_margin", "", msg, cooldown_hours=48)
-        return 1 if sent else 0
 
     # ── REVENUE ALERTS ────────────────────────────────────────────────────────
 

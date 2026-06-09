@@ -1,9 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   Bell,
-  BotMessageSquare,
   Building2,
-  LineChart,
   LogOut,
   Megaphone,
   Settings,
@@ -25,7 +23,6 @@ const sections: NavSection[] = [
     heading: 'Platform Operations',
     items: [
       { to: '/admin', label: 'Dashboard', icon: Shield, end: true },
-      { to: '/admin/financial', label: 'Client Financial', icon: LineChart },
       { to: '/admin/campaigns', label: 'Content Ops', icon: Megaphone },
     ],
   },
@@ -45,7 +42,6 @@ const sections: NavSection[] = [
   {
     heading: 'Tools',
     items: [
-      { to: '/admin/assistant', label: 'Admin Assistant', icon: BotMessageSquare },
       { to: '/admin/settings', label: 'Settings', icon: Settings },
     ],
   },

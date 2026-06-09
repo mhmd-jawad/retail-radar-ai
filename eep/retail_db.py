@@ -6,7 +6,6 @@ and exposes tenant-isolated read/write functions for:
 
 - Product catalogue and inventory positions
 - Competitor price records ingested from IE1/scraping
-- Financial snapshot writes from StylePulse analysis
 - Recommendation storage and approval workflow
 
 The ``_connect()`` helper returns a psycopg connection. All public functions
@@ -34,7 +33,10 @@ ADDITIVE_SCHEMA_PATHS = [
     ROOT / "infra" / "postgres" / "002_telegram_assistant.sql",
     ROOT / "infra" / "postgres" / "003_recommendation_explainability.sql",
     ROOT / "infra" / "postgres" / "004_multi_tenant_scalability.sql",
-    ROOT / "infra" / "postgres" / "005_financial_snapshots.sql",
+    ROOT / "infra" / "postgres" / "008_financial_profiles.sql",
+    ROOT / "infra" / "postgres" / "008_human_validation.sql",
+    ROOT / "infra" / "postgres" / "009_financial_line_items.sql",
+    ROOT / "infra" / "postgres" / "010_chat_sessions.sql",
 ]
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/retail_radar"
 DEFAULT_TENANT_SLUG = "default"
@@ -2271,3 +2273,148 @@ def get_due_snapshots_for_tenant(tenant_id: Any | None = None) -> list[dict[str,
             )
             rows = cur.fetchall() or []
             return [{k: _jsonable(v) for k, v in row.items()} for row in rows]
+
+
+# ─── Financial Profile ────────────────────────────────────────────────────────
+
+_FINANCIAL_PROFILE_FIELDS = [
+    "total_assets_usd",
+    "total_liabilities_usd",
+    "monthly_fixed_opex_usd",
+    "annual_revenue_projected_usd",
+    "cash_runway_months",
+    "breakeven_monthly_revenue_usd",
+]
+
+
+def get_financial_profile(ctx: dict) -> dict:
+    """Return stored financial profile for a tenant, or empty dict if not set."""
+    tenant_id = ctx["tenant_id"]
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM core.financial_profiles WHERE tenant_id = %s",
+                    (tenant_id,),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return {}
+        result = {k: _jsonable(v) for k, v in row.items()}
+        # Server-computed derived fields
+        assets = result.get("total_assets_usd")
+        liabilities = result.get("total_liabilities_usd")
+        if assets is not None and liabilities is not None:
+            result["total_equity_usd"] = round(float(assets) - float(liabilities), 2)
+            result["current_ratio"] = (
+                round(float(assets) / float(liabilities), 4) if float(liabilities) > 0 else None
+            )
+        return result
+    except DatabaseUnavailable:
+        raise
+
+
+def upsert_financial_profile(ctx: dict, data: dict) -> dict:
+    """Upsert financial profile for a tenant and return the saved row."""
+    tenant_id = ctx["tenant_id"]
+    # Only accept known fields; ignore None values so partial updates preserve existing data
+    updates = {k: v for k, v in data.items() if k in _FINANCIAL_PROFILE_FIELDS and v is not None}
+    if not updates:
+        return get_financial_profile(ctx)
+
+    set_clause = ", ".join(f"{col} = %s" for col in updates)
+    insert_cols = ", ".join(["tenant_id"] + list(updates))
+    insert_placeholders = ", ".join(["%s"] * (1 + len(updates)))
+    values = list(updates.values())
+
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    INSERT INTO core.financial_profiles ({insert_cols}, updated_at)
+                    VALUES ({insert_placeholders}, now())
+                    ON CONFLICT (tenant_id) DO UPDATE SET {set_clause}, updated_at = now()
+                    """,
+                    [tenant_id] + values + values,
+                )
+            conn.commit()
+        return get_financial_profile(ctx)
+    except DatabaseUnavailable:
+        raise
+
+
+# ─── Financial Line Items ─────────────────────────────────────────────────────
+
+def get_financial_line_items(ctx: dict) -> list[dict]:
+    """Return all asset/liability line items for a tenant, ordered by type then sort_order."""
+    tenant_id = ctx["tenant_id"]
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, item_type, label, amount_usd, sort_order, updated_at
+                    FROM core.financial_line_items
+                    WHERE tenant_id = %s
+                    ORDER BY item_type, sort_order, label
+                    """,
+                    (tenant_id,),
+                )
+                rows = cur.fetchall() or []
+        return [{k: _jsonable(v) for k, v in row.items()} for row in rows]
+    except DatabaseUnavailable:
+        raise
+
+
+def upsert_financial_line_item(ctx: dict, item_id: str | None, label: str, amount_usd: float, item_type: str, sort_order: int = 0) -> dict:
+    """Insert a new line item or update an existing one. Returns the saved row."""
+    tenant_id = ctx["tenant_id"]
+    if item_type not in ("asset", "liability"):
+        raise ValueError(f"item_type must be 'asset' or 'liability', got {item_type!r}")
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                if item_id:
+                    cur.execute(
+                        """
+                        UPDATE core.financial_line_items
+                        SET label = %s, amount_usd = %s, sort_order = %s, updated_at = now()
+                        WHERE id = %s AND tenant_id = %s
+                        RETURNING id, item_type, label, amount_usd, sort_order, updated_at
+                        """,
+                        (label, amount_usd, sort_order, item_id, tenant_id),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO core.financial_line_items
+                            (tenant_id, item_type, label, amount_usd, sort_order)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id, item_type, label, amount_usd, sort_order, updated_at
+                        """,
+                        (tenant_id, item_type, label, amount_usd, sort_order),
+                    )
+                row = cur.fetchone()
+            conn.commit()
+        return {k: _jsonable(v) for k, v in row.items()} if row else {}
+    except DatabaseUnavailable:
+        raise
+
+
+def delete_financial_line_item(ctx: dict, item_id: str) -> bool:
+    """Delete a line item. Returns True if a row was deleted."""
+    tenant_id = ctx["tenant_id"]
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM core.financial_line_items WHERE id = %s AND tenant_id = %s",
+                    (item_id, tenant_id),
+                )
+                deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
+    except DatabaseUnavailable:
+        raise
+

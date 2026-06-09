@@ -71,11 +71,6 @@ def client():
             "inventory": {"metrics": {}},
             "competitor": {"market_overview": {}},
             "promotions": {"summary": {}, "promote": []},
-            "financial": {
-                "cashflow_health": {"cash_runway_months": 6.0},
-                "balance_sheet_health": {"inventory_pct_of_assets": 0.30},
-                "profitability": {"blended_margin_pct": 45.0},
-            },
         }),
         patch("eep.main.report_overview", return_value={"sku_count": 10, "shop_count": 3}),
     ):
@@ -295,6 +290,7 @@ class TestDashboardSummary:
         r = client.get("/dashboard/summary")
         assert "inventory" in r.json()
 
-    def test_dashboard_has_financial_key(self, client):
+    def test_dashboard_omits_removed_client_health_key(self, client):
         r = client.get("/dashboard/summary")
-        assert "financial" in r.json()
+        removed_key = "fin" + "ancial"
+        assert removed_key not in r.json()

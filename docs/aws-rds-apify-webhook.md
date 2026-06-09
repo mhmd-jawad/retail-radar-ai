@@ -11,7 +11,7 @@ Scraper data lands in:
 ```text
 intel.shops
 intel.scrape_runs
-intel.competitor_product_snapshots
+intel.competitor_product_sna![alt text](image.png)pshots
 intel.competitor_products_latest
 ```
 

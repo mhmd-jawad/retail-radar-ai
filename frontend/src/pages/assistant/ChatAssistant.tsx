@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { TopBar } from '@/components/layout/TopBar';
 import {
   Bot, Send, Zap, Loader2, RefreshCw, ChevronRight,
-  AlertTriangle, Boxes, ListChecks, DollarSign, TrendingUp, Users, Target,
+  AlertTriangle, Boxes, ListChecks, TrendingUp, Users, Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/store/auth';
@@ -26,7 +27,8 @@ interface Message {
 
 const ASSISTANT_BASE =
   (import.meta.env.VITE_ASSISTANT_URL as string | undefined) ??
-  (import.meta.env.PROD ? '/assistant-api' : 'http://localhost:8004');
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 async function assistantErrorMessage(res: Response): Promise<string> {
   let detail = '';
@@ -65,8 +67,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_reorder_suggestions: 'Reorder',
   get_sku_velocity_trend: 'Velocity',
   get_category_performance: 'Categories',
-  get_financials: 'Financials',
-  get_revenue_trend: 'Revenue',
   get_competitor_prices: 'Competitors',
   get_pending_recommendations: 'Recommendations',
   approve_recommendation: 'Approved ✓',
@@ -80,9 +80,8 @@ const QUICK_PROMPTS: { label: string; prompt: string; icon: React.ElementType }[
   { label: 'Inventory status', prompt: 'How is my inventory right now?', icon: Boxes },
   { label: 'Pending decisions', prompt: 'Show me pending recommendations', icon: ListChecks },
   { label: "Today's focus", prompt: 'What should I focus on today?', icon: Target },
-  { label: 'Sales trend', prompt: 'Are sales up this week?', icon: TrendingUp },
   { label: 'Competitor prices', prompt: 'What are competitors charging?', icon: Users },
-  { label: 'Cash position', prompt: 'How much cash do I have?', icon: DollarSign },
+  { label: 'Sales trend', prompt: 'Are sales up this week?', icon: TrendingUp },
 ];
 
 // ── Markdown renderer — handles Telegram *bold* syntax ────────────────────────
@@ -251,6 +250,7 @@ export default function ChatAssistant() {
   const user = useAuth((s) => s.user);
   const token = useAuth((s) => s.token);
   const tenantId = user?.tenant_id ?? '';
+  const location = useLocation();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -259,17 +259,56 @@ export default function ChatAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionIdRef = useRef<string>('');
+  const initialMessageFiredRef = useRef(false);
 
-  // Stable session ID per tenant, persisted in sessionStorage
+  // Stable session ID per tenant, persisted in localStorage so it survives tab close
   useEffect(() => {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
-    let sid = sessionStorage.getItem(key);
+    let sid = localStorage.getItem(key);
     if (!sid) {
       sid = randomId();
-      sessionStorage.setItem(key, sid);
+      localStorage.setItem(key, sid);
     }
     sessionIdRef.current = sid;
+  }, [tenantId]);
+
+  // Load persisted chat history from the backend on mount
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    const base = ASSISTANT_BASE.replace(/\/$/, '');
+    fetch(`${base}/chat/history?session_id=${encodeURIComponent(sid)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { messages?: Array<{ role: string; content: string; tools_used?: string[]; ts?: string }> } | null) => {
+        if (data?.messages?.length) {
+          setMessages(
+            data.messages.map((m) => ({
+              id: randomId(),
+              role: m.role as Role,
+              content: m.content,
+              tools: m.tools_used ?? [],
+              timestamp: m.ts ? new Date(m.ts) : new Date(),
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, token]);
+
+  // Fire an initial message passed via Link state (e.g. from Financial page)
+  useEffect(() => {
+    const initialMessage = (location.state as { initialMessage?: string } | null)?.initialMessage;
+    if (!initialMessage || initialMessageFiredRef.current || !tenantId) return;
+    initialMessageFiredRef.current = true;
+    // Clear navigation state so a page refresh doesn't re-fire
+    window.history.replaceState({}, '');
+    sendMessage(initialMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   // Auto-scroll to bottom on new messages
@@ -368,7 +407,7 @@ export default function ChatAssistant() {
     if (!tenantId) return;
     const key = `radar-chat-sid-${tenantId}`;
     const newSid = randomId();
-    sessionStorage.setItem(key, newSid);
+    localStorage.setItem(key, newSid);
     sessionIdRef.current = newSid;
     setMessages([]);
     setInput('');

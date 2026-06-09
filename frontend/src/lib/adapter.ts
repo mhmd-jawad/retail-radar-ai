@@ -29,10 +29,6 @@ import type {
   CampaignCreative,
   CompetitorRequest,
   CompetitorOption,
-  DetailedBalanceSheet,
-  DetailedProfitability,
-  FinancialProgressPoint,
-  FinancialSnapshot,
   OutcomeSnapshot,
   DailySalesPoint,
   PortfolioAccuracy,
@@ -803,6 +799,76 @@ async function apiError(response: Response, label: string) {
   }
 }
 
+// ─── Human Validation Layer ───────────────────────────────────────────────────
+
+/** Submit a human accept/override/reject of the system recommendation for a SKU. */
+export async function submitRecommendationReview(
+  skuId: string,
+  input: import('@/types/domain').ReviewSubmitInput,
+): Promise<import('@/types/domain').RecommendationReview | { ok: boolean; db_connected: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/${encodeURIComponent(skuId)}/review`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (r.status === 503 || r.status === 404) return { ok: true, db_connected: false };
+  if (!r.ok) throw new Error(await apiError(r, `EEP POST /recommendations/${skuId}/review`));
+  return r.json();
+}
+
+export async function fetchReviewForSku(
+  skuId: string,
+): Promise<import('@/types/domain').RecommendationReview | null> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/${encodeURIComponent(skuId)}/review`, {
+    headers: apiHeaders(),
+  });
+  if (r.status === 503 || r.status === 404) return null;
+  if (!r.ok) throw new Error(await apiError(r, `EEP GET /recommendations/${skuId}/review`));
+  return r.json();
+}
+
+export async function fetchRecommendationReviews(
+  params: { action?: string; modelVersion?: string; limit?: number; offset?: number } = {},
+): Promise<import('@/types/domain').RecommendationReview[]> {
+  const { base } = settings();
+  const qs = new URLSearchParams();
+  if (params.action) qs.set('action', params.action);
+  if (params.modelVersion) qs.set('model_version', params.modelVersion);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const r = await fetch(`${base}/recommendations/reviews?${qs.toString()}`, { headers: apiHeaders() });
+  if (r.status === 503) return [];
+  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /recommendations/reviews'));
+  return r.json();
+}
+
+export async function updateRecommendationReview(
+  reviewId: string,
+  input: Partial<import('@/types/domain').ReviewSubmitInput>,
+): Promise<import('@/types/domain').RecommendationReview> {
+  const { base } = settings();
+  const r = await fetch(`${base}/recommendations/reviews/${encodeURIComponent(reviewId)}`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP PUT /recommendations/reviews/${reviewId}`));
+  return r.json();
+}
+
+export async function fetchReviewAnalytics(
+  modelVersion?: string,
+): Promise<import('@/types/domain').ReviewAnalytics | null> {
+  const { base } = settings();
+  const qs = modelVersion ? `?model_version=${encodeURIComponent(modelVersion)}` : '';
+  const r = await fetch(`${base}/analytics/recommendation-reviews${qs}`, { headers: apiHeaders() });
+  if (r.status === 503) return null;
+  if (!r.ok) throw new Error(await apiError(r, 'EEP GET /analytics/recommendation-reviews'));
+  return r.json();
+}
+
 // ─── Outcome Tracking ─────────────────────────────────────────────────────────
 
 export async function fetchOutcomes(variantId: string): Promise<OutcomeSnapshot[]> {
@@ -870,69 +936,7 @@ export async function measureAllDue(): Promise<{ measured: number; skipped: numb
   return r.json();
 }
 
-// ─── Financial detail fetchers ────────────────────────────────────────────────
-
-export async function fetchDetailedBalanceSheet(): Promise<DetailedBalanceSheet> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/balance-sheet`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/balance-sheet'));
-  return r.json();
-}
-
-export async function fetchDetailedProfitability(): Promise<DetailedProfitability> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/profitability`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/profitability'));
-  return r.json();
-}
-
-export interface CashflowMonth { month: string; in: number; out: number; net: number }
-
-export async function fetchCashflow(): Promise<CashflowMonth[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/cashflow`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/cashflow'));
-  const json = await r.json();
-  // backend wraps series in { series: [...] }, unwrap if needed
-  return Array.isArray(json) ? json : (json.series ?? []);
-}
-
-export async function fetchFinancialSnapshots(): Promise<FinancialSnapshot[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
-  const json = await r.json();
-  return json.snapshots ?? [];
-}
-
-export async function fetchCurrentFinancialSnapshot(): Promise<{ period_month: string; missing_snapshot: boolean; snapshot: FinancialSnapshot | null }> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots/current`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots/current'));
-  return r.json();
-}
-
-export async function saveFinancialSnapshot(periodMonth: string, payload: Partial<FinancialSnapshot>): Promise<FinancialSnapshot> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/snapshots/${encodeURIComponent(periodMonth)}`, {
-    method: 'PUT',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/snapshots'));
-  const json = await r.json();
-  return json.snapshot;
-}
-
-export async function fetchFinancialProgress(): Promise<FinancialProgressPoint[]> {
-  const { base } = settings();
-  const r = await fetch(`${base}/financial/progress?limit=12`, { headers: apiHeaders() });
-  if (!r.ok) throw new Error(await apiError(r, 'EEP /financial/progress'));
-  const json = await r.json();
-  return json.series ?? [];
-}
-
-// ─── Admin Platform Operations ────────────────────────────────────────────────
+// Admin Platform Operations ────────────────────────────────────────────────
 
 export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
   const { base } = settings();
@@ -970,18 +974,47 @@ export async function persistCampaign(input: PersistCampaignInput): Promise<{ ca
   return r.json();
 }
 
-export async function adminAssistantChat(
-  message: string,
-  sessionId?: string,
-): Promise<{ reply: string; tools_used: string[]; session_id: string }> {
+
+export interface RetailerSocialAccount {
+  id: string;
+  platform: string;
+  account_name: string | null;
+  page_id: string | null;
+  user_id: string | null;
+  is_active: boolean;
+  token_expires_at: string | null;
+  created_at: string;
+}
+
+export async function fetchSocialAccounts(): Promise<RetailerSocialAccount[]> {
   const { base } = settings();
-  const r = await fetch(`${base}/admin/assistant/chat`, {
-    method: 'POST',
-    headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ message, session_id: sessionId ?? '' }),
-  });
-  if (!r.ok) throw new Error(await apiError(r, 'admin assistant'));
+  const r = await fetch(`${base}/social/accounts`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'social accounts'));
   return r.json();
+}
+
+export async function updateSocialDisplayName(
+  platform: string,
+  accountName: string,
+): Promise<{ platform: string; account_name: string; is_active: boolean }> {
+  const { base } = settings();
+  const r = await fetch(`${base}/social/accounts/${platform}`, {
+    method: 'PATCH',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ account_name: accountName }),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'update social display name'));
+  return r.json();
+}
+
+
+function asArray<T = any>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 // Supabase-ready stubs (future)
@@ -996,6 +1029,63 @@ export const supabaseRepo = {
   },
 };
 
+export async function fetchFinancialProfile(): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-profile`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-profile'));
+  return r.json();
+}
+
+export async function updateFinancialProfile(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-profile`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-profile'));
+  return r.json();
+}
+
+export async function fetchFinancialLineItems(): Promise<Record<string, unknown>[]> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items`, { headers: apiHeaders() });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-items'));
+  return r.json();
+}
+
+export async function createFinancialLineItem(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, 'EEP /shop/financial-items'));
+  return r.json();
+}
+
+export async function updateFinancialLineItem(id: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items/${id}`, {
+    method: 'PUT',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /shop/financial-items/${id}`));
+  return r.json();
+}
+
+export async function deleteFinancialLineItem(id: string): Promise<void> {
+  const { base } = settings();
+  const r = await fetch(`${base}/shop/financial-items/${id}`, {
+    method: 'DELETE',
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(await apiError(r, `EEP /shop/financial-items/${id}`));
+}
+
 export function modeLabel(m: DataMode) {
   return ({ 'mock-report': 'Mock Report', 'ie2-live': 'IE2 Live', 'eep-live': 'EEP Live', 'supabase-ready': 'Supabase' } as const)[m];
 }
+

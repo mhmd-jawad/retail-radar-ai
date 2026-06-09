@@ -1,18 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import type { SkuAnalysis, IE2Result } from '@/types/domain';
-import { useQuery } from '@tanstack/react-query';
-import { recommend, fetchPortfolioAccuracy } from '@/lib/adapter';
+import type { SkuAnalysis, IE2Result, Decision, ReviewAction } from '@/types/domain';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { recommend, fetchPortfolioAccuracy, submitRecommendationReview } from '@/lib/adapter';
 import { DecisionBadge } from '@/components/shared/DecisionBadge';
 import { fmtDos, fmtPct, fmtUSD, statusStyles } from '@/lib/format';
 import { useSettings } from '@/store/settings';
+import { useAuth } from '@/store/auth';
 import { useTenantScopeKey } from '@/hooks/useTenantScope';
 import { scopedSkuKey } from '@/lib/tenantScope';
 import { Check, X, Clock, Pencil, Copy, Sparkles, AlertTriangle, Activity, Target } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useReport } from '@/hooks/useReport';
+
+const OVERRIDE_DECISIONS: Decision[] = ['HOLD', 'MARKDOWN', 'PROMOTE', 'CLEAR'];
 
 interface Props {
   sku: SkuAnalysis | null;
@@ -26,7 +30,11 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
   const { recState, setRecStatus, mode } = useSettings();
   const { data: report } = useReport();
   const tenantScope = useTenantScopeKey();
+  const queryClient = useQueryClient();
   const [discount, setDiscount] = useState(15);
+  const [note, setNote] = useState('');
+  const [overrideDecision, setOverrideDecision] = useState<Decision | null>(null);
+  const hasSession = useAuth((s) => Boolean(s.token));
   const isLive = mode === 'eep-live';
 
   const { data: liveIe2 } = useQuery({
@@ -57,10 +65,68 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
   const newPrice = sku ? sku.retail_price_usd * (1 - discount / 100) : 0;
   const marginAfter = sku ? ((newPrice - sku.cost_price_usd) / newPrice) * 100 : 0;
 
-  const act = (s: 'approved' | 'rejected' | 'snoozed' | 'edited') => {
+  const reviewMutation = useMutation({
+    mutationFn: (action: ReviewAction) =>
+      submitRecommendationReview(sku!.sku_id, {
+        action,
+        final_decision: action === 'override' ? overrideDecision : undefined,
+        final_price_usd: action === 'override' && ie2?.recommendation === 'MARKDOWN' ? Number(newPrice.toFixed(2)) : undefined,
+        final_discount_pct: action === 'override' && ie2?.recommendation === 'MARKDOWN' ? discount : undefined,
+        note: note.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['review-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['recommendation-reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['review-for-sku', sku?.sku_id] });
+    },
+  });
+
+  // Map review actions to the local recommendation-status badge for instant UI.
+  const statusForAction: Record<ReviewAction, 'approved' | 'rejected' | 'edited'> = {
+    accept: 'approved',
+    override: 'edited',
+    reject: 'rejected',
+  };
+
+  const submitReview = async (action: ReviewAction) => {
     if (!sku) return;
-    setRecStatus(sku.sku_id, s, s === 'edited' ? { editedDiscountPct: discount, editedPriceUsd: Number(newPrice.toFixed(2)) } : {});
-    toast.success(`Recommendation ${s}`, { description: `${sku.sku_id} · logged to audit trail.` });
+    if (action === 'override' && !overrideDecision) {
+      toast.error('Pick an override decision', { description: 'Choose HOLD / MARKDOWN / PROMOTE / CLEAR to override.' });
+      return;
+    }
+    if (action === 'reject' && !note.trim()) {
+      toast.error('A reason is required to reject', { description: 'Add a short note explaining why.' });
+      return;
+    }
+
+    const local = statusForAction[action];
+    setRecStatus(sku.sku_id, local, action === 'override' ? { editedDiscountPct: discount, editedPriceUsd: Number(newPrice.toFixed(2)), notes: note.trim() || undefined } : { notes: note.trim() || undefined });
+
+    // Persist to the backend only when we have a live, authenticated session.
+    if (isLive || hasSession) {
+      try {
+        const res = await reviewMutation.mutateAsync(action);
+        const persisted = !(res && 'db_connected' in res && res.db_connected === false);
+        toast.success(`Recommendation ${action === 'accept' ? 'accepted' : action === 'override' ? 'overridden' : 'rejected'}`, {
+          description: persisted ? `${sku.sku_id} · saved to validation log.` : `${sku.sku_id} · saved locally (backend offline).`,
+        });
+      } catch (err) {
+        toast.error('Could not save review', { description: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+    } else {
+      toast.success(`Recommendation ${action}`, { description: `${sku.sku_id} · logged locally.` });
+    }
+    setNote('');
+    setOverrideDecision(null);
+    onClose();
+  };
+
+  // Snooze stays a local-only deferral (not a ground-truth review action).
+  const snooze = () => {
+    if (!sku) return;
+    setRecStatus(sku.sku_id, 'snoozed', {});
+    toast.success('Recommendation snoozed', { description: `${sku.sku_id} · deferred.` });
     onClose();
   };
 
@@ -243,12 +309,45 @@ export function RecommendationDrawer({ sku, systemDecision, disableLiveFetch = f
               </div>
             )}
 
+            {/* Human validation controls */}
+            <div className="mx-4 mb-2 space-y-3">
+              <div>
+                <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Override decision <span className="text-muted-foreground/60">(optional — leave blank to accept)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {OVERRIDE_DECISIONS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setOverrideDecision((cur) => (cur === d ? null : d))}
+                      className={cn(
+                        'flex-1 h-8 rounded-md border text-[11px] font-mono uppercase tracking-wider transition-colors',
+                        overrideDecision === d
+                          ? 'border-foreground bg-foreground text-background'
+                          : 'border-border text-muted-foreground hover:border-foreground/40',
+                        ie2?.recommendation === d && overrideDecision !== d && 'opacity-50',
+                      )}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Reason / note (required to reject) — captured for audit + retraining"
+                className="min-h-[60px] text-[12.5px]"
+              />
+            </div>
+
             {/* Sticky actions */}
             <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur p-4 flex items-center gap-2">
-              <button onClick={() => act('approved')} className="flex-1 h-10 rounded-md bg-decision-promote text-white font-semibold text-[13px] inline-flex items-center justify-center gap-2"><Check className="h-4 w-4" />Approve</button>
-              <button onClick={() => act('edited')} className="flex-1 h-10 rounded-md bg-foreground text-background font-semibold text-[13px] inline-flex items-center justify-center gap-2"><Pencil className="h-4 w-4" />Save edit</button>
-              <button onClick={() => act('snoozed')} className="h-10 px-3 rounded-md border border-border font-semibold text-[13px] inline-flex items-center gap-1.5"><Clock className="h-4 w-4" />Snooze</button>
-              <button onClick={() => act('rejected')} className="h-10 px-3 rounded-md border border-decision-clear/30 text-decision-clear font-semibold text-[13px] inline-flex items-center gap-1.5"><X className="h-4 w-4" />Reject</button>
+              <button disabled={reviewMutation.isPending} onClick={() => submitReview('accept')} className="flex-1 h-10 rounded-md bg-decision-promote text-white font-semibold text-[13px] inline-flex items-center justify-center gap-2 disabled:opacity-60"><Check className="h-4 w-4" />Accept</button>
+              <button disabled={reviewMutation.isPending} onClick={() => submitReview('override')} className="flex-1 h-10 rounded-md bg-foreground text-background font-semibold text-[13px] inline-flex items-center justify-center gap-2 disabled:opacity-60"><Pencil className="h-4 w-4" />Override</button>
+              <button disabled={reviewMutation.isPending} onClick={snooze} className="h-10 px-3 rounded-md border border-border font-semibold text-[13px] inline-flex items-center gap-1.5 disabled:opacity-60"><Clock className="h-4 w-4" />Snooze</button>
+              <button disabled={reviewMutation.isPending} onClick={() => submitReview('reject')} className="h-10 px-3 rounded-md border border-decision-clear/30 text-decision-clear font-semibold text-[13px] inline-flex items-center gap-1.5 disabled:opacity-60"><X className="h-4 w-4" />Reject</button>
             </div>
           </div>
         )}

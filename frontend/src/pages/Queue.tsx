@@ -12,12 +12,16 @@ import { scopedSkuKey } from '@/lib/tenantScope';
 import {
   fetchSystemDecisionLatest,
   fetchSystemDecisionRun,
+  fetchReviewAnalytics,
+  fetchRecommendationReviews,
   startSystemDecisionSyncAll,
   startSystemDecisionSyncUnsynced,
 } from '@/lib/adapter';
 import type {
   Decision,
   IE2Result,
+  RecommendationReview,
+  ReviewAnalytics,
   SkuAnalysis,
   SystemDecisionLatestItem,
   SystemDecisionLatestStatus,
@@ -106,7 +110,26 @@ export default function Queue() {
     return map;
   }, [latestBySku]);
 
+  const reviewsQuery = useQuery({
+    queryKey: ['recommendation-reviews', tenantScope],
+    queryFn: () => fetchRecommendationReviews({ limit: 500 }),
+    enabled: mode === 'eep-live',
+    retry: false,
+    staleTime: 30_000,
+  });
+
+  const reviewBySku = useMemo(() => {
+    const map = new Map<string, RecommendationReview>();
+    (reviewsQuery.data ?? []).forEach((r) => map.set(r.sku_id, r));
+    return map;
+  }, [reviewsQuery.data]);
+
   const resolvedBand = (sku: SkuAnalysis): QueueBand => {
+    // Human override takes priority — move the card to the overridden band
+    const review = reviewBySku.get(sku.sku_id);
+    if (review?.review_action === 'override' && review.final_decision) {
+      return review.final_decision as Decision;
+    }
     if (mode !== 'eep-live') return sku.decision;
     return liveDecisionBySku.get(sku.sku_id)?.recommendation ?? 'UNSCORED';
   };
@@ -120,7 +143,7 @@ export default function Queue() {
       if (search && !`${s.sku_id} ${s.product_name} ${s.brand}`.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [skus, filters, search, liveDecisionBySku, mode]);
+  }, [skus, filters, search, liveDecisionBySku, reviewBySku, mode]);
 
   const actionCounts = useMemo(() => {
     const counts: Record<ActionFilter, number> = { ALL: 0, UNSCORED: 0, HOLD: 0, PROMOTE: 0, MARKDOWN: 0, CLEAR: 0 };
@@ -133,13 +156,13 @@ export default function Queue() {
       counts[band] += 1;
     });
     return counts;
-  }, [skus, filters.brand, filters.category, search, liveDecisionBySku, mode]);
+  }, [skus, filters.brand, filters.category, search, liveDecisionBySku, reviewBySku, mode]);
 
   const grouped = useMemo(() => {
     const m: Record<QueueBand, SkuAnalysis[]> = { UNSCORED: [], HOLD: [], PROMOTE: [], MARKDOWN: [], CLEAR: [] };
     filtered.forEach((s) => m[resolvedBand(s)].push(s));
     return m;
-  }, [filtered, liveDecisionBySku, mode]);
+  }, [filtered, liveDecisionBySku, reviewBySku, mode]);
 
   const syncAll = useMutation({
     mutationFn: startSystemDecisionSyncAll,
@@ -151,6 +174,14 @@ export default function Queue() {
     mutationFn: startSystemDecisionSyncUnsynced,
     onSuccess: (run) => handleRunStarted(run, setActiveRunId, queryClient),
     onError: (error: Error) => toast.error('Sync unsynced failed to start', { description: error.message }),
+  });
+
+  const reviewAnalytics = useQuery({
+    queryKey: ['review-analytics', tenantScope],
+    queryFn: () => fetchReviewAnalytics(),
+    enabled: mode === 'eep-live',
+    retry: false,
+    staleTime: 60_000,
   });
 
   const competitorBySku = useMemo(() => {
@@ -287,6 +318,10 @@ export default function Queue() {
           })}
         </div>
 
+        {mode === 'eep-live' && reviewAnalytics.data && reviewAnalytics.data.total_reviews > 0 && (
+          <ReviewAnalyticsStrip data={reviewAnalytics.data} />
+        )}
+
         {/* Filters bar */}
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-surface-raised border border-border">
           <div className="flex items-center gap-2 min-w-[260px] flex-1 px-3 h-9 rounded-md border border-border bg-card">
@@ -340,6 +375,7 @@ export default function Queue() {
                           onOpen={() => setOpenSku(sku.sku_id)}
                           band={resolvedBand(sku)}
                           latest={latest}
+                          review={reviewBySku.get(sku.sku_id)}
                           selected={selected.has(sku.sku_id)}
                           onSelect={() => toggleSel(sku.sku_id)}
                           status={recState[scopedSkuKey(sku.sku_id, tenantScope)]?.status}
@@ -510,31 +546,52 @@ function FilterSelect({ value, onChange, options, label }: { value: string; onCh
   );
 }
 
-function SkuCard({ sku, band, latest, onOpen, selected, onSelect, status }: {
+function SkuCard({ sku, band, latest, review, onOpen, selected, onSelect, status }: {
   sku: SkuAnalysis;
   band: QueueBand;
   latest?: SystemDecisionLatestItem;
+  review?: RecommendationReview;
   onOpen: () => void;
   selected: boolean;
   onSelect: () => void;
   status?: string;
 }) {
   const isSyncing = latest?.status === 'syncing';
+  const isHumanOverride = review?.review_action === 'override' && !!review.final_decision;
+  const isHumanAccepted = review?.review_action === 'accept';
+  const isHumanRejected = review?.review_action === 'reject';
   return (
     <div
       className={cn(
         'group rounded-lg border bg-card p-3 hover:shadow-md-soft transition cursor-pointer',
         selected ? 'border-primary ring-1 ring-primary' : 'border-border',
         isSyncing && 'border-amber-400/70 ring-1 ring-amber-400/40 bg-amber-500/[0.04]',
+        isHumanOverride && 'border-violet-500/40 ring-1 ring-violet-500/20',
+        isHumanRejected && 'opacity-60',
       )}
       onClick={onOpen}
     >
       <div className="flex items-start gap-2">
         <input type="checkbox" checked={selected} onClick={(e) => e.stopPropagation()} onChange={onSelect} className="mt-1" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[10.5px] text-muted-foreground">{sku.sku_id}</span>
             <BandBadge band={band} size="sm" />
+            {isHumanOverride && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300">
+                <Pencil className="h-2.5 w-2.5" /> overridden
+              </span>
+            )}
+            {isHumanAccepted && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
+                <Check className="h-2.5 w-2.5" /> approved
+              </span>
+            )}
+            {isHumanRejected && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border border-red-500/40 bg-red-500/10 text-red-300">
+                <X className="h-2.5 w-2.5" /> rejected
+              </span>
+            )}
             <SyncStatusPill status={latest?.status || 'pending'} />
             {status && status !== 'pending' && (
               <span className={cn('text-[9.5px] font-mono uppercase px-1.5 rounded', statusStyles[status as keyof typeof statusStyles])}>
@@ -619,6 +676,33 @@ function Stat({ label, value, className }: { label: string; value: string; class
     <div>
       <div className="text-[9.5px] uppercase tracking-wider text-muted-foreground font-mono">{label}</div>
       <div className={cn('text-[12.5px] font-semibold font-mono mt-0.5', className)}>{value}</div>
+    </div>
+  );
+}
+
+function ReviewAnalyticsStrip({ data }: { data: ReviewAnalytics }) {
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+  const cells = [
+    { l: 'Reviews', v: `${data.total_reviews}`, hint: 'human validations logged' },
+    { l: 'Acceptance', v: pct(data.acceptance_rate), hint: `${data.accept_count} accepted` },
+    { l: 'Override', v: pct(data.override_rate), hint: `${data.override_count} overridden` },
+    { l: 'Agreement', v: pct(data.agreement_rate), hint: 'human ↔ system match' },
+    { l: 'Rejected', v: `${data.reject_count}`, hint: 'declined' },
+  ];
+  return (
+    <div className="rounded-lg border border-border bg-surface-raised p-3">
+      <div className="text-[10.5px] font-mono uppercase tracking-wider text-muted-foreground mb-2">
+        Human validation · acceptance & override
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {cells.map((c) => (
+          <div key={c.l} className="rounded-md bg-card border border-border p-2.5">
+            <div className="text-[9.5px] font-mono uppercase tracking-wider text-muted-foreground">{c.l}</div>
+            <div className="text-data text-[18px] font-semibold mt-0.5">{c.v}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{c.hint}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# Full-Stack Docker Deployment
+﻿# Full-Stack Docker Deployment
 
 This project has two Compose entry points built from the same application
 containers:
@@ -86,7 +86,7 @@ Open:
 
 The local Compose file now points app services at `DATABASE_URL` from `.env`.
 The built dashboard uses same-origin API paths, so `http://localhost:4173/auth/*`,
-`/inventory/*`, `/financial/*`, `/outcomes/*`, and recommendation calls proxy
+`/inventory/*`, `/outcomes/*`, and recommendation calls proxy
 through Docker to the right backend service.
 If you want a disposable local PostgreSQL instead, start the optional database
 profile and set `.env` to `postgresql://postgres:postgres@postgres:5432/retail_radar`
@@ -185,3 +185,4 @@ create a replacement token, update `.env` on Lightsail, and recreate EEP:
 ```bash
 docker compose -f infra/docker-compose.aws.yml up -d --force-recreate eep
 ```
+

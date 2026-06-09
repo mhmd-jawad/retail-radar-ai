@@ -1,7 +1,7 @@
-{$WEBHOOK_DOMAIN} {
+﻿{$WEBHOOK_DOMAIN} {
 	encode zstd gzip
 
-	@eep_api path /health /metrics /openapi.json /docs* /redoc* /auth/* /shop/* /admin/* /webhooks/* /apify/* /report /report/* /ops/* /inventory/* /recommend/* /decisions /outcomes/* /financial/* /dashboard/*
+	@eep_api path /health /metrics /openapi.json /docs* /redoc* /auth/* /shop/* /admin/* /webhooks/* /apify/* /report /report/* /ops/* /inventory/* /recommend/* /decisions /outcomes/* /dashboard/*
 	handle @eep_api {
 		reverse_proxy eep:8000
 	}
@@ -31,3 +31,4 @@
 		reverse_proxy frontend:80
 	}
 }
+

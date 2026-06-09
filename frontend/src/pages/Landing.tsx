@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 import {
-  Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone, Wallet,
+  Radar, ArrowRight, Activity, ShieldCheck, Sparkles, Boxes, Megaphone,
   ListChecks, ChevronLeft, ChevronRight, Database,
-  CircleDot, Pause, TrendingUp, Tag, Flame, Target,
+  CircleDot, Pause, TrendingUp, Tag, Flame, Target, Wallet,
 } from 'lucide-react';
 import { ShaderBackground } from '@/components/ui/animated-shader-hero';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ const MODULES = [
 ];
 
 const SERVICES = [
-  { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Financial · Promotions JSON' },
+  { name: 'Report Analytics Engine', status: 'live', desc: 'Inventory · Competitor · Promotions JSON' },
   { name: 'IE2 — Decision Intelligence', status: 'live', desc: 'FastAPI on :8002 · /recommend' },
   { name: 'IE1 — Forecasting', status: 'planned', desc: 'Demand & seasonality forecasts (in design)' },
   { name: 'IE3 — Creative Generation', status: 'planned', desc: 'Ad copy, IG/FB/WhatsApp variants' },
@@ -25,7 +25,7 @@ const SERVICES = [
 ];
 
 const SHOP_SERVICES = [
-  { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, financial, and promotion signals in one workspace.' },
+  { name: 'Business Analytics', status: 'live', desc: 'Inventory, competitor, and promotion signals in one workspace.' },
   { name: 'Decision Recommendations', status: 'live', desc: 'SKU-level hold, markdown, promote, and clearance guidance.' },
   { name: 'Campaign Creative', status: 'live', desc: 'Ad copy and WhatsApp campaign variants for approved promotions.' },
   { name: 'Tenant Data Sync', status: 'live', desc: 'Live shop data connected to the dashboard and recommendation queue.' },
@@ -127,7 +127,7 @@ export default function Landing() {
           </h1>
 
           <p className="mt-7 text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed animate-fade-in-up animation-delay-400">
-            Retail Radar AI continuously analyzes inventory health, competitor moves, seasonality and cash position
+            Retail Radar AI continuously analyzes inventory health, competitor moves, and seasonality
             for Lebanese multi-brand sportswear retailers — and tells you exactly which SKUs to{' '}
             <span className="text-decision-hold font-semibold">hold</span>,{' '}
             <span className="text-decision-markdown font-semibold">mark down</span>,{' '}
@@ -153,11 +153,6 @@ export default function Landing() {
       </section>
 
       {/* ===== ALL SECTIONS BELOW HERO — single continuous warm canvas ===== */}
-      {/*
-        One wrapper, one background. Four large overlapping radial gradients placed at
-        different x/y% positions so warm light bleeds seamlessly across every section
-        boundary. No overflow-hidden on sections = no clipping, no dark seams.
-      */}
       <div
         className="relative overflow-hidden"
         style={{
@@ -339,3 +334,4 @@ export default function Landing() {
     </div>
   );
 }
+

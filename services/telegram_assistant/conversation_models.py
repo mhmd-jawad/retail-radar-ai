@@ -51,7 +51,6 @@ class IntentResult(BaseModel):
         "promote_request",
         "markdown_request",
         "inventory_query",
-        "cashflow_query",
         "competitor_query",
         "refresh_data",
         "general",

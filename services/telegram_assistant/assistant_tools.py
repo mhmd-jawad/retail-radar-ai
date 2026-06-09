@@ -87,32 +87,6 @@ TOOLS: list[dict] = [
         },
     },
     {
-        "name": "get_financials",
-        "description": (
-            "Returns cash runway, monthly OPEX burn, blended gross margin, and revenue "
-            "figures (current month, last 7 days, last 30 days). Use for financial health "
-            "questions: 'how much cash do I have?', 'what's my margin?', 'cashflow status'."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "get_revenue_trend",
-        "description": (
-            "Returns this-week vs last-week daily revenue average with trend direction and "
-            "percentage change. Use when the retailer asks if sales are growing or declining: "
-            "'are sales up this week?', 'how's revenue trending?', 'better or worse than last week?'"
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
         "name": "get_competitor_prices",
         "description": (
             "Returns competitor price comparisons for SKUs we carry, showing our price vs "
@@ -261,6 +235,23 @@ TOOLS: list[dict] = [
             "Use for questions like 'what should I do today?', 'what is waiting for my approval?', "
             "'what needs my attention?', 'what should management focus on?', 'what is blocked?', "
             "'what are the next recommended actions?', 'give me a daily brief on decisions'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_financial_health",
+        "description": (
+            "Returns a full financial health snapshot: blended margin %, gross profit, "
+            "inventory value at cost and retail, dead-stock exposure, current ratio (assets/liabilities), "
+            "net equity, cash runway, monthly OpEx, itemized assets and liabilities entered by the retailer, "
+            "and a Lebanon-adjusted threshold assessment for each metric. "
+            "Use for any financial question: 'what is my margin?', 'how healthy are my finances?', "
+            "'what is my cash runway?', 'what are my liabilities?', 'give me a financial summary', "
+            "'what is my current ratio?', 'am I profitable?', 'how is my store doing financially?'."
         ),
         "input_schema": {
             "type": "object",

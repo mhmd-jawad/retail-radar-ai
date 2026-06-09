@@ -204,7 +204,6 @@ const directives: Directive[] = [
   { owner: 'Buying', priority: 'high', title: 'Pause Outdoor reorder cycle', detail: '23 dead-stock SKUs exceed 180 DOS. Defer Outdoor PO #4421 until Q3 review.' },
   { owner: 'Marketing', priority: 'high', title: 'Launch Running summer push', detail: '12 PROMOTE SKUs ready with creatives. Schedule Instagram + WhatsApp broadcast for May 1.' },
   { owner: 'Operations', priority: 'medium', title: 'Reallocate Tripoli stock', detail: 'Move 38 units of Football Boots from Tripoli to Jounieh ahead of league season.' },
-  { owner: 'Finance', priority: 'high', title: 'Cash runway tight at 3.0 months', detail: 'Inventory = 82.6% of assets. Approve markdown pack to free ~$48k in 30 days.' },
   { owner: 'Buying', priority: 'medium', title: 'Lock USD pricing on next PO', detail: 'Request a 60-day price lock from 2 suppliers to protect working capital.' },
 ];
 
@@ -217,20 +216,6 @@ const seasonal_actions: Report['promotions']['seasonal_actions'] = [
   { month: 'Oct', action: 'MARKDOWN', category: 'Lifestyle Sneakers', detail: 'Pre-winter inventory clear before Q4 reorder cycle.' },
 ];
 
-const cashflowSeries = [
-  { month: 'Nov', in: 142000, out: 168000, net: -26000 },
-  { month: 'Dec', in: 198000, out: 174000, net: 24000 },
-  { month: 'Jan', in: 121000, out: 156000, net: -35000 },
-  { month: 'Feb', in: 134000, out: 148000, net: -14000 },
-  { month: 'Mar', in: 162000, out: 152000, net: 10000 },
-  { month: 'Apr', in: 158000, out: 161000, net: -3000 },
-];
-
-const financialAlerts: Alert[] = [
-  { id: 'f1', severity: 'high', title: 'Cash runway at 3.0 months', detail: 'Below 4-month threshold. Inventory liquidation recommended.', created_at: '2026-04-21T09:00:00Z' },
-  { id: 'f2', severity: 'medium', title: 'Inventory concentration: top 5 categories = 71%', detail: 'Diversification risk — Running and Football Boots dominate.', created_at: '2026-04-20T14:22:00Z' },
-  { id: 'f3', severity: 'low', title: 'Working capital stable', detail: 'USD cash and receivables remain within target range.', created_at: '2026-04-19T10:15:00Z' },
-];
 
 export const MOCK_REPORT: Report = {
   inventory: {
@@ -260,23 +245,6 @@ export const MOCK_REPORT: Report = {
     brand_summary: brandSummary,
     category_summary: compCategorySummary,
     opportunities,
-  },
-  financial: {
-    balance_sheet_health: {
-      current_ratio: 1.42, inventory_pct_of_assets: 82.6,
-      inventory_concentration_top5_pct: 71, total_assets_usd: 1840000,
-      liabilities_usd: 720000, equity_usd: 1120000,
-    },
-    cashflow_health: {
-      cash_runway_months: 3.0, monthly_burn_usd: 158000,
-      monthly_cash_in_usd: 152000, cash_on_hand_usd: 474000,
-      series: cashflowSeries,
-    },
-    profitability: {
-      blended_margin_pct: blendedMargin, breakeven_revenue_usd: 145000,
-      annual_revenue_projection_usd: 2040000, opex_coverage_ratio: 1.18,
-    },
-    alerts: financialAlerts,
   },
   promotions: {
     hold_pricing, promote, markdown, clearance, seasonal_actions, directives,
@@ -330,3 +298,4 @@ export const MOCK_AUDIT: AuditEntry[] = Array.from({ length: 18 }).map((_, i) =>
 });
 
 export { SHOPS };
+
