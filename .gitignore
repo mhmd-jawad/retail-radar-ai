@@ -18,3 +18,8 @@ uvicorn.log
 
 data/
 temp_data/
+
+# MLflow / CatBoost training artifacts — local only, never commit
+mlartifacts/
+mlflow.db
+catboost_info/
